@@ -1,0 +1,6 @@
+# Fill in local database connection values on each machine.
+host: localhost
+port: 5432
+database: medirun
+user: medirun
+password: change_me
