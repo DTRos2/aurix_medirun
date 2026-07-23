@@ -1,0 +1,4 @@
+# Machine-specific runtime settings belong here.
+robot_name: medirun_bot
+serial_port: /dev/ttyACM0
+camera_device: /dev/video0
