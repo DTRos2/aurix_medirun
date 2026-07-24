@@ -1,3 +1,0 @@
-[console_scripts]
-rotation_test_runner = medirun_navigation.rotation_test_runner:main
-
