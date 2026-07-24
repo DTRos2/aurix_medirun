@@ -1,0 +1,21 @@
+running egg_info
+writing ../../build/medirun_navigation/medirun_navigation.egg-info/PKG-INFO
+writing dependency_links to ../../build/medirun_navigation/medirun_navigation.egg-info/dependency_links.txt
+writing entry points to ../../build/medirun_navigation/medirun_navigation.egg-info/entry_points.txt
+writing requirements to ../../build/medirun_navigation/medirun_navigation.egg-info/requires.txt
+writing top-level names to ../../build/medirun_navigation/medirun_navigation.egg-info/top_level.txt
+reading manifest file '../../build/medirun_navigation/medirun_navigation.egg-info/SOURCES.txt'
+writing manifest file '../../build/medirun_navigation/medirun_navigation.egg-info/SOURCES.txt'
+running build
+running build_py
+running install
+running install_lib
+running install_data
+copying launch/navigation_rotation_test.launch.py -> /home/cce/main_project/aurix_main_project_01/install/medirun_navigation/share/medirun_navigation/launch
+running install_egg_info
+removing '/home/cce/main_project/aurix_main_project_01/install/medirun_navigation/lib/python3.10/site-packages/medirun_navigation-0.0.1-py3.10.egg-info' (and everything under it)
+Copying ../../build/medirun_navigation/medirun_navigation.egg-info to /home/cce/main_project/aurix_main_project_01/install/medirun_navigation/lib/python3.10/site-packages/medirun_navigation-0.0.1-py3.10.egg-info
+running install_scripts
+Installing rotation_test_runner script to /home/cce/main_project/aurix_main_project_01/install/medirun_navigation/lib/medirun_navigation
+Installing straight_test_runner script to /home/cce/main_project/aurix_main_project_01/install/medirun_navigation/lib/medirun_navigation
+writing list of installed files to '/home/cce/main_project/aurix_main_project_01/build/medirun_navigation/install.log'

@@ -1,0 +1,19 @@
+/**:
+  ros__parameters:
+    odom_topic: /odom
+    imu_topic: /imu
+    cmd_vel_topic: /cmd_vel
+    distance_m: 0.45
+    repeat_count: 1
+    command_compensation_m: 0.0
+    linear_speed: 0.10
+    min_linear_speed: 0.05
+    slowdown_distance_m: 0.15
+    distance_tolerance_m: 0.01
+    heading_kp: 1.5
+    max_angular_speed: 0.20
+    settle_time_sec: 0.5
+    repeat_delay_sec: 3.0
+    loop_hz: 20.0
+    report_output_dir: docs/tests
+    test_id: T-01

@@ -1,0 +1,25 @@
+[0.432s] Invoking command in '/home/cce/main_project/aurix_main_project_01/src/medirun_navigation': PYTHONPATH=/home/cce/main_project/aurix_main_project_01/build/medirun_navigation/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/cce/main_project/aurix_main_project_01/install/medirun_navigation/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/medirun_navigation build --build-base /home/cce/main_project/aurix_main_project_01/build/medirun_navigation/build install --record /home/cce/main_project/aurix_main_project_01/build/medirun_navigation/install.log --single-version-externally-managed install_data
+[0.599s] running egg_info
+[0.599s] writing ../../build/medirun_navigation/medirun_navigation.egg-info/PKG-INFO
+[0.600s] writing dependency_links to ../../build/medirun_navigation/medirun_navigation.egg-info/dependency_links.txt
+[0.600s] writing entry points to ../../build/medirun_navigation/medirun_navigation.egg-info/entry_points.txt
+[0.600s] writing requirements to ../../build/medirun_navigation/medirun_navigation.egg-info/requires.txt
+[0.600s] writing top-level names to ../../build/medirun_navigation/medirun_navigation.egg-info/top_level.txt
+[0.603s] reading manifest file '../../build/medirun_navigation/medirun_navigation.egg-info/SOURCES.txt'
+[0.603s] writing manifest file '../../build/medirun_navigation/medirun_navigation.egg-info/SOURCES.txt'
+[0.603s] running build
+[0.603s] running build_py
+[0.603s] copying medirun_navigation/rotation_test_runner.py -> /home/cce/main_project/aurix_main_project_01/build/medirun_navigation/build/lib/medirun_navigation
+[0.603s] running install
+[0.608s] running install_lib
+[0.608s] copying /home/cce/main_project/aurix_main_project_01/build/medirun_navigation/build/lib/medirun_navigation/rotation_test_runner.py -> /home/cce/main_project/aurix_main_project_01/install/medirun_navigation/lib/python3.10/site-packages/medirun_navigation
+[0.608s] byte-compiling /home/cce/main_project/aurix_main_project_01/install/medirun_navigation/lib/python3.10/site-packages/medirun_navigation/rotation_test_runner.py to rotation_test_runner.cpython-310.pyc
+[0.608s] running install_data
+[0.608s] running install_egg_info
+[0.609s] removing '/home/cce/main_project/aurix_main_project_01/install/medirun_navigation/lib/python3.10/site-packages/medirun_navigation-0.0.1-py3.10.egg-info' (and everything under it)
+[0.609s] Copying ../../build/medirun_navigation/medirun_navigation.egg-info to /home/cce/main_project/aurix_main_project_01/install/medirun_navigation/lib/python3.10/site-packages/medirun_navigation-0.0.1-py3.10.egg-info
+[0.609s] running install_scripts
+[0.622s] Installing rotation_test_runner script to /home/cce/main_project/aurix_main_project_01/install/medirun_navigation/lib/medirun_navigation
+[0.623s] Installing straight_test_runner script to /home/cce/main_project/aurix_main_project_01/install/medirun_navigation/lib/medirun_navigation
+[0.623s] writing list of installed files to '/home/cce/main_project/aurix_main_project_01/build/medirun_navigation/install.log'
+[0.641s] Invoked command in '/home/cce/main_project/aurix_main_project_01/src/medirun_navigation' returned '0': PYTHONPATH=/home/cce/main_project/aurix_main_project_01/build/medirun_navigation/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/cce/main_project/aurix_main_project_01/install/medirun_navigation/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/medirun_navigation build --build-base /home/cce/main_project/aurix_main_project_01/build/medirun_navigation/build install --record /home/cce/main_project/aurix_main_project_01/build/medirun_navigation/install.log --single-version-externally-managed install_data
