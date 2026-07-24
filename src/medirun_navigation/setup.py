@@ -9,8 +9,8 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
-        (f"share/{package_name}/launch", ["launch/.gitkeep"]),
-        (f"share/{package_name}/config", ["config/.gitkeep"]),
+        (f"share/{package_name}/launch", ["launch/navigation_rotation_test.launch.py"]),
+        (f"share/{package_name}/config", ["config/navigation_rotation_test.yaml"]),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -19,4 +19,9 @@ setup(
     description="Navigation package for the MediRun project.",
     license="Apache-2.0",
     tests_require=["pytest"],
+    entry_points={
+        "console_scripts": [
+            "rotation_test_runner = medirun_navigation.rotation_test_runner:main",
+        ]
+    },
 )
