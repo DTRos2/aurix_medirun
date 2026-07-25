@@ -12,10 +12,16 @@ qt_add_executable(medirun_gui
     mainwindow.h
     mainwindow.ui
     resources.qrc
+    src/app/guiapplicationcontroller.cpp
+    src/app/guiapplicationcontroller.h
+    src/windows/mainwindowstyler.cpp
+    src/windows/mainwindowstyler.h
     src/widgets/logocarouselwidget.cpp
     src/widgets/logocarouselwidget.h
     src/widgets/splashassetresolver.cpp
     src/widgets/splashassetresolver.h
+    src/widgets/splashscreencontentwidget.cpp
+    src/widgets/splashscreencontentwidget.h
     src/widgets/splashscreenwidget.cpp
     src/widgets/splashscreenwidget.h
 )
