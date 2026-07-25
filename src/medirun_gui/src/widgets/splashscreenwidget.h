@@ -7,8 +7,8 @@ class QLabel;
 class QMovie;
 class QGraphicsOpacityEffect;
 class QPropertyAnimation;
+class SplashScreenContentWidget;
 class QTimer;
-class QWidget;
 
 class SplashScreenWidget : public QWidget
 {
@@ -47,9 +47,7 @@ private:
     void startAnimation();
     void startFadeIn();
 
-    QWidget *m_contentWidget;
-    QLabel *m_logoLabel;
-    QLabel *m_statusLabel;
+    SplashScreenContentWidget *m_contentWidget;
     QMovie *m_logoMovie;
     QGraphicsOpacityEffect *m_opacityEffect;
     QPropertyAnimation *m_fadeInAnimation;

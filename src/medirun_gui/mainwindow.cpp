@@ -1,28 +1,15 @@
 #include "mainwindow.h"
+#include "src/windows/mainwindowstyler.h"
 #include "ui_mainwindow.h"
 
 #include <QKeyEvent>
-#include <QMenuBar>
-#include <QStatusBar>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
-    setWindowTitle(tr("AURIX Dashboard"));
-    setStyleSheet(
-        "QMainWindow {"
-        "background-color: #090909;"
-        "color: #f6d37a;"
-        "}"
-        "QMenuBar, QStatusBar {"
-        "background-color: #111111;"
-        "color: #f6d37a;"
-        "}"
-    );
-    menuBar()->hide();
-    statusBar()->hide();
+    MainWindowStyler::apply(*this);
     ui->centralwidget->setStyleSheet(QStringLiteral("background-color: #050505;"));
 }
 
