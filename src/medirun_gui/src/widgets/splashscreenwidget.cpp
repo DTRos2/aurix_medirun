@@ -1,33 +1,29 @@
 #include "splashscreenwidget.h"
 
 #include "splashassetresolver.h"
+#include "splashscreencontentwidget.h"
 
 #include <QDebug>
-#include <QGraphicsOpacityEffect>
 #include <QApplication>
+#include <QGraphicsOpacityEffect>
 #include <QHBoxLayout>
-#include <QLabel>
 #include <QMovie>
 #include <QPropertyAnimation>
 #include <QResizeEvent>
 #include <QScreen>
 #include <QShowEvent>
 #include <QTimer>
-#include <QVBoxLayout>
 
 namespace {
 constexpr int kSplashWindowWidth = 900;
 constexpr int kSplashWindowHeight = 900;
 constexpr qreal kMovieZoomFactorX = 9.0;
 constexpr qreal kMovieZoomFactorY = 24.0;
-constexpr int kStatusAreaHeight = 64;
 }
 
 SplashScreenWidget::SplashScreenWidget(QWidget *parent)
     : QWidget(parent, Qt::SplashScreen | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint)
     , m_contentWidget(nullptr)
-    , m_logoLabel(nullptr)
-    , m_statusLabel(nullptr)
     , m_logoMovie(nullptr)
     , m_opacityEffect(nullptr)
     , m_fadeInAnimation(nullptr)
@@ -68,8 +64,8 @@ void SplashScreenWidget::resizeEvent(QResizeEvent *event)
 
 void SplashScreenWidget::setStatus(const QString &text)
 {
-    if (m_statusLabel != nullptr) {
-        m_statusLabel->setText(text);
+    if (m_contentWidget != nullptr) {
+        m_contentWidget->setStatusText(text);
     }
 }
 
@@ -128,30 +124,8 @@ void SplashScreenWidget::buildUi()
     rootLayout->setContentsMargins(0, 0, 0, 0);
     rootLayout->setSpacing(0);
 
-    m_contentWidget = new QWidget(this);
-    m_contentWidget->setObjectName(QStringLiteral("splashContent"));
-    m_contentWidget->setStyleSheet(QStringLiteral("QWidget#splashContent { background-color: #000000; }"));
+    m_contentWidget = new SplashScreenContentWidget(this);
     rootLayout->addWidget(m_contentWidget);
-
-    auto *contentLayout = new QVBoxLayout(m_contentWidget);
-    contentLayout->setContentsMargins(0, 0, 0, 0);
-    contentLayout->setSpacing(0);
-
-    m_logoLabel = new QLabel(m_contentWidget);
-    m_logoLabel->setAlignment(Qt::AlignCenter);
-    m_logoLabel->setStyleSheet(QStringLiteral("background-color: #000000;"));
-    m_logoLabel->setScaledContents(false);
-    contentLayout->addWidget(m_logoLabel, 1);
-
-    m_statusLabel = new QLabel(QStringLiteral("운영 대시보드를 불러오는 중입니다..."), m_contentWidget);
-    m_statusLabel->setAlignment(Qt::AlignCenter);
-    m_statusLabel->setFixedHeight(kStatusAreaHeight);
-    m_statusLabel->setStyleSheet(QStringLiteral(
-        "background-color: #000000;"
-        "color: #F2C35A;"
-        "font-size: 18px;"
-        "font-weight: 600;"));
-    contentLayout->addWidget(m_statusLabel, 0);
 
     m_opacityEffect = new QGraphicsOpacityEffect(m_contentWidget);
     m_opacityEffect->setOpacity(0.0);
@@ -185,19 +159,11 @@ void SplashScreenWidget::centerOnPrimaryScreen()
 
 void SplashScreenWidget::updateMovieScale()
 {
-    if (m_logoMovie == nullptr) {
+    if (m_logoMovie == nullptr || m_contentWidget == nullptr) {
         return;
     }
 
-    const QSize contentSize = m_logoLabel->size();
-    if (!contentSize.isValid()) {
-        return;
-    }
-
-    const QSize zoomedSize(
-        static_cast<int>(contentSize.width() * kMovieZoomFactorX),
-        static_cast<int>(contentSize.height() * kMovieZoomFactorY));
-    m_logoMovie->setScaledSize(zoomedSize);
+    m_contentWidget->updateMovieScale(kMovieZoomFactorX, kMovieZoomFactorY);
 }
 
 void SplashScreenWidget::startAnimation()
@@ -205,24 +171,14 @@ void SplashScreenWidget::startAnimation()
     const QString animationPath = SplashAssetResolver::resolveSplashAnimationPath();
     if (animationPath.isEmpty()) {
         qDebug() << "Failed to resolve splash GIF resource path:" << QStringLiteral(":/assets/aurix_splash.gif");
-        m_logoLabel->setText(QStringLiteral("AURIX"));
-        m_logoLabel->setStyleSheet(QStringLiteral(
-            "background-color: #000000;"
-            "color: #E8C979;"
-            "font-size: 52px;"
-            "font-weight: 700;"));
+        m_contentWidget->showFallbackText(QStringLiteral("AURIX"));
         return;
     }
 
     m_logoMovie = new QMovie(animationPath, QByteArray(), this);
     if (!m_logoMovie->isValid()) {
         qDebug() << "Failed to load splash GIF:" << animationPath;
-        m_logoLabel->setText(QStringLiteral("AURIX"));
-        m_logoLabel->setStyleSheet(QStringLiteral(
-            "background-color: #000000;"
-            "color: #E8C979;"
-            "font-size: 52px;"
-            "font-weight: 700;"));
+        m_contentWidget->showFallbackText(QStringLiteral("AURIX"));
         m_logoMovie->deleteLater();
         m_logoMovie = nullptr;
         return;
@@ -231,7 +187,7 @@ void SplashScreenWidget::startAnimation()
     qDebug() << "Loaded splash GIF from:" << animationPath;
 
     m_logoMovie->setCacheMode(QMovie::CacheAll);
-    m_logoLabel->setMovie(m_logoMovie);
+    m_contentWidget->attachMovie(m_logoMovie);
     updateMovieScale();
     m_logoMovie->start();
 }
