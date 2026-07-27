@@ -9,7 +9,7 @@
 struct AuthUserRecord
 {
     QString loginId;
-    UserRole role {UserRole::Staff};
+    UserRole role {UserRole::User};
 };
 
 class AuthService
