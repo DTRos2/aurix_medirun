@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.19)
 project(medirun_gui LANGUAGES CXX)
 
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTORCC ON)
+
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets)
 
 qt_standard_project_setup()
@@ -12,8 +16,21 @@ qt_add_executable(medirun_gui
     mainwindow.h
     mainwindow.ui
     resources.qrc
+    src/app/appsession.h
     src/app/guiapplicationcontroller.cpp
     src/app/guiapplicationcontroller.h
+    src/dialogs/logindialog.cpp
+    src/dialogs/logindialog.h
+    src/models/telemetrymodel.h
+    src/services/authservice.h
+    src/services/localauthservice.cpp
+    src/services/localauthservice.h
+    src/services/eventrepository.h
+    src/services/mocktelemetryprovider.cpp
+    src/services/mocktelemetryprovider.h
+    src/services/telemetryprovider.h
+    src/widgets/dashboardcentralwidget.cpp
+    src/widgets/dashboardcentralwidget.h
     src/windows/mainwindowstyler.cpp
     src/windows/mainwindowstyler.h
     src/widgets/logocarouselwidget.cpp

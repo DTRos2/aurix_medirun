@@ -1,8 +1,11 @@
 <RCC>
     <qresource prefix="/">
         <file alias="images/aurix_logo_01.png">resources/images/aurix_logo_01.png</file>
+        <file alias="images/aurix_robot_reference.png">../../assets/aurix_logo.png</file>
+        <file alias="styles/aurix_dark.qss">resources/styles/aurix_dark.qss</file>
     </qresource>
     <qresource prefix="/assets">
+        <file alias="AURIX_MediRun_Animated_Bright_Logo.gif">../../assets/AURIX_MediRun_Animated_Bright_Logo.gif</file>
         <file alias="aurix_splash.gif">../../assets/aurix_splash.gif</file>
     </qresource>
 </RCC>
