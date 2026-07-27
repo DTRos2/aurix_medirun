@@ -121,9 +121,10 @@ QVector<LocalAuthService::StoredUserRecord> LocalAuthService::loadUsers()
         record.loginId = normalizedLoginId(settings.value(QStringLiteral("loginId")).toString());
         record.passwordSalt = settings.value(QStringLiteral("passwordSalt")).toString();
         record.passwordHash = settings.value(QStringLiteral("passwordHash")).toString();
-        record.role = settings.value(QStringLiteral("role")).toString() == QStringLiteral("ADMIN")
+        const QString storedRole = settings.value(QStringLiteral("role")).toString().trimmed().toUpper();
+        record.role = storedRole == QStringLiteral("ADMIN")
             ? UserRole::Admin
-            : UserRole::Staff;
+            : UserRole::User;
 
         if (!record.loginId.isEmpty() && !record.passwordSalt.isEmpty() && !record.passwordHash.isEmpty()) {
             users.push_back(record);
@@ -143,7 +144,7 @@ void LocalAuthService::saveUsers(const QVector<StoredUserRecord> &users)
         settings.setValue(QStringLiteral("loginId"), users.at(index).loginId);
         settings.setValue(QStringLiteral("passwordSalt"), users.at(index).passwordSalt);
         settings.setValue(QStringLiteral("passwordHash"), users.at(index).passwordHash);
-        settings.setValue(QStringLiteral("role"), users.at(index).role == UserRole::Admin ? QStringLiteral("ADMIN") : QStringLiteral("STAFF"));
+        settings.setValue(QStringLiteral("role"), users.at(index).role == UserRole::Admin ? QStringLiteral("ADMIN") : QStringLiteral("USER"));
     }
     settings.endArray();
     settings.sync();
@@ -155,8 +156,12 @@ void LocalAuthService::ensureDefaultUsers()
     bool dirty = false;
 
     const auto ensureUser = [&](const QString &loginId, const QString &password, UserRole role) {
-        for (const StoredUserRecord &record : storedUsers) {
+        for (StoredUserRecord &record : storedUsers) {
             if (record.loginId.compare(loginId, Qt::CaseInsensitive) == 0) {
+                if (record.role != role) {
+                    record.role = role;
+                    dirty = true;
+                }
                 return;
             }
         }
@@ -167,7 +172,7 @@ void LocalAuthService::ensureDefaultUsers()
     };
 
     ensureUser(QStringLiteral("admin"), QStringLiteral("admin123"), UserRole::Admin);
-    ensureUser(QStringLiteral("user"), QStringLiteral("user123"), UserRole::Staff);
+    ensureUser(QStringLiteral("user"), QStringLiteral("user123"), UserRole::User);
 
     if (dirty) {
         saveUsers(storedUsers);

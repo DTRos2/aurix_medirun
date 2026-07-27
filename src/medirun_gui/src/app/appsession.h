@@ -4,20 +4,20 @@
 #include <QString>
 
 enum class UserRole {
-    Staff,
+    User,
     Admin
 };
 
 struct AppSession
 {
     QString username;
-    UserRole role {UserRole::Staff};
+    UserRole role {UserRole::User};
     bool mockMode {true};
 };
 
 inline QString roleDisplayName(UserRole role)
 {
-    return role == UserRole::Admin ? QStringLiteral("ADMIN") : QStringLiteral("STAFF");
+    return role == UserRole::Admin ? QStringLiteral("ADMIN") : QStringLiteral("USER");
 }
 
 #endif // APPSESSION_H

@@ -103,7 +103,7 @@ void LoginDialog::fillStaffCredentials()
 {
     m_usernameEdit->setText(QStringLiteral("user"));
     m_passwordEdit->setText(QStringLiteral("user123"));
-    m_statusLabel->setText(QStringLiteral("일반 사용자 Mock 계정이 선택되었습니다."));
+    m_statusLabel->setText(QStringLiteral("USER Mock 계정이 선택되었습니다."));
 }
 
 void LoginDialog::fillAdminCredentials()
@@ -198,7 +198,7 @@ void LoginDialog::buildUi(bool mockMode)
 
     if (mockMode) {
         auto *mockButtons = new QHBoxLayout();
-        auto *staffButton = new QPushButton(QStringLiteral("STAFF Mock"), m_loginCard);
+        auto *staffButton = new QPushButton(QStringLiteral("USER Mock"), m_loginCard);
         auto *adminButton = new QPushButton(QStringLiteral("ADMIN Mock"), m_loginCard);
         staffButton->setObjectName(QStringLiteral("inlineGhostButton"));
         adminButton->setObjectName(QStringLiteral("inlineGhostButton"));
@@ -245,5 +245,5 @@ void LoginDialog::buildUi(bool mockMode)
 
 UserRole LoginDialog::selectedRole() const
 {
-    return UserRole::Staff;
+    return UserRole::User;
 }
