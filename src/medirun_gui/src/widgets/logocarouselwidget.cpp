@@ -1,8 +1,6 @@
 #include "logocarouselwidget.h"
 
-#include <QCoreApplication>
-#include <QDir>
-#include <QFileInfo>
+#include <QFile>
 #include <QGraphicsOpacityEffect>
 #include <QKeyEvent>
 #include <QLabel>
@@ -240,41 +238,12 @@ QPixmap LogoCarouselWidget::loadPixmapForPath(const QString &imagePath) const
 
     const QPixmap resourcePixmap(normalizedPath);
     if (!resourcePixmap.isNull()) {
-        qWarning() << "Loaded logo from resource path:" << normalizedPath;
+        qInfo() << "Loaded logo resource:" << normalizedPath;
         return resourcePixmap;
     }
 
-    QString relativePath = normalizedPath;
-    if (relativePath.startsWith(QStringLiteral(":/"))) {
-        relativePath.remove(0, 2);
-    }
-
-    const QString applicationDir = QCoreApplication::applicationDirPath();
-    const QString currentDir = QDir::currentPath();
-    const QStringList candidatePaths = {
-        QDir(currentDir).filePath(relativePath),
-        QDir(applicationDir).filePath(relativePath),
-        QDir(applicationDir).filePath(QStringLiteral("../") + relativePath),
-        QDir(applicationDir).filePath(QStringLiteral("../../") + relativePath),
-        QDir(applicationDir).filePath(QStringLiteral("../../../") + relativePath)
-    };
-
-    for (const QString &candidatePath : candidatePaths) {
-        if (!QFileInfo::exists(candidatePath)) {
-            continue;
-        }
-
-        const QPixmap filePixmap(candidatePath);
-        if (!filePixmap.isNull()) {
-            qWarning() << "Loaded logo from file path fallback:" << candidatePath;
-            return filePixmap;
-        }
-    }
-
-    qWarning() << "Logo lookup failed. Requested path:" << normalizedPath;
-    qWarning() << "Application dir:" << applicationDir;
-    qWarning() << "Current dir:" << currentDir;
-    qWarning() << "Tried relative path:" << relativePath;
+    qWarning() << "Logo resource lookup failed:" << normalizedPath
+               << "exists:" << QFile::exists(normalizedPath);
     return QPixmap();
 }
 

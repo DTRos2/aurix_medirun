@@ -42,7 +42,7 @@ private:
     void updateLayoutGeometry();
     // 현재 인덱스의 이미지를 로드하고 표시 상태를 갱신한다.
     void updateCurrentImage(bool logOnFailure);
-    // 리소스 경로 실패 시 실행 위치 기준 파일 경로까지 포함해 로고를 찾는다.
+    // Qt Resource System 경로에서 로고를 로드한다.
     QPixmap loadPixmapForPath(const QString &imagePath) const;
     // 원본 이미지를 기준으로 비율을 유지한 채 다시 스케일링한다.
     void updateScaledPixmap();
