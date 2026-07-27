@@ -14,7 +14,6 @@
 #include <QLineEdit>
 #include <QPixmap>
 #include <QPushButton>
-#include <QSlider>
 #include <QStackedWidget>
 #include <QStyle>
 #include <QTableWidget>
@@ -38,20 +37,6 @@ QLabel *makeLabel(const QString &text, const QString &objectName = {})
     }
     label->setWordWrap(true);
     return label;
-}
-
-QWidget *makeInfoRow(const QString &labelText, QLabel *valueLabel, QWidget *parent = nullptr)
-{
-    auto *row = new QWidget(parent);
-    auto *layout = new QHBoxLayout(row);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(12);
-
-    auto *label = makeLabel(labelText, QStringLiteral("metricTitle"));
-    label->setMinimumWidth(112);
-    layout->addWidget(label, 0, Qt::AlignTop);
-    layout->addWidget(valueLabel, 1);
-    return row;
 }
 
 QLabel *makeBrandLogoLabel(QWidget *parent, const QSize &targetSize)
@@ -114,7 +99,6 @@ DashboardCentralWidget::DashboardCentralWidget(const AppSession &session, AuthSe
     , m_adminTodayCallsValue(nullptr)
     , m_adminSafetyEventsValue(nullptr)
     , m_adminStack(nullptr)
-    , m_userStack(nullptr)
     , m_adminRobotTable(nullptr)
     , m_adminHealthRosValue(nullptr)
     , m_adminHealthNavValue(nullptr)
@@ -128,31 +112,15 @@ DashboardCentralWidget::DashboardCentralWidget(const AppSession &session, AuthSe
     , m_userManagementTable(nullptr)
     , m_userOnlineBadge(nullptr)
     , m_userDescriptionLabel(nullptr)
-    , m_userAssignedRobotValue(nullptr)
     , m_userBatteryValue(nullptr)
     , m_userStateValue(nullptr)
     , m_userMissionCountValue(nullptr)
-    , m_userConnectionValue(nullptr)
     , m_userRobotIdLabel(nullptr)
     , m_userRobotSubtitleLabel(nullptr)
     , m_userRobotStatusLabel(nullptr)
     , m_userHeartbeatLabel(nullptr)
     , m_userHealthTagsLabel(nullptr)
     , m_userMissionLogLabel(nullptr)
-    , m_userRobotPageTitleLabel(nullptr)
-    , m_userRobotDetailLabel(nullptr)
-    , m_userRobotDeviceTable(nullptr)
-    , m_userSensorTable(nullptr)
-    , m_userCameraStatusLabel(nullptr)
-    , m_userCameraTopicLabel(nullptr)
-    , m_userCameraEventsLabel(nullptr)
-    , m_userMapMissionLabel(nullptr)
-    , m_userMapPositionLabel(nullptr)
-    , m_userMapDistanceLabel(nullptr)
-    , m_userSshStatusLabel(nullptr)
-    , m_userSshNetworkLabel(nullptr)
-    , m_userSshDbLabel(nullptr)
-    , m_userLogTable(nullptr)
     , m_manualControlButton(nullptr)
     , m_waypointOneButton(nullptr)
     , m_waypointTwoButton(nullptr)
@@ -481,7 +449,7 @@ QWidget *DashboardCentralWidget::buildUserManagementForm()
     auto *roleLabel = makeLabel(QStringLiteral("권한"), QStringLiteral("fieldLabel"));
     layout->addWidget(roleLabel);
     m_userCreateRoleCombo = new QComboBox(panel);
-    m_userCreateRoleCombo->addItem(QStringLiteral("USER"), static_cast<int>(UserRole::User));
+    m_userCreateRoleCombo->addItem(QStringLiteral("USER"), static_cast<int>(UserRole::Staff));
     m_userCreateRoleCombo->addItem(QStringLiteral("ADMIN"), static_cast<int>(UserRole::Admin));
     layout->addWidget(m_userCreateRoleCombo);
 
@@ -631,108 +599,45 @@ QWidget *DashboardCentralWidget::buildUserView()
     topBrandRow->addWidget(m_userOnlineBadge);
     layout->addLayout(topBrandRow);
 
-    layout->addWidget(buildUserPageHeader());
-    layout->addWidget(buildUserNavBar());
+    auto *divider = panelFrame(QStringLiteral("sectionDivider"));
+    divider->setFixedHeight(1);
+    layout->addWidget(divider);
 
-    m_userStack = new QStackedWidget(shell);
-    m_userStack->setObjectName(QStringLiteral("userPageStack"));
-    m_userStack->addWidget(buildUserDashboardPage());
-    m_userStack->addWidget(buildUserRobotPage());
-    m_userStack->addWidget(buildUserSensorPage());
-    m_userStack->addWidget(buildUserCameraPage());
-    m_userStack->addWidget(buildUserMapPage());
-    m_userStack->addWidget(buildUserSshAgentPage());
-    m_userStack->addWidget(buildUserLogReplayPage());
-    layout->addWidget(m_userStack, 1);
-
-    switchUserSection(0);
-    return shell;
-}
-
-QWidget *DashboardCentralWidget::buildUserPageHeader()
-{
-    auto *headerPanel = panelFrame(QStringLiteral("contentPanel"));
-    auto *headerLayout = new QHBoxLayout(headerPanel);
-    headerLayout->setContentsMargins(20, 18, 20, 18);
-    headerLayout->setSpacing(10);
-
+    auto *headerRow = new QHBoxLayout;
     auto *titleCol = new QVBoxLayout;
     titleCol->setSpacing(6);
     titleCol->addWidget(makeLabel(QStringLiteral("내 로봇 관리"), QStringLiteral("pageTitle")));
     m_userDescriptionLabel = makeLabel(QStringLiteral("할당 로봇 MR-02의 상태와 임무를 안전하게 관리합니다."), QStringLiteral("pageSubtitle"));
     titleCol->addWidget(m_userDescriptionLabel);
-    headerLayout->addLayout(titleCol);
-    headerLayout->addStretch();
-
+    headerRow->addLayout(titleCol);
+    headerRow->addStretch();
     auto *exitButton = new QPushButton(QStringLiteral("대시보드 종료"));
     exitButton->setObjectName(QStringLiteral("inlineGhostButton"));
     connect(exitButton, &QPushButton::clicked, this, &DashboardCentralWidget::exitRequested);
-    headerLayout->addWidget(exitButton);
-
+    headerRow->addWidget(exitButton);
     auto *logoutButton = new QPushButton(QStringLiteral("로그아웃"));
     logoutButton->setObjectName(QStringLiteral("inlineGhostButton"));
     connect(logoutButton, &QPushButton::clicked, this, &DashboardCentralWidget::logoutRequested);
-    headerLayout->addWidget(logoutButton);
-
+    headerRow->addWidget(logoutButton);
     auto *estop = new QPushButton(QStringLiteral("■  긴급 정지"));
     estop->setObjectName(QStringLiteral("userDangerButton"));
     connect(estop, &QPushButton::clicked, this, &DashboardCentralWidget::estopRequested);
-    headerLayout->addWidget(estop);
-    return headerPanel;
-}
-
-QWidget *DashboardCentralWidget::buildUserNavBar()
-{
-    auto *navFrame = panelFrame(QStringLiteral("userNavFrame"));
-    auto *layout = new QGridLayout(navFrame);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setHorizontalSpacing(0);
-    layout->setVerticalSpacing(0);
-
-    const QStringList items = {
-        QStringLiteral("Dashboard"),
-        QStringLiteral("Robot"),
-        QStringLiteral("Sensor"),
-        QStringLiteral("Camera"),
-        QStringLiteral("Map"),
-        QStringLiteral("SSH/Agent"),
-        QStringLiteral("Log/Replay")
-    };
-
-    for (int index = 0; index < items.size(); ++index) {
-        auto *button = new QPushButton(items.at(index), navFrame);
-        button->setObjectName(QStringLiteral("userNavButton"));
-        button->setCheckable(false);
-        layout->addWidget(button, 0, index);
-        m_userNavButtons.append(button);
-        connect(button, &QPushButton::clicked, this, [this, index]() { switchUserSection(index); });
-    }
-
-    return navFrame;
-}
-
-QWidget *DashboardCentralWidget::buildUserDashboardPage()
-{
-    auto *page = new QWidget;
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(18);
+    headerRow->addWidget(estop);
+    layout->addLayout(headerRow);
 
     auto *metricRow = new QGridLayout;
     metricRow->setHorizontalSpacing(12);
-    metricRow->setVerticalSpacing(12);
-    metricRow->addWidget(buildUserMetricCard(QStringLiteral("할당 로봇"), m_userAssignedRobotValue, QStringLiteral("amber"), QStringLiteral("현재 세션에 연결된 운용 로봇")), 0, 0);
-    metricRow->addWidget(buildUserMetricCard(QStringLiteral("배터리"), m_userBatteryValue, QStringLiteral("green"), QStringLiteral("예상 가동 시간 기준")), 0, 1);
-    metricRow->addWidget(buildUserMetricCard(QStringLiteral("미션 상태"), m_userStateValue, QStringLiteral("cyan"), QStringLiteral("현재 로봇 작업 상태")), 0, 2);
-    metricRow->addWidget(buildUserMetricCard(QStringLiteral("연결 상태"), m_userConnectionValue, QStringLiteral("blue"), QStringLiteral("ROS2 및 네트워크 연결 품질")), 0, 3);
+    metricRow->addWidget(buildUserMetricCard(QStringLiteral("배터리"), m_userBatteryValue, QStringLiteral("green"), QStringLiteral("약 4시간 12분 사용 가능")), 0, 0);
+    metricRow->addWidget(buildUserMetricCard(QStringLiteral("현재 상태"), m_userStateValue, QStringLiteral("cyan"), QStringLiteral("충전 스테이션 A 대기")), 0, 1);
+    metricRow->addWidget(buildUserMetricCard(QStringLiteral("오늘 미션"), m_userMissionCountValue, QStringLiteral("blue"), QStringLiteral("완료 5 · 실패 0")), 0, 2);
     layout->addLayout(metricRow);
 
     auto *bodyRow = new QHBoxLayout;
-    bodyRow->setSpacing(20);
-    bodyRow->addWidget(buildUserRobotPanel(), 1);
-    bodyRow->addWidget(buildUserMissionPanel(), 1);
+    bodyRow->setSpacing(14);
+    bodyRow->addWidget(buildUserRobotPanel(), 7);
+    bodyRow->addWidget(buildUserMissionPanel(), 5);
     layout->addLayout(bodyRow, 1);
-    return page;
+    return shell;
 }
 
 QWidget *DashboardCentralWidget::buildUserMetricCard(const QString &title, QLabel *&valueLabel, const QString &accentName, const QString &caption)
@@ -757,35 +662,29 @@ QWidget *DashboardCentralWidget::buildUserMetricCard(const QString &title, QLabe
 
 QWidget *DashboardCentralWidget::buildUserRobotPanel()
 {
-    auto *panel = panelFrame(QStringLiteral("contentPanel"));
+    auto *panel = panelFrame(QStringLiteral("userRobotPanel"));
     auto *layout = new QVBoxLayout(panel);
     layout->setContentsMargins(18, 18, 18, 18);
-    layout->setSpacing(14);
-    layout->addWidget(makeLabel(QStringLiteral("Platform Health"), QStringLiteral("panelTitle")));
-
-    m_userRobotIdLabel = makeLabel(QStringLiteral("MR-02"), QStringLiteral("metricValue"));
-    layout->addWidget(makeInfoRow(QStringLiteral("Robot"), m_userRobotIdLabel, panel));
-
-    m_userRobotSubtitleLabel = makeLabel(QStringLiteral("현재 로그인 세션에 연결됨"), QStringLiteral("pageSubtitle"));
-    layout->addWidget(makeInfoRow(QStringLiteral("Session"), m_userRobotSubtitleLabel, panel));
-
-    m_userRobotStatusLabel = makeLabel(QStringLiteral("LIDAR 정상 · IMU 정상 · NAV2 준비"), QStringLiteral("pageSubtitle"));
-    layout->addWidget(makeInfoRow(QStringLiteral("Status"), m_userRobotStatusLabel, panel));
-
-    m_userHeartbeatLabel = makeLabel(QStringLiteral("Heartbeat 1초 전 · 24ms"), QStringLiteral("pageSubtitle"));
-    layout->addWidget(makeInfoRow(QStringLiteral("Heartbeat"), m_userHeartbeatLabel, panel));
-
-    m_userHealthTagsLabel = makeLabel(QStringLiteral("배정 상태 정상 · 경로 계획 가능 · 충전 여유 충분"), QStringLiteral("pageSubtitle"));
-    layout->addWidget(makeInfoRow(QStringLiteral("Safety"), m_userHealthTagsLabel, panel));
+    layout->setSpacing(10);
+    layout->addWidget(makeLabel(QStringLiteral("LIVE ROBOT"), QStringLiteral("sectionKicker")));
+    m_userRobotIdLabel = makeLabel(QStringLiteral("MR-02"), QStringLiteral("userRobotTitle"));
+    layout->addWidget(m_userRobotIdLabel);
+    m_userRobotSubtitleLabel = makeLabel(QStringLiteral("AURIX MEDIRUN RESPONSE UNIT"), QStringLiteral("userRobotSubtitle"));
+    layout->addWidget(m_userRobotSubtitleLabel);
 
     auto *radarWrap = panelFrame(QStringLiteral("robotRadarPlaceholder"));
     auto *radarLayout = new QVBoxLayout(radarWrap);
     radarLayout->setContentsMargins(12, 12, 12, 12);
-    auto *robotVisual = makeRobotVisualLabel(radarWrap, QSize(320, 220));
+    auto *robotVisual = makeRobotVisualLabel(radarWrap, QSize(360, 260));
     radarLayout->addStretch();
     radarLayout->addWidget(robotVisual, 0, Qt::AlignCenter);
     radarLayout->addStretch();
     layout->addWidget(radarWrap, 1);
+
+    m_userRobotStatusLabel = makeLabel(QStringLiteral("LIDAR 정상 · IMU 정상 · NAV2 준비"), QStringLiteral("userStatusTags"));
+    layout->addWidget(m_userRobotStatusLabel);
+    m_userHeartbeatLabel = makeLabel(QStringLiteral("Heartbeat 1초 전 · 24ms"), QStringLiteral("pageSubtitle"));
+    layout->addWidget(m_userHeartbeatLabel);
     return panel;
 }
 
@@ -795,356 +694,26 @@ QWidget *DashboardCentralWidget::buildUserMissionPanel()
     auto *layout = new QVBoxLayout(panel);
     layout->setContentsMargins(16, 16, 16, 16);
     layout->setSpacing(12);
-    layout->addWidget(makeLabel(QStringLiteral("Recent Events"), QStringLiteral("panelTitle")));
-    layout->addWidget(makeLabel(QStringLiteral("최근 로봇 상태 이벤트와 사용자 미션 요청을 시간 순으로 확인합니다."), QStringLiteral("metricCaption")));
-
-    m_userMissionLogLabel = makeLabel(QStringLiteral("--"), QStringLiteral("missionLogLabel"));
-    layout->addWidget(m_userMissionLogLabel);
+    layout->addWidget(makeLabel(QStringLiteral("빠른 미션"), QStringLiteral("panelTitle")));
+    layout->addWidget(makeLabel(QStringLiteral("호출 위치를 선택하면 로봇이 경로 안전성을 확인한 후 출동합니다."), QStringLiteral("metricCaption")));
 
     m_waypointOneButton = new QPushButton(QStringLiteral("W-01   중앙 대합실                         →"));
     m_waypointTwoButton = new QPushButton(QStringLiteral("W-03   동측 승강장                         →"));
     m_waypointThreeButton = new QPushButton(QStringLiteral("W-07   서측 출입구                         →"));
-
-    auto *missionDivider = panelFrame(QStringLiteral("sectionDivider"));
-    missionDivider->setFixedHeight(1);
-    layout->addWidget(missionDivider);
-
-    layout->addWidget(makeLabel(QStringLiteral("Quick Mission"), QStringLiteral("panelTitle")));
-    layout->addWidget(makeLabel(QStringLiteral("호출 위치를 선택하면 로봇이 경로 안전성을 확인한 뒤 출동합니다."), QStringLiteral("metricCaption")));
     const QList<QPushButton *> missionButtons = {m_waypointOneButton, m_waypointTwoButton, m_waypointThreeButton};
     for (QPushButton *button : missionButtons) {
         button->setObjectName(QStringLiteral("missionActionButton"));
         layout->addWidget(button);
     }
 
+    auto *missionDivider = panelFrame(QStringLiteral("sectionDivider"));
+    missionDivider->setFixedHeight(1);
+    layout->addWidget(missionDivider);
+    layout->addWidget(makeLabel(QStringLiteral("최근 미션"), QStringLiteral("panelTitle")));
+    m_userMissionLogLabel = makeLabel(QStringLiteral("--"), QStringLiteral("missionLogLabel"));
+    layout->addWidget(m_userMissionLogLabel);
     layout->addStretch();
     return panel;
-}
-
-QWidget *DashboardCentralWidget::buildUserRobotPage()
-{
-    auto *page = new QWidget;
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(18);
-
-    auto *headerPanel = panelFrame(QStringLiteral("contentPanel"));
-    auto *headerLayout = new QVBoxLayout(headerPanel);
-    headerLayout->setContentsMargins(20, 18, 20, 18);
-    headerLayout->setSpacing(6);
-    m_userRobotPageTitleLabel = makeLabel(QStringLiteral("Robot"), QStringLiteral("pageTitle"));
-    headerLayout->addWidget(m_userRobotPageTitleLabel);
-    m_userRobotDetailLabel = makeLabel(QStringLiteral("현재 할당된 로봇 상태와 장치별 동작 상태를 확인합니다."), QStringLiteral("pageSubtitle"));
-    headerLayout->addWidget(m_userRobotDetailLabel);
-    layout->addWidget(headerPanel);
-
-    auto *body = new QHBoxLayout;
-    body->setSpacing(18);
-    body->addWidget(buildUserRobotPanel(), 1);
-
-    auto *devicePanel = panelFrame(QStringLiteral("contentPanel"));
-    auto *deviceLayout = new QVBoxLayout(devicePanel);
-    deviceLayout->setContentsMargins(16, 16, 16, 16);
-    deviceLayout->setSpacing(12);
-    deviceLayout->addWidget(makeLabel(QStringLiteral("장치 상태"), QStringLiteral("panelTitle")));
-    m_userRobotDeviceTable = new QTableWidget(0, 2, devicePanel);
-    m_userRobotDeviceTable->setHorizontalHeaderLabels({QStringLiteral("장치"), QStringLiteral("상태")});
-    m_userRobotDeviceTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    m_userRobotDeviceTable->verticalHeader()->setVisible(false);
-    m_userRobotDeviceTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_userRobotDeviceTable->setSelectionMode(QAbstractItemView::NoSelection);
-    deviceLayout->addWidget(m_userRobotDeviceTable, 1);
-    body->addWidget(devicePanel, 1);
-
-    layout->addLayout(body, 1);
-    return page;
-}
-
-QWidget *DashboardCentralWidget::buildUserSensorPage()
-{
-    auto *page = new QWidget;
-    auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(18);
-
-    auto *headerPanel = panelFrame(QStringLiteral("contentPanel"));
-    auto *headerLayout = new QVBoxLayout(headerPanel);
-    headerLayout->setContentsMargins(20, 18, 20, 18);
-    headerLayout->setSpacing(6);
-    headerLayout->addWidget(makeLabel(QStringLiteral("Sensor"), QStringLiteral("pageTitle")));
-    headerLayout->addWidget(makeLabel(QStringLiteral("센서 입력과 연결 지연 상태를 확인합니다."), QStringLiteral("pageSubtitle")));
-    layout->addWidget(headerPanel);
-
-    auto *sensorPanel = panelFrame(QStringLiteral("contentPanel"));
-    auto *sensorLayout = new QVBoxLayout(sensorPanel);
-    sensorLayout->setContentsMargins(16, 16, 16, 16);
-    sensorLayout->setSpacing(12);
-    sensorLayout->addWidget(makeLabel(QStringLiteral("센서 상세"), QStringLiteral("panelTitle")));
-    m_userSensorTable = new QTableWidget(0, 3, sensorPanel);
-    m_userSensorTable->setHorizontalHeaderLabels({QStringLiteral("항목"), QStringLiteral("값"), QStringLiteral("상태")});
-    m_userSensorTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    m_userSensorTable->verticalHeader()->setVisible(false);
-    m_userSensorTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_userSensorTable->setSelectionMode(QAbstractItemView::NoSelection);
-    sensorLayout->addWidget(m_userSensorTable, 1);
-    layout->addWidget(sensorPanel, 1);
-    return page;
-}
-
-QWidget *DashboardCentralWidget::buildUserCameraPage()
-{
-    auto *page = new QWidget;
-    auto *layout = new QHBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(18);
-
-    auto *previewPanel = panelFrame(QStringLiteral("contentPanel"));
-    auto *previewLayout = new QVBoxLayout(previewPanel);
-    previewLayout->setContentsMargins(16, 16, 16, 16);
-    previewLayout->setSpacing(12);
-    previewLayout->addWidget(makeLabel(QStringLiteral("Camera"), QStringLiteral("pageTitle")));
-
-    auto *cameraSurface = panelFrame(QStringLiteral("robotRadarPlaceholder"));
-    cameraSurface->setMinimumHeight(360);
-    auto *cameraSurfaceLayout = new QVBoxLayout(cameraSurface);
-    cameraSurfaceLayout->setContentsMargins(18, 18, 18, 18);
-    cameraSurfaceLayout->setSpacing(12);
-    cameraSurfaceLayout->addWidget(makeLabel(QStringLiteral("Front RGB Camera"), QStringLiteral("panelTitle")));
-    auto *cameraCanvas = makeLabel(QStringLiteral("LIVE PREVIEW\n1280 x 720"), QStringLiteral("previewHeroTitle"));
-    cameraCanvas->setAlignment(Qt::AlignCenter);
-    cameraSurfaceLayout->addWidget(cameraCanvas, 1);
-
-    auto *slider = new QSlider(Qt::Horizontal, cameraSurface);
-    slider->setRange(0, 100);
-    slider->setValue(18);
-    cameraSurfaceLayout->addWidget(slider);
-
-    auto *controlRow = new QHBoxLayout;
-    auto *captureButton = new QPushButton(QStringLiteral("캡처"));
-    captureButton->setObjectName(QStringLiteral("inlineGhostButton"));
-    auto *recordButton = new QPushButton(QStringLiteral("기록"));
-    recordButton->setObjectName(QStringLiteral("primaryCtaButton"));
-    controlRow->addWidget(captureButton);
-    controlRow->addWidget(recordButton);
-    controlRow->addStretch();
-    cameraSurfaceLayout->addLayout(controlRow);
-    previewLayout->addWidget(cameraSurface, 1);
-    layout->addWidget(previewPanel, 2);
-
-    auto *infoPanel = panelFrame(QStringLiteral("contentPanel"));
-    auto *infoLayout = new QVBoxLayout(infoPanel);
-    infoLayout->setContentsMargins(16, 16, 16, 16);
-    infoLayout->setSpacing(12);
-    infoLayout->addWidget(makeLabel(QStringLiteral("카메라 상태"), QStringLiteral("panelTitle")));
-    m_userCameraStatusLabel = makeLabel(QStringLiteral("LIVE"), QStringLiteral("metricValue"));
-    infoLayout->addWidget(makeInfoRow(QStringLiteral("Stream"), m_userCameraStatusLabel, infoPanel));
-    m_userCameraTopicLabel = makeLabel(QStringLiteral("/medirun/camera/front"), QStringLiteral("pageSubtitle"));
-    infoLayout->addWidget(makeInfoRow(QStringLiteral("Topic"), m_userCameraTopicLabel, infoPanel));
-    m_userCameraEventsLabel = makeLabel(QStringLiteral("최근 이벤트 없음"), QStringLiteral("missionLogLabel"));
-    infoLayout->addWidget(makeLabel(QStringLiteral("최근 감지"), QStringLiteral("panelTitle")));
-    infoLayout->addWidget(m_userCameraEventsLabel);
-
-    auto *detectionTable = new QTableWidget(4, 3, infoPanel);
-    detectionTable->setHorizontalHeaderLabels({QStringLiteral("Label"), QStringLiteral("Confidence"), QStringLiteral("Status")});
-    detectionTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    detectionTable->verticalHeader()->setVisible(false);
-    detectionTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    detectionTable->setSelectionMode(QAbstractItemView::NoSelection);
-    const QList<QStringList> detections = {
-        {QStringLiteral("person"), QStringLiteral("0.96"), QStringLiteral("TRACK")},
-        {QStringLiteral("marker"), QStringLiteral("0.82"), QStringLiteral("LOCK")},
-        {QStringLiteral("forklift"), QStringLiteral("0.71"), QStringLiteral("WARN")},
-        {QStringLiteral("obstacle"), QStringLiteral("0.64"), QStringLiteral("SCAN")}
-    };
-    for (int row = 0; row < detections.size(); ++row) {
-        for (int col = 0; col < detections.at(row).size(); ++col) {
-            detectionTable->setItem(row, col, new QTableWidgetItem(detections.at(row).at(col)));
-        }
-    }
-    infoLayout->addWidget(makeLabel(QStringLiteral("객체 감지"), QStringLiteral("panelTitle")));
-    infoLayout->addWidget(detectionTable, 1);
-    infoLayout->addStretch();
-    layout->addWidget(infoPanel, 1);
-    return page;
-}
-
-QWidget *DashboardCentralWidget::buildUserMapPage()
-{
-    auto *page = new QWidget;
-    auto *layout = new QHBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(18);
-
-    auto *mapPanel = panelFrame(QStringLiteral("contentPanel"));
-    auto *mapLayout = new QVBoxLayout(mapPanel);
-    mapLayout->setContentsMargins(16, 16, 16, 16);
-    mapLayout->setSpacing(12);
-    mapLayout->addWidget(makeLabel(QStringLiteral("Map"), QStringLiteral("pageTitle")));
-
-    auto *mapSurface = panelFrame(QStringLiteral("robotRadarPlaceholder"));
-    mapSurface->setMinimumHeight(420);
-    auto *mapSurfaceLayout = new QVBoxLayout(mapSurface);
-    mapSurfaceLayout->setContentsMargins(18, 18, 18, 18);
-    mapSurfaceLayout->setSpacing(16);
-
-    auto *overlayRow = new QHBoxLayout;
-    auto *cameraMini = panelFrame(QStringLiteral("contentPanel"));
-    cameraMini->setMaximumWidth(220);
-    auto *cameraMiniLayout = new QVBoxLayout(cameraMini);
-    cameraMiniLayout->setContentsMargins(12, 12, 12, 12);
-    cameraMiniLayout->addWidget(makeLabel(QStringLiteral("Front Camera"), QStringLiteral("panelTitle")));
-    auto *miniText = makeLabel(QStringLiteral("LIVE VIEW\nForward Lane"), QStringLiteral("metricValue"));
-    miniText->setAlignment(Qt::AlignCenter);
-    cameraMiniLayout->addWidget(miniText);
-    overlayRow->addWidget(cameraMini, 0, Qt::AlignTop);
-    overlayRow->addStretch();
-    mapSurfaceLayout->addLayout(overlayRow);
-    mapSurfaceLayout->addStretch();
-    auto *mapState = makeLabel(QStringLiteral("MISSION MAP\nQt Dashboard -> ROS2 Robot"), QStringLiteral("previewHeroTitle"));
-    mapState->setAlignment(Qt::AlignCenter);
-    mapSurfaceLayout->addWidget(mapState);
-    mapSurfaceLayout->addWidget(makeLabel(QStringLiteral("실시간 위치와 경로 상태가 이 영역에 표시됩니다."), QStringLiteral("pageSubtitle")), 0, Qt::AlignCenter);
-    mapSurfaceLayout->addStretch();
-    mapLayout->addWidget(mapSurface, 1);
-    layout->addWidget(mapPanel, 2);
-
-    auto *summaryPanel = panelFrame(QStringLiteral("contentPanel"));
-    auto *summaryLayout = new QVBoxLayout(summaryPanel);
-    summaryLayout->setContentsMargins(16, 16, 16, 16);
-    summaryLayout->setSpacing(12);
-    summaryLayout->addWidget(makeLabel(QStringLiteral("미션 요약"), QStringLiteral("panelTitle")));
-    m_userMapMissionLabel = makeLabel(QStringLiteral("--"), QStringLiteral("pageSubtitle"));
-    summaryLayout->addWidget(makeInfoRow(QStringLiteral("Mission"), m_userMapMissionLabel, summaryPanel));
-    m_userMapPositionLabel = makeLabel(QStringLiteral("--"), QStringLiteral("pageSubtitle"));
-    summaryLayout->addWidget(makeInfoRow(QStringLiteral("Position"), m_userMapPositionLabel, summaryPanel));
-    m_userMapDistanceLabel = makeLabel(QStringLiteral("--"), QStringLiteral("pageSubtitle"));
-    summaryLayout->addWidget(makeInfoRow(QStringLiteral("Distance"), m_userMapDistanceLabel, summaryPanel));
-    summaryLayout->addWidget(makeLabel(QStringLiteral("빠른 이동"), QStringLiteral("panelTitle")));
-    auto *buttons = new QVBoxLayout;
-    auto *mapWp1 = new QPushButton(QStringLiteral("W-01   중앙 대합실                         →"));
-    auto *mapWp2 = new QPushButton(QStringLiteral("W-03   동측 승강장                         →"));
-    auto *mapWp3 = new QPushButton(QStringLiteral("W-07   서측 출입구                         →"));
-    for (QPushButton *button : {mapWp1, mapWp2, mapWp3}) {
-        button->setObjectName(QStringLiteral("missionActionButton"));
-        buttons->addWidget(button);
-    }
-    summaryLayout->addLayout(buttons);
-    auto *actionRow = new QHBoxLayout;
-    auto *returnButton = new QPushButton(QStringLiteral("복귀"));
-    returnButton->setObjectName(QStringLiteral("inlineGhostButton"));
-    connect(returnButton, &QPushButton::clicked, this, &DashboardCentralWidget::returnHomeRequested);
-    auto *stopButton = new QPushButton(QStringLiteral("정지"));
-    stopButton->setObjectName(QStringLiteral("userDangerButton"));
-    connect(stopButton, &QPushButton::clicked, this, &DashboardCentralWidget::estopRequested);
-    actionRow->addWidget(returnButton);
-    actionRow->addWidget(stopButton);
-    summaryLayout->addLayout(actionRow);
-    summaryLayout->addStretch();
-    layout->addWidget(summaryPanel, 1);
-    return page;
-}
-
-QWidget *DashboardCentralWidget::buildUserSshAgentPage()
-{
-    auto *page = new QWidget;
-    auto *layout = new QHBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(18);
-
-    auto *leftPanel = panelFrame(QStringLiteral("contentPanel"));
-    auto *leftLayout = new QVBoxLayout(leftPanel);
-    leftLayout->setContentsMargins(16, 16, 16, 16);
-    leftLayout->setSpacing(12);
-    leftLayout->addWidget(makeLabel(QStringLiteral("SSH/Agent"), QStringLiteral("pageTitle")));
-    auto *agentGuide = panelFrame(QStringLiteral("robotRadarPlaceholder"));
-    agentGuide->setMinimumHeight(320);
-    auto *agentGuideLayout = new QVBoxLayout(agentGuide);
-    agentGuideLayout->setContentsMargins(18, 18, 18, 18);
-    agentGuideLayout->setSpacing(12);
-    agentGuideLayout->addWidget(makeLabel(QStringLiteral("Bridge Summary"), QStringLiteral("panelTitle")));
-    agentGuideLayout->addWidget(makeLabel(QStringLiteral("Qt 대시보드와 ROS2 에이전트, 로컬 DB, 네트워크 상태를 여기서 모니터링합니다."), QStringLiteral("missionLogLabel")));
-    agentGuideLayout->addStretch();
-    agentGuideLayout->addWidget(makeLabel(QStringLiteral("SSH 연결 요청, Agent 상태, 중앙 브리지 상태가 이 페이지에서 관리됩니다."), QStringLiteral("pageSubtitle")));
-    leftLayout->addWidget(agentGuide, 1);
-    layout->addWidget(leftPanel, 2);
-
-    auto *rightPanel = panelFrame(QStringLiteral("contentPanel"));
-    auto *rightLayout = new QVBoxLayout(rightPanel);
-    rightLayout->setContentsMargins(16, 16, 16, 16);
-    rightLayout->setSpacing(12);
-    rightLayout->addWidget(makeLabel(QStringLiteral("연결 상태"), QStringLiteral("panelTitle")));
-    m_userSshStatusLabel = makeLabel(QStringLiteral("--"), QStringLiteral("pageSubtitle"));
-    rightLayout->addWidget(makeInfoRow(QStringLiteral("ROS"), m_userSshStatusLabel, rightPanel));
-    m_userSshNetworkLabel = makeLabel(QStringLiteral("--"), QStringLiteral("pageSubtitle"));
-    rightLayout->addWidget(makeInfoRow(QStringLiteral("Network"), m_userSshNetworkLabel, rightPanel));
-    m_userSshDbLabel = makeLabel(QStringLiteral("--"), QStringLiteral("pageSubtitle"));
-    rightLayout->addWidget(makeInfoRow(QStringLiteral("Database"), m_userSshDbLabel, rightPanel));
-    auto *manualButton = new QPushButton(QStringLiteral("관리자 수동 제어 요청"));
-    manualButton->setObjectName(QStringLiteral("missionActionButton"));
-    connect(manualButton, &QPushButton::clicked, this, &DashboardCentralWidget::manualControlRequested);
-    rightLayout->addWidget(manualButton);
-    auto *returnButton = new QPushButton(QStringLiteral("홈 복귀 요청"));
-    returnButton->setObjectName(QStringLiteral("missionActionButton"));
-    connect(returnButton, &QPushButton::clicked, this, &DashboardCentralWidget::returnHomeRequested);
-    rightLayout->addWidget(returnButton);
-    rightLayout->addStretch();
-    layout->addWidget(rightPanel, 1);
-    return page;
-}
-
-QWidget *DashboardCentralWidget::buildUserLogReplayPage()
-{
-    auto *page = new QWidget;
-    auto *layout = new QHBoxLayout(page);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(18);
-
-    auto *leftPanel = panelFrame(QStringLiteral("contentPanel"));
-    auto *leftLayout = new QVBoxLayout(leftPanel);
-    leftLayout->setContentsMargins(16, 16, 16, 16);
-    leftLayout->setSpacing(12);
-    leftLayout->addWidget(makeLabel(QStringLiteral("Log/Replay"), QStringLiteral("pageTitle")));
-    auto *summaryPanel = panelFrame(QStringLiteral("robotRadarPlaceholder"));
-    summaryPanel->setMinimumHeight(320);
-    auto *summaryLayout = new QVBoxLayout(summaryPanel);
-    summaryLayout->setContentsMargins(18, 18, 18, 18);
-    summaryLayout->setSpacing(12);
-    summaryLayout->addWidget(makeLabel(QStringLiteral("Replay Queue"), QStringLiteral("panelTitle")));
-    summaryLayout->addWidget(makeLabel(QStringLiteral("최근 미션 이벤트를 시각 순으로 확인하고 운영 이력을 재검토합니다."), QStringLiteral("missionLogLabel")));
-    auto *queueTable = new QTableWidget(3, 2, summaryPanel);
-    queueTable->setHorizontalHeaderLabels({QStringLiteral("세션"), QStringLiteral("상태")});
-    queueTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    queueTable->verticalHeader()->setVisible(false);
-    queueTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    queueTable->setSelectionMode(QAbstractItemView::NoSelection);
-    const QList<QStringList> queueRows = {
-        {QStringLiteral("MR-20260725-001"), QStringLiteral("완료")},
-        {QStringLiteral("MR-20260725-002"), QStringLiteral("재생 가능")},
-        {QStringLiteral("MR-20260725-003"), QStringLiteral("동기화 대기")}
-    };
-    for (int row = 0; row < queueRows.size(); ++row) {
-        for (int col = 0; col < queueRows.at(row).size(); ++col) {
-            queueTable->setItem(row, col, new QTableWidgetItem(queueRows.at(row).at(col)));
-        }
-    }
-    summaryLayout->addWidget(queueTable, 1);
-    leftLayout->addWidget(summaryPanel, 1);
-    layout->addWidget(leftPanel, 2);
-
-    auto *rightPanel = panelFrame(QStringLiteral("contentPanel"));
-    auto *rightLayout = new QVBoxLayout(rightPanel);
-    rightLayout->setContentsMargins(16, 16, 16, 16);
-    rightLayout->setSpacing(12);
-    rightLayout->addWidget(makeLabel(QStringLiteral("최근 로그"), QStringLiteral("panelTitle")));
-    m_userLogTable = new QTableWidget(0, 3, rightPanel);
-    m_userLogTable->setHorizontalHeaderLabels({QStringLiteral("시각"), QStringLiteral("유형"), QStringLiteral("내용")});
-    m_userLogTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    m_userLogTable->verticalHeader()->setVisible(false);
-    m_userLogTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_userLogTable->setSelectionMode(QAbstractItemView::NoSelection);
-    rightLayout->addWidget(m_userLogTable, 1);
-    layout->addWidget(rightPanel, 1);
-    return page;
 }
 
 void DashboardCentralWidget::switchAdminSection(int index)
@@ -1160,25 +729,6 @@ void DashboardCentralWidget::switchAdminSection(int index)
         button->setObjectName(buttonIndex == index
                                   ? QStringLiteral("sidebarButtonActive")
                                   : QStringLiteral("sidebarButton"));
-        button->style()->unpolish(button);
-        button->style()->polish(button);
-        button->update();
-    }
-}
-
-void DashboardCentralWidget::switchUserSection(int index)
-{
-    if (m_userStack == nullptr || index < 0 || index >= m_userNavButtons.size()) {
-        return;
-    }
-
-    m_userStack->setCurrentIndex(index);
-
-    for (int buttonIndex = 0; buttonIndex < m_userNavButtons.size(); ++buttonIndex) {
-        QPushButton *button = m_userNavButtons.at(buttonIndex);
-        button->setObjectName(buttonIndex == index
-                                  ? QStringLiteral("userNavButtonActive")
-                                  : QStringLiteral("userNavButton"));
         button->style()->unpolish(button);
         button->style()->polish(button);
         button->update();
@@ -1280,116 +830,20 @@ void DashboardCentralWidget::updateAdminSnapshot(const TelemetrySnapshot &snapsh
 
 void DashboardCentralWidget::updateUserSnapshot(const TelemetrySnapshot &snapshot)
 {
-    if (m_userAssignedRobotValue == nullptr
-        || m_userBatteryValue == nullptr
-        || m_userStateValue == nullptr
-        || m_userMissionCountValue == nullptr
-        || m_userConnectionValue == nullptr
-        || m_userRobotIdLabel == nullptr
-        || m_userRobotSubtitleLabel == nullptr
-        || m_userRobotStatusLabel == nullptr
-        || m_userHeartbeatLabel == nullptr
-        || m_userHealthTagsLabel == nullptr
-        || m_userMissionLogLabel == nullptr
-        || m_userDescriptionLabel == nullptr
-        || m_userOnlineBadge == nullptr) {
+    if (m_userBatteryValue == nullptr) {
         return;
     }
 
-    const QString robotName = snapshot.robotName.isEmpty() ? QStringLiteral("MR-02") : snapshot.robotName;
-    const QString rosText = snapshot.rosText.isEmpty() ? QStringLiteral("WAIT") : snapshot.rosText;
-    const QString delayText = snapshot.connectionDelayText.isEmpty() ? QStringLiteral("--") : snapshot.connectionDelayText;
-    const QString dbText = snapshot.dbText.isEmpty() ? QStringLiteral("DB WAIT") : snapshot.dbText;
-    const QString modeText = snapshot.mode.isEmpty() ? QStringLiteral("READY") : snapshot.mode;
-    const QString stopReason = snapshot.stopReason.isEmpty() ? QStringLiteral("이상 없음") : snapshot.stopReason;
-
-    m_userAssignedRobotValue->setText(robotName);
     m_userBatteryValue->setText(snapshot.batteryPercentText.isEmpty() ? QStringLiteral("94%") : snapshot.batteryPercentText);
     m_userStateValue->setText(snapshot.missionState == QStringLiteral("IDLE") ? QStringLiteral("READY") : snapshot.missionState);
     m_userMissionCountValue->setText(QStringLiteral("05"));
-    m_userConnectionValue->setText(QStringLiteral("%1 / %2").arg(rosText, delayText));
-    m_userRobotIdLabel->setText(robotName);
-    m_userRobotSubtitleLabel->setText(QStringLiteral("%1 계정 세션에 연결된 운용 로봇").arg(m_session.username));
-    m_userHeartbeatLabel->setText(QStringLiteral("%1 · %2").arg(rosText, delayText));
-    m_userRobotStatusLabel->setText(QStringLiteral("ROS2 %1 · NAV2 %2 · DB %3").arg(rosText, modeText, dbText));
+    m_userRobotIdLabel->setText(snapshot.robotName.isEmpty() ? QStringLiteral("MR-02") : snapshot.robotName);
+    m_userRobotSubtitleLabel->setText(QStringLiteral("%1 RESPONSE UNIT").arg(m_session.username.toUpper()));
+    m_userHeartbeatLabel->setText(QStringLiteral("%1 · %2").arg(snapshot.rosText, snapshot.connectionDelayText));
+    m_userRobotStatusLabel->setText(QStringLiteral("ROS2 %1 · NAV2 %2 · DB %3").arg(snapshot.rosText, snapshot.mode, snapshot.dbText));
     m_userMissionLogLabel->setText(formatRecentMissionLines(snapshot.recentEvents));
-    m_userHealthTagsLabel->setText(QStringLiteral("%1 · %2").arg(stopReason, dbText));
-    m_userDescriptionLabel->setText(QStringLiteral("%1의 담당 로봇 %2 상태와 임무를 안전하게 관리합니다.").arg(m_session.username, robotName));
-    m_userOnlineBadge->setText(QStringLiteral("%1 ONLINE").arg(robotName));
-
-    if (m_userRobotPageTitleLabel != nullptr) {
-        m_userRobotPageTitleLabel->setText(QStringLiteral("%1 Robot").arg(robotName));
-    }
-    if (m_userRobotDetailLabel != nullptr) {
-        m_userRobotDetailLabel->setText(QStringLiteral("미션 %1 · 목적지 %2 · 버튼 %3")
-                                            .arg(snapshot.missionId, snapshot.destination, snapshot.buttonId));
-    }
-
-    if (m_userRobotDeviceTable != nullptr) {
-        m_userRobotDeviceTable->setRowCount(snapshot.deviceStates.size());
-        for (int row = 0; row < snapshot.deviceStates.size(); ++row) {
-            const auto &device = snapshot.deviceStates.at(row);
-            m_userRobotDeviceTable->setItem(row, 0, new QTableWidgetItem(device.first));
-            m_userRobotDeviceTable->setItem(row, 1, new QTableWidgetItem(device.second));
-        }
-    }
-
-    if (m_userSensorTable != nullptr) {
-        const QList<QList<QString>> sensorRows = {
-            {QStringLiteral("Payload"), snapshot.payloadText, QStringLiteral("LIVE")},
-            {QStringLiteral("Stop Reason"), stopReason, snapshot.mode == QStringLiteral("E-STOP") ? QStringLiteral("WARN") : QStringLiteral("CLEAR")},
-            {QStringLiteral("ROS"), rosText, snapshot.rosState == ConnectionState::Disconnected ? QStringLiteral("DOWN") : QStringLiteral("OK")},
-            {QStringLiteral("Network"), snapshot.networkText, snapshot.networkState == ConnectionState::Warning ? QStringLiteral("WARN") : QStringLiteral("OK")},
-            {QStringLiteral("DB"), dbText, snapshot.dbState == ConnectionState::Warning ? QStringLiteral("WARN") : QStringLiteral("OK")},
-            {QStringLiteral("Auto Resume"), snapshot.autoResumeCountdownText, QStringLiteral("WAIT")}
-        };
-        m_userSensorTable->setRowCount(sensorRows.size());
-        for (int row = 0; row < sensorRows.size(); ++row) {
-            for (int col = 0; col < sensorRows.at(row).size(); ++col) {
-                m_userSensorTable->setItem(row, col, new QTableWidgetItem(sensorRows.at(row).at(col)));
-            }
-        }
-    }
-
-    if (m_userCameraStatusLabel != nullptr) {
-        m_userCameraStatusLabel->setText(snapshot.mode == QStringLiteral("E-STOP") ? QStringLiteral("PAUSED") : QStringLiteral("LIVE"));
-    }
-    if (m_userCameraTopicLabel != nullptr) {
-        m_userCameraTopicLabel->setText(QStringLiteral("%1 · %2").arg(snapshot.destination, snapshot.positionText));
-    }
-    if (m_userCameraEventsLabel != nullptr && !snapshot.recentEvents.isEmpty()) {
-        m_userCameraEventsLabel->setText(snapshot.recentEvents.first().message);
-    }
-
-    if (m_userMapMissionLabel != nullptr) {
-        m_userMapMissionLabel->setText(QStringLiteral("%1 · %2").arg(snapshot.missionId, snapshot.missionState));
-    }
-    if (m_userMapPositionLabel != nullptr) {
-        m_userMapPositionLabel->setText(snapshot.positionText);
-    }
-    if (m_userMapDistanceLabel != nullptr) {
-        m_userMapDistanceLabel->setText(QStringLiteral("%1 / %2").arg(snapshot.remainingDistanceText, snapshot.elapsedTimeText));
-    }
-
-    if (m_userSshStatusLabel != nullptr) {
-        m_userSshStatusLabel->setText(rosText);
-    }
-    if (m_userSshNetworkLabel != nullptr) {
-        m_userSshNetworkLabel->setText(QStringLiteral("%1 · %2").arg(snapshot.networkText, delayText));
-    }
-    if (m_userSshDbLabel != nullptr) {
-        m_userSshDbLabel->setText(dbText);
-    }
-
-    if (m_userLogTable != nullptr) {
-        m_userLogTable->setRowCount(snapshot.recentEvents.size());
-        for (int row = 0; row < snapshot.recentEvents.size(); ++row) {
-            const auto &event = snapshot.recentEvents.at(row);
-            m_userLogTable->setItem(row, 0, new QTableWidgetItem(event.occurredAt.toString(QStringLiteral("hh:mm:ss"))));
-            m_userLogTable->setItem(row, 1, new QTableWidgetItem(event.eventType));
-            m_userLogTable->setItem(row, 2, new QTableWidgetItem(event.message));
-        }
-    }
+    m_userDescriptionLabel->setText(QStringLiteral("%1의 담당 로봇 %2 상태와 임무를 안전하게 관리합니다.").arg(m_session.username, snapshot.robotName));
+    m_userOnlineBadge->setText(QStringLiteral("%1 ONLINE").arg(snapshot.robotName));
 }
 
 QString DashboardCentralWidget::statePill(const QString &text, const QString &kind) const
