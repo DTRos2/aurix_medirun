@@ -25,7 +25,7 @@ bool MockAuthService::authenticate(
     }
 
     session.username = username;
-    session.role = adminMatch ? UserRole::Admin : UserRole::User;
+    session.role = adminMatch ? UserRole::Admin : UserRole::Staff;
     session.mockMode = true;
     errorMessage.clear();
     return true;

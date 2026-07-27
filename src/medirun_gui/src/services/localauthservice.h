@@ -27,7 +27,7 @@ private:
         QString loginId;
         QString passwordSalt;
         QString passwordHash;
-        UserRole role {UserRole::User};
+        UserRole role {UserRole::Staff};
     };
 
     QVector<StoredUserRecord> loadUsers();
