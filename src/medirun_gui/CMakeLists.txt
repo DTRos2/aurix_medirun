@@ -5,6 +5,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
+find_package(ament_cmake REQUIRED)
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets)
 
 qt_standard_project_setup()
@@ -29,8 +30,36 @@ qt_add_executable(medirun_gui
     src/services/mocktelemetryprovider.cpp
     src/services/mocktelemetryprovider.h
     src/services/telemetryprovider.h
+    src/theme/dashboardpalette.h
+    src/widgets/badgelabel.h
     src/widgets/dashboardcentralwidget.cpp
     src/widgets/dashboardcentralwidget.h
+    src/widgets/headerbar.cpp
+    src/widgets/headerbar.h
+    src/widgets/mapviewwidget.cpp
+    src/widgets/mapviewwidget.h
+    src/widgets/pageid.h
+    src/widgets/proportionalbar.h
+    src/widgets/sidenav.cpp
+    src/widgets/sidenav.h
+    src/pages/callhistorypage.cpp
+    src/pages/callhistorypage.h
+    src/pages/livecontrolpage.cpp
+    src/pages/livecontrolpage.h
+    src/pages/missionopspage.cpp
+    src/pages/missionopspage.h
+    src/pages/operationsoverviewpage.cpp
+    src/pages/operationsoverviewpage.h
+    src/pages/recordsplaybackpage.cpp
+    src/pages/recordsplaybackpage.h
+    src/pages/remotecontrolpage.cpp
+    src/pages/remotecontrolpage.h
+    src/pages/slammappingpage.cpp
+    src/pages/slammappingpage.h
+    src/pages/systemsettingspage.cpp
+    src/pages/systemsettingspage.h
+    src/pages/usermanagementpage.cpp
+    src/pages/usermanagementpage.h
     src/windows/mainwindowstyler.cpp
     src/windows/mainwindowstyler.h
     src/widgets/logocarouselwidget.cpp
@@ -55,9 +84,7 @@ target_link_libraries(medirun_gui
 )
 
 install(TARGETS medirun_gui
-    BUNDLE  DESTINATION .
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
 qt_generate_deploy_app_script(
@@ -66,3 +93,5 @@ qt_generate_deploy_app_script(
     NO_UNSUPPORTED_PLATFORM_ERROR
 )
 install(SCRIPT ${deploy_script})
+
+ament_package()

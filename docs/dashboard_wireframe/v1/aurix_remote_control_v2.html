@@ -1,0 +1,51 @@
+<h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">원격 제어 화면: 제어권 배너, 카메라 뷰, 방향 조작 패널, 속도 제한, 도킹 보조</h2>
+<div style="background:#0b1622;border:0.5px solid #1d3348;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px">
+<div style="background:#1a0f18;border:0.5px solid #7c2438;border-radius:8px;padding:9px 12px;display:flex;align-items:center;gap:8px">
+<i class="ti ti-device-gamepad-2" style="font-size:15px;color:#f87171" aria-hidden="true"></i>
+<span style="font-size:12px;color:#f87171;font-weight:500">수동 제어 활성</span>
+<span style="font-size:10px;color:#c78a95">자율 목표 취소됨 · 제어권 qt / admin_lee · 00:42 경과</span>
+<span style="flex:1"></span>
+<span style="font-size:10px;color:#c78a95">모든 조작은 감사 로그에 기록됩니다</span>
+</div>
+<div style="display:flex;gap:10px">
+<div style="flex:1.6;display:flex;flex-direction:column;gap:8px">
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;min-height:200px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#4a6b88">
+<i class="ti ti-video" style="font-size:30px" aria-hidden="true"></i>
+<span style="font-size:11px;color:#7d93aa">카메라 라이브 · 640×480 · 14FPS</span>
+<span style="position:absolute;top:9px;left:11px;font-size:10px;padding:3px 9px;border-radius:8px;background:#332508;color:#fbbf24">ArUco 미검출 (3/3 실패)</span>
+<span style="position:absolute;top:9px;right:11px;font-size:10px;color:#a8bdd2">지연 120ms</span>
+<div style="position:absolute;bottom:9px;left:11px;right:11px;display:flex;gap:6px;justify-content:center">
+<span style="font-size:10px;padding:3px 9px;border-radius:6px;background:#0b1622;border:0.5px solid #2a4a66;color:#4ade80">전방 0.42m</span>
+<span style="font-size:10px;padding:3px 9px;border-radius:6px;background:#0b1622;border:0.5px solid #2a4a66;color:#a8bdd2">좌 0.88m</span>
+<span style="font-size:10px;padding:3px 9px;border-radius:6px;background:#0b1622;border:0.5px solid #2a4a66;color:#a8bdd2">우 1.14m</span>
+</div>
+</div>
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:8px 11px;display:flex;align-items:center;gap:14px">
+<span style="font-size:10px;color:#7d93aa">배터리 61%</span>
+<span style="font-size:10px;color:#7d93aa">선속도 0.00 m/s</span>
+<span style="font-size:10px;color:#7d93aa">각속도 0.00 rad/s</span>
+<span style="flex:1"></span>
+<span style="font-size:10px;color:#4ade80">safety_manager 통과</span>
+</div>
+</div>
+<div style="width:172px;display:flex;flex-direction:column;gap:9px">
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:11px 9px">
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;justify-items:center">
+<span></span><div style="width:40px;height:40px;border:0.5px solid #2a4a66;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#e8eef5"><i class="ti ti-arrow-up" style="font-size:17px" aria-hidden="true"></i></div><span></span>
+<div style="width:40px;height:40px;border:0.5px solid #2a4a66;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#e8eef5"><i class="ti ti-rotate-2" style="font-size:17px" aria-hidden="true"></i></div>
+<div style="width:40px;height:40px;background:#7c2438;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fecdd3;font-size:11px;font-weight:500">정지</div>
+<div style="width:40px;height:40px;border:0.5px solid #2a4a66;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#e8eef5"><i class="ti ti-rotate-clockwise-2" style="font-size:17px" aria-hidden="true"></i></div>
+<span></span><div style="width:40px;height:40px;border:0.5px solid #2a4a66;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#e8eef5"><i class="ti ti-arrow-down" style="font-size:17px" aria-hidden="true"></i></div><span></span>
+</div>
+<p style="font-size:10px;color:#7d93aa;margin:8px 0 0;text-align:center">키보드 W A S D 지원</p>
+</div>
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:9px 11px">
+<div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="font-size:10px;color:#7d93aa">속도 제한</span><span style="font-size:10px;color:#39c5e0">0.12 m/s</span></div>
+<div style="height:4px;background:#12283c;border-radius:2px;position:relative"><div style="width:40%;height:100%;background:#39c5e0;border-radius:2px"></div><div style="position:absolute;top:-4px;left:40%;width:12px;height:12px;border-radius:50%;background:#39c5e0"></div></div>
+<p style="font-size:10px;color:#7d93aa;margin:6px 0 0">최대 0.30 m/s로 제한됨</p>
+</div>
+<div style="height:32px;border:0.5px solid #2a5f7d;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#39c5e0"><i class="ti ti-parking" style="margin-right:5px;font-size:14px" aria-hidden="true"></i>도킹 재시도</div>
+<div style="height:32px;border:0.5px solid #2a4a66;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#a8bdd2"><i class="ti ti-robot" style="margin-right:5px;font-size:14px" aria-hidden="true"></i>자율 모드 복귀</div>
+</div>
+</div>
+</div>

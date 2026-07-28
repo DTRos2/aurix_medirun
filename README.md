@@ -48,7 +48,8 @@ cp config/device.yaml.example config/device.yaml
 ├── config/                  # DB·장비 설정 (`.example`만 커밋)
 ├── db/                      # PostgreSQL 스키마·마이그레이션
 ├── docs/                    # 제출 문서, 시험표
-│   └── tests/                  # 시험 기록 문서(.md)·측정 원본(data/*.csv)
+│   ├── tests/                   # 시험 기록 문서(.md)·측정 원본(data/*.csv)
+│   └── screenshots/gui/         # Qt 대시보드 화면 캡처
 ├── scripts/                 # 기동·자동 실행 스크립트
 │   └── analysis/                # 측정값 사후 분석 도구 (ROS 비의존)
 ├── COMMIT_RULES.md          # Git 브랜치·커밋 규칙
@@ -73,6 +74,19 @@ source install/setup.bash
 ```bash
 ros2 launch medirun_bringup bringup.launch.py
 ```
+
+### GUI (Qt 대시보드 단독 실행)
+
+`medirun_gui`는 `ament_cmake` 패키지로, 다른 `medirun_*` 패키지와 동일하게 colcon으로 빌드·실행한다. Qt6 6.5 이상이 필요하며, 시스템 Qt 버전이 더 낮다면 `--cmake-args -DCMAKE_PREFIX_PATH=<Qt6.5+ 설치 경로>`로 지정한다.
+
+```bash
+source /opt/ros/humble/setup.bash
+colcon build --packages-select medirun_gui --symlink-install
+source install/setup.bash
+ros2 run medirun_gui medirun_gui_app
+```
+
+소스만 변경했다면 `colcon build --packages-select medirun_gui`만 다시 실행한 뒤 위와 동일하게 실행한다.
 
 ### 테스트 (이동 정밀도 시험)
 

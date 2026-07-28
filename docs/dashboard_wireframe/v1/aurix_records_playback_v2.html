@@ -1,0 +1,79 @@
+<h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">주행 기록 재생 화면과 호출 이력 화면</h2>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="background:#0b1622;border:0.5px solid #1d3348;border-radius:12px;padding:12px">
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:10px">
+<span style="font-size:12px;color:#e8eef5">주행 기록</span>
+<span style="font-size:10px;padding:3px 10px;border-radius:10px;background:#332508;color:#fbbf24;border:0.5px solid #6b4e12">재생 모드 · 로봇에 명령 전송 없음</span>
+<span style="flex:1"></span>
+<span style="font-size:10px;color:#7d93aa">미션 #142 · 07-28 14:02 · 4:12</span>
+</div>
+<div style="display:grid;grid-template-columns:1.5fr 1fr;gap:9px">
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;height:165px;position:relative">
+<svg viewBox="0 0 300 165" style="width:100%;height:100%" role="img" aria-label="궤적 재생: 지나온 경로와 남은 경로">
+<rect x="20" y="14" width="260" height="137" fill="none" stroke="#2a4a66" stroke-width="1" stroke-dasharray="5 4"/>
+<path d="M62 125 L118 125 L118 68" fill="none" stroke="#39c5e0" stroke-width="2.5"/>
+<path d="M118 68 L214 68" fill="none" stroke="#3a5570" stroke-width="2" stroke-dasharray="6 4"/>
+<circle cx="118" cy="68" r="10" fill="#39c5e0"/><path d="M118 61 L123 71 L118 68 L113 71 Z" fill="#062633"/>
+<circle cx="214" cy="68" r="8" fill="#f87171" opacity="0.5"/>
+<circle cx="84" cy="125" r="4" fill="#fbbf24"/>
+</svg>
+<span style="position:absolute;top:8px;left:10px;font-size:10px;color:#7d93aa">시안=지나온 경로 · 회색=남은 경로</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:7px">
+<div style="flex:1;background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#7d93aa"><i class="ti ti-video" style="font-size:22px" aria-hidden="true"></i><span style="font-size:10px">카메라 동기 재생</span></div>
+<div style="height:48px;background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:5px 9px">
+<div style="display:flex;justify-content:space-between"><span style="font-size:10px;color:#7d93aa">속도 m/s</span><span style="font-size:10px;color:#39c5e0">0.18</span></div>
+<svg viewBox="0 0 170 22" style="width:100%;height:20px" role="img" aria-label="속도 그래프"><path d="M0 18 L28 11 L56 7 L84 13 L112 5 L140 10 L170 17" fill="none" stroke="#39c5e0" stroke-width="1.5"/></svg>
+</div>
+</div>
+</div>
+<div style="margin-top:11px">
+<div style="position:relative;height:20px">
+<div style="position:absolute;top:8px;left:0;right:0;height:5px;background:#12283c;border-radius:3px"></div>
+<div style="position:absolute;top:8px;left:0;width:45%;height:5px;background:#39c5e0;border-radius:3px"></div>
+<div style="position:absolute;top:4px;left:45%;width:13px;height:13px;border-radius:50%;background:#39c5e0"></div>
+<div style="position:absolute;top:6px;left:28%;width:9px;height:9px;border-radius:50%;background:#fbbf24"></div>
+<div style="position:absolute;top:6px;left:72%;width:9px;height:9px;border-radius:50%;background:#f87171"></div>
+<div style="position:absolute;top:6px;left:88%;width:9px;height:9px;border-radius:50%;background:#4ade80"></div>
+</div>
+<div style="display:flex;align-items:center;gap:9px;margin-top:6px">
+<i class="ti ti-player-skip-back" style="font-size:15px;color:#a8bdd2" aria-hidden="true"></i>
+<div style="width:28px;height:28px;border-radius:50%;border:0.5px solid #2a4a66;display:flex;align-items:center;justify-content:center;color:#e8eef5"><i class="ti ti-player-pause" style="font-size:14px" aria-hidden="true"></i></div>
+<i class="ti ti-player-skip-forward" style="font-size:15px;color:#a8bdd2" aria-hidden="true"></i>
+<span style="font-size:11px;color:#a8bdd2">01:53 / 04:12</span>
+<span style="flex:1"></span>
+<span style="font-size:10px;color:#fbbf24">● 재계획</span>
+<span style="font-size:10px;color:#f87171">● 급정지</span>
+<span style="font-size:10px;color:#4ade80">● 반출</span>
+<span style="font-size:10px;padding:3px 9px;border:0.5px solid #2a4a66;border-radius:10px;color:#a8bdd2">1×</span>
+</div>
+</div>
+</div>
+<div style="background:#0b1622;border:0.5px solid #1d3348;border-radius:12px;padding:12px">
+<div style="display:flex;align-items:center;gap:6px;margin-bottom:9px">
+<span style="font-size:12px;color:#e8eef5">호출 이력</span>
+<span style="flex:1"></span>
+<span style="font-size:10px;padding:4px 10px;border:0.5px solid #2a4a66;border-radius:6px;color:#a8bdd2">기간</span>
+<span style="font-size:10px;padding:4px 10px;border:0.5px solid #2a4a66;border-radius:6px;color:#a8bdd2">호출 구역</span>
+<span style="font-size:10px;padding:4px 10px;border:0.5px solid #2a4a66;border-radius:6px;color:#a8bdd2">결과</span>
+</div>
+<div style="border:0.5px solid #1d3348;border-radius:8px;overflow:hidden">
+<div style="display:grid;grid-template-columns:50px 1fr 58px 62px 56px 58px;padding:7px 11px;background:#0d1a29;font-size:10px;color:#7d93aa">
+<span>미션</span><span>호출 → 결과</span><span>소요</span><span>반출</span><span>동기화</span><span></span>
+</div>
+<div style="display:grid;grid-template-columns:50px 1fr 58px 62px 56px 58px;padding:8px 11px;border-top:0.5px solid #16293c;align-items:center;font-size:11px;color:#a8bdd2;background:#0e2438">
+<span style="color:#39c5e0">#142</span><span>BTN_02 승강장 · 완료</span><span>4:12</span><span style="color:#4ade80">반출됨</span><span style="color:#4ade80">완료</span>
+<span style="color:#39c5e0;font-size:10px"><i class="ti ti-player-play" aria-hidden="true"></i> 재생</span>
+</div>
+<div style="display:grid;grid-template-columns:50px 1fr 58px 62px 56px 58px;padding:8px 11px;border-top:0.5px solid #16293c;align-items:center;font-size:11px;color:#a8bdd2">
+<span>#141</span><span>BTN_01 대합실 · 3분 타임아웃</span><span>7:30</span><span style="color:#fbbf24">미반출</span><span style="color:#4ade80">완료</span>
+<span style="color:#39c5e0;font-size:10px"><i class="ti ti-player-play" aria-hidden="true"></i> 재생</span>
+</div>
+<div style="display:grid;grid-template-columns:50px 1fr 58px 62px 56px 58px;padding:8px 11px;border-top:0.5px solid #16293c;align-items:center;font-size:11px;color:#a8bdd2">
+<span>#140</span><span>BTN_03 개찰구 · Nav2 실패</span><span>2:05</span><span style="color:#7d93aa">—</span><span style="color:#fbbf24">대기</span>
+<span style="color:#4a6b88;font-size:10px">영상 없음</span>
+</div>
+</div>
+<p style="font-size:10px;color:#7d93aa;margin:8px 0 0">행 클릭 → 호출·도착·반출·복귀 이벤트 체인 상세 · 재생 클릭 → 주행 기록 화면으로 이동</p>
+</div>
+</div>

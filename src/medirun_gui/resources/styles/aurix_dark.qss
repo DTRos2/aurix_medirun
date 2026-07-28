@@ -18,15 +18,24 @@ QFrame#adminContent {
     background-color: #0b1624;
 }
 
-QFrame#adminSidebar {
+QFrame#sideNav {
     background-color: #0d1a28;
     border-right: 1px solid #173147;
 }
 
+QFrame#pageCanvas {
+    background-color: #0b1622;
+    border: 1px solid #1d3348;
+    border-radius: 12px;
+}
+
 QFrame#contentPanel,
-QFrame#metricCard,
-QFrame#profileCard,
-QFrame#userRobotPanel,
+QFrame#metricCard {
+    background-color: #0d1f30;
+    border: 1px solid #1d3348;
+    border-radius: 8px;
+}
+
 QFrame#loginCard {
     background-color: #102033;
     border: 1px solid #1c3b58;
@@ -84,10 +93,26 @@ QLabel#previewHeroBody,
 QLabel#missionLogLabel,
 QLabel#loginSubtitle,
 QLabel#loginStatus,
-QLabel#demoHint,
-QLabel#profileRole {
+QLabel#demoHint {
     color: #7f9bb0;
     font-size: 12px;
+}
+
+QLabel#loginErrorLabel {
+    color: #f87171;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+QToolButton#passwordVisibilityButton {
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+
+QToolButton#passwordVisibilityButton:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 15px;
 }
 
 QLabel#previewHeroTitle {
@@ -124,45 +149,6 @@ QLabel#panelTitle {
     color: #f5fbff;
     font-size: 16px;
     font-weight: 700;
-}
-
-QLabel#profileAvatar {
-    background-color: #13324b;
-    border: 1px solid #245978;
-    border-radius: 18px;
-    color: #f4fbff;
-    min-width: 36px;
-    max-width: 36px;
-    min-height: 36px;
-    max-height: 36px;
-    qproperty-alignment: AlignCenter;
-    font-weight: 800;
-}
-
-QLabel#profileName {
-    color: #f3f9ff;
-    font-size: 13px;
-    font-weight: 700;
-}
-
-QLabel#statusBadgeGreen {
-    background-color: #0f2a24;
-    border: 1px solid #1c8e69;
-    border-radius: 14px;
-    color: #48da96;
-    padding: 6px 12px;
-    font-size: 11px;
-    font-weight: 800;
-}
-
-QLabel#statusBadgeCyan {
-    background-color: #0e2432;
-    border: 1px solid #1ec5dd;
-    border-radius: 14px;
-    color: #2ed3eb;
-    padding: 6px 12px;
-    font-size: 11px;
-    font-weight: 800;
 }
 
 QPushButton {
@@ -232,37 +218,6 @@ QPushButton#inlineGhostButton:hover {
     border-color: #39d3eb;
 }
 
-QPushButton#userDangerButton {
-    min-height: 36px;
-    padding: 0 18px;
-    background-color: #341927;
-    border: 1px solid #8a3247;
-    color: #ff8aa4;
-    font-weight: 800;
-}
-
-QPushButton#userDangerButton:hover {
-    background-color: #4a1f32;
-    border-color: #ff6e92;
-    color: #ffd5df;
-}
-
-QPushButton#missionActionButton {
-    text-align: left;
-    min-height: 40px;
-    background-color: #0d1b2a;
-    border: 1px solid #1c3b58;
-    color: #eef7ff;
-    padding: 0 14px;
-}
-
-QPushButton#missionActionButton:hover {
-    background-color: #13283c;
-    border-color: #42d3ea;
-    color: #ffffff;
-    padding-left: 18px;
-}
-
 QLineEdit {
     min-height: 42px;
     background-color: #0b1624;
@@ -325,16 +280,14 @@ QLabel#secureLiveTag {
     font-weight: 700;
 }
 
-QTableWidget#robotOverviewTable,
-QTableWidget#eventsOverviewTable {
+QTableWidget {
     background-color: transparent;
     border: none;
     gridline-color: #173147;
 }
 
-QTableWidget#robotOverviewTable::item,
-QTableWidget#eventsOverviewTable::item {
-    padding: 14px 10px;
+QTableWidget::item {
+    padding: 10px;
     border-bottom: 1px solid #173147;
 }
 
@@ -364,40 +317,192 @@ QFrame#sectionDivider {
     border: none;
 }
 
-QFrame#robotRadarPlaceholder {
-    min-height: 300px;
-    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #13344c, stop:1 #10283a);
-    border: 1px solid #235878;
-    border-radius: 14px;
+/* ---- Dashboard shell (headerBar / sideNav / mapView) ---- */
+
+QFrame#headerBar {
+    background-color: #0d1a29;
+    border: 1px solid #1d3348;
+    border-radius: 8px;
 }
 
-QLabel#userRobotTitle {
-    color: #f6fbff;
-    font-size: 30px;
-    font-weight: 900;
-    letter-spacing: 1px;
+QFrame#mapViewCanvas {
+    background-color: #0d1f30;
+    border: 1px solid #1d3348;
+    border-radius: 8px;
 }
 
-QLabel#userRobotSubtitle {
-    color: #b9d8ef;
-    font-size: 12px;
+QLabel#mapCaption,
+QLabel#mapOverlayText {
+    color: #7d93aa;
+    font-size: 10px;
+}
+
+QPushButton#mapToggleChip {
+    min-height: 22px;
+    padding: 0 9px;
+    background-color: #0b1622;
+    border: 1px solid #2a4a66;
+    border-radius: 6px;
+    color: #a8bdd2;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+QPushButton#mapToggleChip:hover {
+    border-color: #39c5e0;
+    color: #eef5fb;
+}
+
+/* ---- Status badges (kind: green / cyan / amber / red / muted) ---- */
+
+QLabel[badgeKind="green"] {
+    background-color: #0f2e22;
+    border: 1px solid #1d5c3f;
+    color: #4ade80;
+    border-radius: 10px;
+    padding: 3px 10px;
+    font-size: 10px;
     font-weight: 700;
 }
 
-QLabel#robotHexGlyph {
-    color: #27d1ee;
-    font-size: 110px;
-    font-weight: 300;
+QLabel[badgeKind="cyan"] {
+    background-color: #12283c;
+    border: 1px solid #2a5f7d;
+    color: #39c5e0;
+    border-radius: 10px;
+    padding: 3px 10px;
+    font-size: 10px;
+    font-weight: 700;
 }
 
-QLabel#robotVisual {
+QLabel[badgeKind="amber"] {
+    background-color: #332508;
+    border: 1px solid #6b4e12;
+    color: #fbbf24;
+    border-radius: 10px;
+    padding: 3px 10px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QLabel[badgeKind="red"] {
+    background-color: #3d1220;
+    border: 1px solid #7c2438;
+    color: #f87171;
+    border-radius: 10px;
+    padding: 3px 10px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QLabel[badgeKind="muted"] {
+    background-color: #12283c;
+    border: 1px solid #1d3348;
+    color: #7d93aa;
+    border-radius: 10px;
+    padding: 3px 10px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+/* ---- Emergency stop ---- */
+
+QPushButton#estopButton {
+    min-height: 30px;
+    padding: 0 14px;
+    background-color: #3d1220;
+    border: 1px solid #7c2438;
+    color: #f87171;
+    font-weight: 700;
+}
+
+QPushButton#estopButton:hover {
+    background-color: #4a1626;
+    border-color: #ff6e92;
+    color: #ffd5df;
+}
+
+QPushButton#dangerFilledButton {
+    background-color: #7c2438;
+    border: none;
+    color: #fecdd3;
+    font-weight: 700;
+}
+
+QPushButton#dangerFilledButton:hover {
+    background-color: #93293f;
+}
+
+/* ---- Mission stepper (LiveControlPage) ---- */
+
+QLabel[stepState="done"] {
+    background-color: #39c5e0;
+    border: none;
+    border-radius: 8px;
+    color: #062633;
+    font-weight: 800;
+    qproperty-alignment: AlignCenter;
+}
+
+QLabel[stepState="active"] {
+    background-color: #39c5e0;
+    border: 3px solid #12283c;
+    border-radius: 8px;
+}
+
+QLabel[stepState="pending"] {
     background-color: transparent;
-    min-width: 240px;
-    min-height: 180px;
+    border: 2px solid #2a4a66;
+    border-radius: 8px;
 }
 
-QLabel#userStatusTags {
-    color: #58d89d;
-    font-size: 12px;
-    font-weight: 700;
+QFrame#stepConnectorDone {
+    background-color: #39c5e0;
+    border: none;
+}
+
+QFrame#stepConnectorPending {
+    background-color: #1d3348;
+    border: none;
+}
+
+/* ---- Cards ---- */
+
+QFrame#anomalyCard {
+    background-color: #1a0f18;
+    border: 1px solid #7c2438;
+    border-radius: 10px;
+}
+
+QFrame#callQueueCard {
+    background-color: #0e2438;
+    border: 1px solid #2a5f7d;
+    border-radius: 10px;
+}
+
+QPushButton#directionPadButton {
+    min-height: 38px;
+    max-width: 40px;
+    background-color: #0d1f30;
+    border: 1px solid #2a4a66;
+    border-radius: 8px;
+    font-size: 15px;
+}
+
+QPushButton#directionPadButton:hover {
+    border-color: #39c5e0;
+}
+
+/* ---- Timeline / progress tracks ---- */
+
+QFrame#trackBase {
+    background-color: #12283c;
+    border: none;
+    border-radius: 2px;
+}
+
+QFrame#trackFillCyan {
+    background-color: #39c5e0;
+    border: none;
+    border-radius: 2px;
 }

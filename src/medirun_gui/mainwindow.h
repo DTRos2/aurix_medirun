@@ -37,7 +37,6 @@ private slots:
     void handleEmergencyStop();
     void handleMissionCancel();
     void handleReturnHome();
-    void handleManualControl();
     void handleLogout();
 
 private:

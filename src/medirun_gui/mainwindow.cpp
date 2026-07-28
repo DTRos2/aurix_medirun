@@ -30,7 +30,6 @@ MainWindow::MainWindow(const AppSession &session, AuthService &authService, QWid
     connect(m_dashboardWidget, &DashboardCentralWidget::estopRequested, this, &MainWindow::handleEmergencyStop);
     connect(m_dashboardWidget, &DashboardCentralWidget::missionCancelRequested, this, &MainWindow::handleMissionCancel);
     connect(m_dashboardWidget, &DashboardCentralWidget::returnHomeRequested, this, &MainWindow::handleReturnHome);
-    connect(m_dashboardWidget, &DashboardCentralWidget::manualControlRequested, this, &MainWindow::handleManualControl);
     connect(m_dashboardWidget, &DashboardCentralWidget::logoutRequested, this, &MainWindow::handleLogout);
 }
 
@@ -72,11 +71,6 @@ void MainWindow::handleMissionCancel()
 void MainWindow::handleReturnHome()
 {
     QMessageBox::information(this, QStringLiteral("홈 복귀"), QStringLiteral("홈 복귀 요청을 전송합니다."));
-}
-
-void MainWindow::handleManualControl()
-{
-    QMessageBox::information(this, QStringLiteral("원격 수동 제어"), QStringLiteral("관리자 전용 원격 수동 제어 화면은 후속 연동 대상입니다."));
 }
 
 void MainWindow::handleLogout()
