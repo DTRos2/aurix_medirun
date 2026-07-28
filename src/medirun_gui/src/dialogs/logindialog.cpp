@@ -2,6 +2,8 @@
 
 #include "../services/authservice.h"
 
+#include <QDebug>
+#include <QEvent>
 #include <QFile>
 #include <QFrame>
 #include <QGraphicsDropShadowEffect>
@@ -9,10 +11,13 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMovie>
+#include <QPainter>
+#include <QPainterPath>
 #include <QPropertyAnimation>
 #include <QPushButton>
 #include <QPixmap>
 #include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 namespace {
@@ -60,6 +65,34 @@ QLabel *createPreviewPanelImageLabel(QWidget *parent, const QSize &targetSize)
     movie->start();
     return label;
 }
+
+QIcon createEyeIcon(bool crossed)
+{
+    const QColor strokeColor(QStringLiteral("#9fb7c4"));
+
+    const int size = 32;
+    QPixmap pixmap(size, size);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(strokeColor, 2.1));
+    painter.setBrush(Qt::NoBrush);
+
+    QPainterPath eyePath;
+    eyePath.moveTo(4, 16);
+    eyePath.quadTo(16, 4, 28, 16);
+    eyePath.quadTo(16, 28, 4, 16);
+    painter.drawPath(eyePath);
+    painter.drawEllipse(QPointF(16, 16), 4.2, 4.2);
+
+    if (crossed) {
+        painter.drawLine(QPointF(5, 5), QPointF(27, 27));
+    }
+
+    painter.end();
+    return QIcon(pixmap);
+}
 }
 
 LoginDialog::LoginDialog(AuthService &authService, bool mockMode, QWidget *parent)
@@ -68,8 +101,11 @@ LoginDialog::LoginDialog(AuthService &authService, bool mockMode, QWidget *paren
     , m_usernameEdit(nullptr)
     , m_passwordEdit(nullptr)
     , m_statusLabel(nullptr)
-    , m_togglePasswordButton(nullptr)
+    , m_errorLabel(nullptr)
+    , m_passwordVisibilityButton(nullptr)
+    , m_loginButton(nullptr)
     , m_loginCard(nullptr)
+    , m_failedAttempts(0)
 {
     buildUi(mockMode);
 }
@@ -81,6 +117,9 @@ AppSession LoginDialog::session() const
 
 void LoginDialog::attemptLogin()
 {
+    m_errorLabel->clear();
+    setFormBusy(true);
+
     QString errorMessage;
     AppSession session;
     const bool ok = m_authService.authenticate(
@@ -91,12 +130,30 @@ void LoginDialog::attemptLogin()
         errorMessage);
 
     if (!ok) {
-        m_statusLabel->setText(errorMessage);
+        ++m_failedAttempts;
+        qWarning().noquote() << QStringLiteral("[auth] 로그인 실패 (%1/%2회) · 계정: %3")
+                                     .arg(m_failedAttempts)
+                                     .arg(kMaxLoginAttempts)
+                                     .arg(m_usernameEdit->text().trimmed());
+        m_errorLabel->setText(QStringLiteral("⚠ %1 (%2/%3)")
+                                   .arg(errorMessage)
+                                   .arg(m_failedAttempts)
+                                   .arg(kMaxLoginAttempts));
+        setFormBusy(false);
         return;
     }
 
     m_session = session;
     accept();
+}
+
+void LoginDialog::setFormBusy(bool busy)
+{
+    m_usernameEdit->setEnabled(!busy);
+    m_passwordEdit->setEnabled(!busy);
+    m_passwordVisibilityButton->setEnabled(!busy);
+    m_loginButton->setEnabled(!busy);
+    m_loginButton->setText(busy ? QStringLiteral("확인 중…") : QStringLiteral("대시보드 시작 →"));
 }
 
 void LoginDialog::fillStaffCredentials()
@@ -117,7 +174,23 @@ void LoginDialog::togglePasswordVisibility()
 {
     const bool hidden = m_passwordEdit->echoMode() == QLineEdit::Password;
     m_passwordEdit->setEchoMode(hidden ? QLineEdit::Normal : QLineEdit::Password);
-    m_togglePasswordButton->setText(hidden ? QStringLiteral("숨기기") : QStringLiteral("보기"));
+    m_passwordVisibilityButton->setIcon(createEyeIcon(hidden));
+    m_passwordVisibilityButton->setToolTip(hidden ? QStringLiteral("비밀번호 숨기기") : QStringLiteral("비밀번호 보기"));
+}
+
+bool LoginDialog::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_passwordEdit && event->type() == QEvent::Resize) {
+        repositionPasswordVisibilityButton();
+    }
+    return QDialog::eventFilter(watched, event);
+}
+
+void LoginDialog::repositionPasswordVisibilityButton()
+{
+    const int x = m_passwordEdit->width() - m_passwordVisibilityButton->width() - 8;
+    const int y = (m_passwordEdit->height() - m_passwordVisibilityButton->height()) / 2;
+    m_passwordVisibilityButton->move(x, y);
 }
 
 void LoginDialog::buildUi(bool mockMode)
@@ -181,20 +254,27 @@ void LoginDialog::buildUi(bool mockMode)
     passwordLabel->setObjectName(QStringLiteral("fieldLabel"));
     cardLayout->addWidget(passwordLabel);
 
-    auto *passwordRow = new QWidget(m_loginCard);
-    auto *passwordLayout = new QHBoxLayout(passwordRow);
-    passwordLayout->setContentsMargins(0, 0, 0, 0);
-    passwordLayout->setSpacing(8);
-
-    m_passwordEdit = new QLineEdit(passwordRow);
+    m_passwordEdit = new QLineEdit(m_loginCard);
     m_passwordEdit->setPlaceholderText(QStringLiteral("비밀번호"));
     m_passwordEdit->setEchoMode(QLineEdit::Password);
-    passwordLayout->addWidget(m_passwordEdit, 1);
+    m_passwordEdit->setTextMargins(0, 0, 34, 0);
+    cardLayout->addWidget(m_passwordEdit);
 
-    m_togglePasswordButton = new QPushButton(QStringLiteral("보기"), passwordRow);
-    m_togglePasswordButton->setObjectName(QStringLiteral("inlineGhostButton"));
-    passwordLayout->addWidget(m_togglePasswordButton);
-    cardLayout->addWidget(passwordRow);
+    m_passwordVisibilityButton = new QToolButton(m_passwordEdit);
+    m_passwordVisibilityButton->setObjectName(QStringLiteral("passwordVisibilityButton"));
+    m_passwordVisibilityButton->setCursor(Qt::PointingHandCursor);
+    m_passwordVisibilityButton->setFocusPolicy(Qt::NoFocus);
+    m_passwordVisibilityButton->setFixedSize(30, 30);
+    m_passwordVisibilityButton->setIconSize(QSize(22, 22));
+    m_passwordVisibilityButton->setIcon(createEyeIcon(false));
+    m_passwordVisibilityButton->setToolTip(QStringLiteral("비밀번호 보기"));
+    m_passwordEdit->installEventFilter(this);
+
+    m_errorLabel = new QLabel(m_loginCard);
+    m_errorLabel->setObjectName(QStringLiteral("loginErrorLabel"));
+    m_errorLabel->setWordWrap(true);
+    m_errorLabel->setFixedHeight(20);
+    cardLayout->addWidget(m_errorLabel);
 
     if (mockMode) {
         auto *mockButtons = new QHBoxLayout();
@@ -214,11 +294,19 @@ void LoginDialog::buildUi(bool mockMode)
     m_statusLabel->setWordWrap(true);
     cardLayout->addWidget(m_statusLabel);
 
-    auto *loginButton = new QPushButton(QStringLiteral("대시보드 시작 →"), m_loginCard);
-    loginButton->setObjectName(QStringLiteral("primaryCtaButton"));
-    cardLayout->addWidget(loginButton);
-    auto *demoLabel = new QLabel(QStringLiteral("기본 계정 • admin / admin123 | user / user123"), m_loginCard);
+    m_loginButton = new QPushButton(QStringLiteral("대시보드 시작 →"), m_loginCard);
+    m_loginButton->setObjectName(QStringLiteral("primaryCtaButton"));
+    m_loginButton->setDefault(true);
+    cardLayout->addWidget(m_loginButton);
+
+#ifdef QT_DEBUG
+    auto *demoLabel = new QLabel(QStringLiteral("ⓘ 데모 계정 안내 (디버그 빌드 전용)"), m_loginCard);
+#else
+    // 릴리스 빌드에서는 계정 정보를 평문으로 노출하지 않고 아이콘 + 툴팁으로 접어서 보여준다.
+    auto *demoLabel = new QLabel(QStringLiteral("ⓘ 데모 계정 안내"), m_loginCard);
+#endif
     demoLabel->setObjectName(QStringLiteral("demoHint"));
+    demoLabel->setToolTip(QStringLiteral("admin / admin123  ·  user / user123"));
     cardLayout->addWidget(demoLabel);
 
     formAreaLayout->addWidget(m_loginCard);
@@ -227,10 +315,12 @@ void LoginDialog::buildUi(bool mockMode)
     rootLayout->addWidget(visual, 12);
     rootLayout->addWidget(formArea, 10);
 
-    connect(loginButton, &QPushButton::clicked, this, &LoginDialog::attemptLogin);
-    connect(m_usernameEdit, &QLineEdit::returnPressed, this, &LoginDialog::attemptLogin);
-    connect(m_passwordEdit, &QLineEdit::returnPressed, this, &LoginDialog::attemptLogin);
-    connect(m_togglePasswordButton, &QPushButton::clicked, this, &LoginDialog::togglePasswordVisibility);
+    // m_loginButton is the dialog's default button (setDefault(true) above), so
+    // Return/Enter in either field already triggers it — no separate
+    // returnPressed wiring needed (that would double-submit each attempt).
+    connect(m_loginButton, &QPushButton::clicked, this, &LoginDialog::attemptLogin);
+    connect(m_passwordVisibilityButton, &QToolButton::clicked, this, &LoginDialog::togglePasswordVisibility);
+    repositionPasswordVisibilityButton();
     QTimer::singleShot(60, this, [this]() {
         const QPoint origin = m_loginCard->pos();
         m_loginCard->move(origin + QPoint(0, 22));

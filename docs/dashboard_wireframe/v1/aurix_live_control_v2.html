@@ -1,0 +1,70 @@
+<h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">실시간 관제 화면: 미션 진행 스테퍼, 지도, 로봇 상태, 이벤트 스트림, 명령 바</h2>
+<div style="background:#0b1622;border:0.5px solid #1d3348;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px">
+<div style="background:#0d1a29;border:0.5px solid #1d3348;border-radius:8px;padding:10px 12px">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
+<span style="font-size:11px;color:#39c5e0;letter-spacing:0.5px">미션 #142 · BTN_02 동측 승강장</span>
+<span style="flex:1"></span>
+<span style="font-size:11px;color:#a8bdd2">경과 00:48 · 남은 12.4m · ETA 00:22</span>
+</div>
+<div style="display:flex;align-items:center;gap:0">
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="width:16px;height:16px;border-radius:50%;background:#39c5e0;display:flex;align-items:center;justify-content:center"><i class="ti ti-check" style="font-size:10px;color:#062633" aria-hidden="true"></i></div><span style="font-size:10px;color:#a8bdd2">호출 접수</span></div>
+<div style="height:2px;flex:0.6;background:#39c5e0"></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="width:16px;height:16px;border-radius:50%;background:#39c5e0;box-shadow:0 0 0 3px #12283c"></div><span style="font-size:10px;color:#39c5e0;font-weight:500">출동 중</span></div>
+<div style="height:2px;flex:0.6;background:#1d3348"></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="width:16px;height:16px;border-radius:50%;border:2px solid #2a4a66"></div><span style="font-size:10px;color:#4a6b88">현장 도착</span></div>
+<div style="height:2px;flex:0.6;background:#1d3348"></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="width:16px;height:16px;border-radius:50%;border:2px solid #2a4a66"></div><span style="font-size:10px;color:#4a6b88">AED 반출</span></div>
+<div style="height:2px;flex:0.6;background:#1d3348"></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="width:16px;height:16px;border-radius:50%;border:2px solid #2a4a66"></div><span style="font-size:10px;color:#4a6b88">복귀·도킹</span></div>
+</div>
+</div>
+<div style="display:flex;gap:10px">
+<div style="flex:1.7;display:flex;flex-direction:column;gap:8px">
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;position:relative;min-height:250px">
+<svg viewBox="0 0 380 250" style="width:100%;height:100%" role="img" aria-label="관제 지도: 로봇 위치, 계획 경로, 웨이포인트, 호출 구역">
+<rect x="26" y="24" width="328" height="202" fill="none" stroke="#2a4a66" stroke-width="1" stroke-dasharray="5 4"/>
+<line x1="26" y1="120" x2="354" y2="120" stroke="#16293c" stroke-width="1"/>
+<line x1="190" y1="24" x2="190" y2="226" stroke="#16293c" stroke-width="1"/>
+<path d="M80 190 L150 190 L150 100 L268 100" fill="none" stroke="#39c5e0" stroke-width="2.5" stroke-dasharray="8 5"/>
+<circle cx="80" cy="190" r="12" fill="#39c5e0"/><path d="M80 182 L85 192 L80 189 L75 192 Z" fill="#062633"/>
+<circle cx="268" cy="100" r="10" fill="#f87171"/><text x="268" y="104" text-anchor="middle" font-size="9" fill="#3d1220" font-weight="600">B2</text>
+<circle cx="320" cy="190" r="8" fill="none" stroke="#4a6b88" stroke-width="1.5"/><text x="320" y="212" text-anchor="middle" font-size="10" fill="#7d93aa">HOME</text>
+<circle cx="150" cy="52" r="8" fill="none" stroke="#4a6b88" stroke-width="1.5"/><text x="150" y="40" text-anchor="middle" font-size="10" fill="#7d93aa">B1</text>
+<circle cx="70" cy="70" r="8" fill="none" stroke="#4a6b88" stroke-width="1.5"/><text x="70" y="58" text-anchor="middle" font-size="10" fill="#7d93aa">B3</text>
+</svg>
+<span style="position:absolute;top:9px;left:11px;font-size:10px;color:#7d93aa">B1 승강장 · AMCL 정상 · 축척 1m</span>
+<span style="position:absolute;top:9px;right:11px;font-size:10px;padding:3px 9px;border-radius:8px;background:#3d1220;color:#f87171">● REC 02:41</span>
+<div style="position:absolute;bottom:9px;left:11px;display:flex;gap:5px">
+<span style="font-size:10px;padding:3px 8px;border-radius:6px;background:#0b1622;border:0.5px solid #2a4a66;color:#39c5e0">로봇 따라가기</span>
+<span style="font-size:10px;padding:3px 8px;border-radius:6px;background:#0b1622;border:0.5px solid #2a4a66;color:#a8bdd2">경로 숨기기</span>
+</div>
+</div>
+<div style="display:flex;gap:7px">
+<div style="flex:1;height:32px;border:0.5px solid #2a4a66;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#a8bdd2"><i class="ti ti-video" style="margin-right:5px;font-size:14px" aria-hidden="true"></i>녹화 중지</div>
+<div style="flex:1;height:32px;border:0.5px solid #2a4a66;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#a8bdd2"><i class="ti ti-camera" style="margin-right:5px;font-size:14px" aria-hidden="true"></i>스냅샷</div>
+<div style="flex:1;height:32px;border:0.5px solid #2a4a66;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#a8bdd2"><i class="ti ti-x" style="margin-right:5px;font-size:14px" aria-hidden="true"></i>미션 취소</div>
+<div style="flex:1;height:32px;border:0.5px solid #2a4a66;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#a8bdd2"><i class="ti ti-home" style="margin-right:5px;font-size:14px" aria-hidden="true"></i>홈 복귀</div>
+</div>
+</div>
+<div style="width:186px;display:flex;flex-direction:column;gap:8px">
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:9px 11px">
+<p style="font-size:10px;color:#7d93aa;margin:0 0 6px;letter-spacing:0.5px">로봇 상태</p>
+<div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:11px;color:#7d93aa">배터리</span><span style="font-size:11px;color:#e8eef5">76%</span></div>
+<div style="height:4px;background:#12283c;border-radius:2px;margin-bottom:8px"><div style="width:76%;height:100%;background:#4ade80;border-radius:2px"></div></div>
+<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;color:#7d93aa">AED 적재</span><span style="font-size:11px;color:#4ade80">적재됨</span></div>
+<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;color:#7d93aa">전방 장애물</span><span style="font-size:11px;color:#e8eef5">42cm</span></div>
+<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;color:#7d93aa">Nav2</span><span style="font-size:11px;color:#e8eef5">주행중</span></div>
+<div style="display:flex;justify-content:space-between"><span style="font-size:11px;color:#7d93aa">속도</span><span style="font-size:11px;color:#e8eef5">0.18 m/s</span></div>
+</div>
+<div style="flex:1;background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:9px 11px;min-height:96px">
+<p style="font-size:10px;color:#7d93aa;margin:0 0 6px;letter-spacing:0.5px">이벤트 스트림</p>
+<div style="display:flex;gap:6px;margin-bottom:5px;align-items:flex-start"><span style="width:3px;height:26px;background:#fbbf24;border-radius:2px;flex-shrink:0"></span><div><p style="font-size:10px;color:#fbbf24;margin:0">NAV_RETRY</p><p style="font-size:10px;color:#7d93aa;margin:1px 0 0">14:02:39 경로 재계획</p></div></div>
+<div style="display:flex;gap:6px;align-items:flex-start"><span style="width:3px;height:26px;background:#4a6b88;border-radius:2px;flex-shrink:0"></span><div><p style="font-size:10px;color:#a8bdd2;margin:0">DISPATCHED</p><p style="font-size:10px;color:#7d93aa;margin:1px 0 0">14:02:12 출동 시작</p></div></div>
+</div>
+<div style="background:#0e2438;border:0.5px solid #2a5f7d;border-radius:8px;padding:8px 11px;display:flex;align-items:center;justify-content:space-between">
+<span style="font-size:11px;color:#39c5e0">대기 호출 1건</span>
+<span style="font-size:10px;color:#7d93aa">미션 관제 →</span>
+</div>
+</div>
+</div>
+</div>
