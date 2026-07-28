@@ -1,0 +1,40 @@
+<h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">운영 현황 화면: KPI 카드, 실시간 로봇 상태 테이블, 시스템 헬스, 최근 운영 이벤트</h2>
+<div style="background:#0b1622;border:0.5px solid #1d3348;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;gap:8px">
+<div><p style="font-size:14px;font-weight:500;color:#e8eef5;margin:0">운영 현황</p><p style="font-size:10px;color:#7d93aa;margin:2px 0 0">2026.07.28 · AURIX MEDIRUN NETWORK</p></div>
+<span style="flex:1"></span>
+<span style="font-size:10px;padding:4px 11px;border-radius:6px;border:0.5px solid #1d5c3f;color:#4ade80;background:#0f2e22">전체 시스템 정상</span>
+</div>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:9px 11px"><p style="font-size:10px;color:#7d93aa;margin:0">연결 로봇</p><p style="font-size:20px;font-weight:500;color:#e8eef5;margin:3px 0 0">03</p><p style="font-size:10px;color:#7d93aa;margin:2px 0 0">온라인 3 · 점검 0</p></div>
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:9px 11px"><p style="font-size:10px;color:#7d93aa;margin:0">진행 미션</p><p style="font-size:20px;font-weight:500;color:#39c5e0;margin:3px 0 0">02</p><p style="font-size:10px;color:#7d93aa;margin:2px 0 0">평균 응답 18초</p></div>
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:9px 11px"><p style="font-size:10px;color:#7d93aa;margin:0">오늘 호출</p><p style="font-size:20px;font-weight:500;color:#e8eef5;margin:3px 0 0">17</p><p style="font-size:10px;color:#7d93aa;margin:2px 0 0">전일 대비 +12%</p></div>
+<div style="background:#0d1f30;border:0.5px solid #6b4e12;border-radius:8px;padding:9px 11px"><p style="font-size:10px;color:#7d93aa;margin:0">안전 이벤트</p><p style="font-size:20px;font-weight:500;color:#fbbf24;margin:3px 0 0">01</p><p style="font-size:10px;color:#7d93aa;margin:2px 0 0">최근 24시간</p></div>
+</div>
+<div style="display:flex;gap:9px">
+<div style="flex:1.6;background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:10px 12px">
+<p style="font-size:11px;color:#7d93aa;margin:0 0 8px;letter-spacing:0.5px">실시간 로봇 상태</p>
+<div style="display:grid;grid-template-columns:1.1fr 1fr 52px 1.1fr;font-size:10px;color:#4a6b88;padding-bottom:6px;border-bottom:0.5px solid #16293c"><span>로봇</span><span>상태</span><span>배터리</span><span>경로</span></div>
+<div style="display:grid;grid-template-columns:1.1fr 1fr 52px 1.1fr;font-size:11px;color:#a8bdd2;padding:7px 0;border-bottom:0.5px solid #16293c;align-items:center"><span style="color:#e8eef5">MR-01</span><span style="color:#39c5e0"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#39c5e0;margin-right:5px"></span>출동 중</span><span>86%</span><span>B1 중앙홀 → W-03</span></div>
+<div style="display:grid;grid-template-columns:1.1fr 1fr 52px 1.1fr;font-size:11px;color:#a8bdd2;padding:7px 0;border-bottom:0.5px solid #16293c;align-items:center"><span style="color:#e8eef5">MR-02</span><span style="color:#a8bdd2"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#3a5570;margin-right:5px"></span>대기</span><span>94%</span><span>충전 스테이션 A</span></div>
+<div style="display:grid;grid-template-columns:1.1fr 1fr 52px 1.1fr;font-size:11px;color:#a8bdd2;padding:7px 0;align-items:center"><span style="color:#e8eef5">MR-03</span><span style="color:#fbbf24"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#fbbf24;margin-right:5px"></span>재계획</span><span>61%</span><span>W-07 → 충전 스테이션</span></div>
+</div>
+<div style="width:190px;background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:10px 12px">
+<p style="font-size:11px;color:#7d93aa;margin:0 0 9px;letter-spacing:0.5px">시스템 헬스</p>
+<div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:10px;color:#a8bdd2">ROS2 통신</span><span style="font-size:10px;color:#e8eef5">96%</span></div>
+<div style="height:4px;background:#12283c;border-radius:2px;margin-bottom:9px"><div style="width:96%;height:100%;background:#4ade80;border-radius:2px"></div></div>
+<div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:10px;color:#a8bdd2">Nav2 안정성</span><span style="font-size:10px;color:#e8eef5">94%</span></div>
+<div style="height:4px;background:#12283c;border-radius:2px;margin-bottom:9px"><div style="width:94%;height:100%;background:#4ade80;border-radius:2px"></div></div>
+<div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:10px;color:#a8bdd2">DB 동기화</span><span style="font-size:10px;color:#e8eef5">100%</span></div>
+<div style="height:4px;background:#12283c;border-radius:2px;margin-bottom:9px"><div style="width:100%;height:100%;background:#4ade80;border-radius:2px"></div></div>
+<div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:10px;color:#a8bdd2">네트워크 품질</span><span style="font-size:10px;color:#fbbf24">87%</span></div>
+<div style="height:4px;background:#12283c;border-radius:2px"><div style="width:87%;height:100%;background:#fbbf24;border-radius:2px"></div></div>
+</div>
+</div>
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:10px 12px">
+<p style="font-size:11px;color:#7d93aa;margin:0 0 8px;letter-spacing:0.5px">최근 운영 이벤트</p>
+<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:0.5px solid #16293c"><span style="width:3px;height:20px;background:#f87171;border-radius:2px;flex-shrink:0"></span><span style="font-size:10px;color:#7d93aa;width:44px">11:43</span><span style="font-size:11px;color:#e8eef5;flex:1">비상 정지 활성 · MR-01</span><span style="font-size:10px;color:#f87171">CRITICAL</span></div>
+<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:0.5px solid #16293c"><span style="width:3px;height:20px;background:#fbbf24;border-radius:2px;flex-shrink:0"></span><span style="font-size:10px;color:#7d93aa;width:44px">11:41</span><span style="font-size:11px;color:#e8eef5;flex:1">경로 재계획 3회 · MR-03</span><span style="font-size:10px;color:#fbbf24">WARN</span></div>
+<div style="display:flex;gap:8px;align-items:center;padding:5px 0"><span style="width:3px;height:20px;background:#3a5570;border-radius:2px;flex-shrink:0"></span><span style="font-size:10px;color:#7d93aa;width:44px">11:38</span><span style="font-size:11px;color:#e8eef5;flex:1">미션 상태 ARRIVED 로 변경 · MR-01</span><span style="font-size:10px;color:#7d93aa">INFO</span></div>
+</div>
+</div>

@@ -1,0 +1,155 @@
+#include "usermanagementpage.h"
+
+#include "../services/authservice.h"
+
+#include <QAbstractItemView>
+#include <QComboBox>
+#include <QFrame>
+#include <QHBoxLayout>
+#include <QHeaderView>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QTableWidget>
+#include <QTableWidgetItem>
+#include <QVBoxLayout>
+
+namespace {
+QLabel *makeLabel(const QString &text, const QString &objectName = {})
+{
+    auto *label = new QLabel(text);
+    if (!objectName.isEmpty()) {
+        label->setObjectName(objectName);
+    }
+    label->setWordWrap(true);
+    return label;
+}
+
+QFrame *panelFrame(const QString &objectName)
+{
+    auto *frame = new QFrame;
+    frame->setObjectName(objectName);
+    frame->setFrameShape(QFrame::NoFrame);
+    return frame;
+}
+} // namespace
+
+UserManagementPage::UserManagementPage(AuthService &authService, QWidget *parent)
+    : QWidget(parent)
+    , m_authService(authService)
+    , m_emailEdit(nullptr)
+    , m_passwordEdit(nullptr)
+    , m_roleCombo(nullptr)
+    , m_statusLabel(nullptr)
+    , m_userTable(nullptr)
+{
+    auto *outerLayout = new QVBoxLayout(this);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+    auto *canvas = panelFrame(QStringLiteral("pageCanvas"));
+    outerLayout->addWidget(canvas);
+
+    auto *layout = new QVBoxLayout(canvas);
+    layout->setContentsMargins(12, 12, 12, 12);
+    layout->setSpacing(14);
+
+    auto *headerPanel = panelFrame(QStringLiteral("contentPanel"));
+    auto *headerLayout = new QVBoxLayout(headerPanel);
+    headerLayout->setContentsMargins(20, 18, 20, 18);
+    headerLayout->setSpacing(6);
+    headerLayout->addWidget(makeLabel(QStringLiteral("사용자 관리"), QStringLiteral("pageTitle")));
+    headerLayout->addWidget(makeLabel(
+        QStringLiteral("이메일 또는 아이디, 비밀번호, 권한을 등록하고 즉시 로그인 가능한 계정을 생성합니다."),
+        QStringLiteral("pageSubtitle")));
+    layout->addWidget(headerPanel);
+
+    auto *bodyRow = new QHBoxLayout;
+    bodyRow->setSpacing(14);
+    bodyRow->addWidget(buildCreateForm(), 4);
+
+    auto *listPanel = panelFrame(QStringLiteral("contentPanel"));
+    auto *listLayout = new QVBoxLayout(listPanel);
+    listLayout->setContentsMargins(18, 18, 18, 18);
+    listLayout->setSpacing(12);
+    listLayout->addWidget(makeLabel(QStringLiteral("등록된 사용자"), QStringLiteral("panelTitle")));
+    m_userTable = new QTableWidget(listPanel);
+    m_userTable->setColumnCount(2);
+    m_userTable->setHorizontalHeaderLabels({QStringLiteral("이메일/아이디"), QStringLiteral("권한")});
+    m_userTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    m_userTable->verticalHeader()->setVisible(false);
+    m_userTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_userTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_userTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    listLayout->addWidget(m_userTable, 1);
+    bodyRow->addWidget(listPanel, 6);
+
+    layout->addLayout(bodyRow, 1);
+    refreshUserTable();
+}
+
+QWidget *UserManagementPage::buildCreateForm()
+{
+    auto *panel = panelFrame(QStringLiteral("contentPanel"));
+    auto *layout = new QVBoxLayout(panel);
+    layout->setContentsMargins(18, 18, 18, 18);
+    layout->setSpacing(10);
+    layout->addWidget(makeLabel(QStringLiteral("계정 추가"), QStringLiteral("panelTitle")));
+    layout->addWidget(makeLabel(QStringLiteral("관리자가 추가한 계정은 즉시 로그인에 사용할 수 있습니다."), QStringLiteral("pageSubtitle")));
+
+    layout->addWidget(makeLabel(QStringLiteral("이메일 또는 아이디"), QStringLiteral("fieldLabel")));
+    m_emailEdit = new QLineEdit(panel);
+    m_emailEdit->setPlaceholderText(QStringLiteral("operator@aurix.local"));
+    layout->addWidget(m_emailEdit);
+
+    layout->addWidget(makeLabel(QStringLiteral("비밀번호"), QStringLiteral("fieldLabel")));
+    m_passwordEdit = new QLineEdit(panel);
+    m_passwordEdit->setPlaceholderText(QStringLiteral("8자 이상"));
+    m_passwordEdit->setEchoMode(QLineEdit::Password);
+    layout->addWidget(m_passwordEdit);
+
+    layout->addWidget(makeLabel(QStringLiteral("권한"), QStringLiteral("fieldLabel")));
+    m_roleCombo = new QComboBox(panel);
+    m_roleCombo->addItem(QStringLiteral("USER"), static_cast<int>(UserRole::Staff));
+    m_roleCombo->addItem(QStringLiteral("ADMIN"), static_cast<int>(UserRole::Admin));
+    layout->addWidget(m_roleCombo);
+
+    auto *createButton = new QPushButton(QStringLiteral("사용자 추가"));
+    createButton->setObjectName(QStringLiteral("primaryCtaButton"));
+    layout->addWidget(createButton);
+
+    m_statusLabel = makeLabel(QStringLiteral("기본 계정 admin/user 외에도 신규 계정을 등록할 수 있습니다."), QStringLiteral("pageSubtitle"));
+    layout->addWidget(m_statusLabel);
+    layout->addStretch();
+
+    connect(createButton, &QPushButton::clicked, this, &UserManagementPage::handleCreateUser);
+    connect(m_passwordEdit, &QLineEdit::returnPressed, this, &UserManagementPage::handleCreateUser);
+    return panel;
+}
+
+void UserManagementPage::refreshUserTable()
+{
+    const QVector<AuthUserRecord> users = m_authService.users();
+    m_userTable->setRowCount(users.size());
+    for (int row = 0; row < users.size(); ++row) {
+        const AuthUserRecord &user = users.at(row);
+        m_userTable->setItem(row, 0, new QTableWidgetItem(user.loginId));
+        m_userTable->setItem(row, 1, new QTableWidgetItem(roleDisplayName(user.role)));
+    }
+}
+
+void UserManagementPage::handleCreateUser()
+{
+    QString errorMessage;
+    const UserRole role = static_cast<UserRole>(m_roleCombo->currentData().toInt());
+    const bool ok = m_authService.createUser(m_emailEdit->text(), m_passwordEdit->text(), role, errorMessage);
+
+    if (!ok) {
+        m_statusLabel->setText(errorMessage);
+        return;
+    }
+
+    m_statusLabel->setText(
+        QStringLiteral("%1 계정이 생성되었습니다. 이제 해당 계정으로 로그인할 수 있습니다.").arg(m_emailEdit->text().trimmed()));
+    m_emailEdit->clear();
+    m_passwordEdit->clear();
+    refreshUserTable();
+}
