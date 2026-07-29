@@ -59,16 +59,16 @@ RemoteControlPage::RemoteControlPage(QWidget *parent)
     bodyRow->addWidget(buildCameraPanel(), 15);
 
     auto *rightCol = new QVBoxLayout;
-    rightCol->setSpacing(9);
+    rightCol->setContentsMargins(0, 0, 0, 0);
+    rightCol->setSpacing(8);
     rightCol->addWidget(buildMinimapPanel());
     rightCol->addWidget(buildDirectionPad());
-    rightCol->addWidget(buildSpeedLimitPanel());
+    rightCol->addWidget(buildSpeedLimitPanel(), 1);
 
     auto *dockButton = new QPushButton(QStringLiteral("도킹 재시도"));
     auto *autonomyButton = new QPushButton(QStringLiteral("자율 모드 복귀"));
     rightCol->addWidget(dockButton);
     rightCol->addWidget(autonomyButton);
-    rightCol->addStretch();
 
     auto *rightColWidget = new QWidget(canvas);
     rightColWidget->setFixedWidth(196);
@@ -176,5 +176,6 @@ QWidget *RemoteControlPage::buildSpeedLimitPanel()
     topRow->addWidget(valueLabel);
     layout->addLayout(topRow);
     layout->addWidget(makeProportionalBar(40, DashboardPalette::Cyan, panel));
+    layout->addStretch();
     return panel;
 }

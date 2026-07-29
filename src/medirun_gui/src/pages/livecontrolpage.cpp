@@ -81,21 +81,26 @@ LiveControlPage::LiveControlPage(QWidget *parent)
     m_mapView->setWaypoints({QPointF(0.395, 0.208), QPointF(0.184, 0.28)});
     m_mapView->setDestination(QPointF(0.705, 0.4));
     m_mapView->setHome(QPointF(0.842, 0.76));
+    auto *actionRow = buildActionRow();
     leftCol->addWidget(m_mapView, 1);
-    leftCol->addWidget(buildActionRow());
+    leftCol->addWidget(actionRow);
     bodyRow->addLayout(leftCol, 7);
 
     auto *rightCol = new QVBoxLayout;
+    rightCol->setContentsMargins(0, 0, 0, 0);
     rightCol->setSpacing(8);
     rightCol->addWidget(buildRobotStatusPanel());
     rightCol->addWidget(buildEventStreamPanel(), 1);
-    rightCol->addWidget(buildWaitingCallBanner());
+    auto *callBanner = buildWaitingCallBanner();
+    rightCol->addWidget(callBanner);
     auto *rightColWidget = new QWidget(canvas);
     rightColWidget->setFixedWidth(200);
     rightColWidget->setLayout(rightCol);
     bodyRow->addWidget(rightColWidget);
 
     layout->addLayout(bodyRow, 1);
+
+    callBanner->setFixedHeight(actionRow->sizeHint().height());
 }
 
 QWidget *LiveControlPage::buildMissionStepper()
@@ -234,11 +239,16 @@ QWidget *LiveControlPage::buildWaitingCallBanner()
 {
     auto *panel = panelFrame(QStringLiteral("callQueueCard"));
     auto *layout = new QHBoxLayout(panel);
-    layout->setContentsMargins(11, 8, 11, 8);
+    layout->setContentsMargins(11, 0, 11, 0);
+    layout->setSpacing(7);
     auto *label = makeLabel(QStringLiteral("대기 호출 1건"));
-    label->setStyleSheet(QStringLiteral("color: %1; font-size: 11px;").arg(DashboardPalette::Cyan.name()));
+    label->setWordWrap(false);
+    label->setStyleSheet(QStringLiteral("color: %1;").arg(DashboardPalette::Cyan.name()));
     layout->addWidget(label);
     layout->addStretch();
-    layout->addWidget(makeLabel(QStringLiteral("미션 관제 →"), QStringLiteral("metricCaption")));
+    // layout->addWidget(makeLabel(QStringLiteral("미션 관제 →"), QStringLiteral("metricCaption")));
+    auto *linkLabel = makeLabel(QStringLiteral("미션 관제 →"), QStringLiteral("metricCaption"));
+    linkLabel->setWordWrap(false);
+    layout->addWidget(linkLabel);
     return panel;
 }

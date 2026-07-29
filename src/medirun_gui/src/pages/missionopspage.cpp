@@ -52,7 +52,7 @@ MissionOpsPage::MissionOpsPage(QWidget *parent)
     leftCol->addWidget(makeLabel(QStringLiteral("대기 호출 큐 · 1건"), QStringLiteral("metricCaption")));
     leftCol->addWidget(buildWaitingQueue());
     leftCol->addWidget(makeLabel(QStringLiteral("진행 중 미션"), QStringLiteral("metricCaption")));
-    leftCol->addWidget(buildInProgressMission());
+    leftCol->addWidget(buildInProgressMission(), 1);
     auto *leftWidget = new QWidget(canvas);
     leftWidget->setLayout(leftCol);
     bodyRow->addWidget(leftWidget, 5);
@@ -144,6 +144,7 @@ QWidget *MissionOpsPage::buildInProgressMission()
 
     layout->addWidget(makeProportionalBar(38, DashboardPalette::Cyan, panel));
     layout->addWidget(makeLabel(QStringLiteral("TB3-01 · 남은 12.4m · 경과 00:48"), QStringLiteral("metricCaption")));
+    layout->addStretch();
     return panel;
 }
 

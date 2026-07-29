@@ -196,6 +196,12 @@ QPushButton#sidebarButtonActive:hover {
     color: #ffffff;
 }
 
+QLabel#sidebarUserName {
+    color: #dceefc;
+    font-size: 12px;
+    font-weight: 700;
+}
+
 QPushButton#primaryCtaButton {
     min-height: 42px;
     background-color: #32c8de;
@@ -229,6 +235,11 @@ QLineEdit {
 
 QLineEdit:focus {
     border-color: #2ed3eb;
+}
+
+QLineEdit#compactField {
+    padding: 0 6px;
+    font-size: 11px;
 }
 
 QComboBox {
@@ -286,6 +297,25 @@ QTableWidget {
     gridline-color: #173147;
 }
 
+QListWidget {
+    background-color: transparent;
+    border: none;
+    outline: none;
+}
+
+QListWidget::item {
+    padding: 4px 6px;
+    border-bottom: 1px solid #16293c;
+    color: #a8bdd2;
+}
+
+QListWidget::item:selected {
+    background-color: #0e2438;
+    border: 1px solid #2a5f7d;
+    border-radius: 6px;
+    color: #eaf8ff;
+}
+
 QTableWidget::item {
     padding: 10px;
     border-bottom: 1px solid #173147;
@@ -335,6 +365,14 @@ QLabel#mapCaption,
 QLabel#mapOverlayText {
     color: #7d93aa;
     font-size: 10px;
+}
+
+QLabel#waypointMapOverlayText {
+    color: #eef5fb;
+    font-size: 10px;
+    background-color: rgba(4, 10, 19, 190);
+    border-radius: 4px;
+    padding: 3px 7px;
 }
 
 QPushButton#mapToggleChip {
@@ -431,6 +469,102 @@ QPushButton#dangerFilledButton {
 
 QPushButton#dangerFilledButton:hover {
     background-color: #93293f;
+}
+
+QPushButton#amberFilledButton {
+    background-color: #332508;
+    border: 1px solid #6b4e12;
+    color: #fbbf24;
+    font-weight: 700;
+}
+
+QPushButton#amberFilledButton:hover {
+    background-color: #3d2c0a;
+    border-color: #fbbf24;
+}
+
+QPushButton#cyanChipButton {
+    min-height: 26px;
+    padding: 0 12px;
+    font-size: 11px;
+    font-weight: 700;
+    background-color: #0e2438;
+    border: 1px solid #2a5f7d;
+    border-radius: 6px;
+    color: #39c5e0;
+}
+
+QPushButton#cyanChipButton:hover {
+    background-color: #123049;
+    border-color: #39c5e0;
+}
+
+QPushButton#ghostChipButton {
+    min-height: 26px;
+    padding: 0 12px;
+    font-size: 11px;
+    font-weight: 700;
+    background-color: transparent;
+    border: 1px solid #2a4a66;
+    border-radius: 6px;
+    color: #7d93aa;
+}
+
+QPushButton#ghostChipButton:hover {
+    background-color: #11283a;
+    border-color: #39c5e0;
+    color: #eef5fb;
+}
+
+QFrame#warningBanner {
+    background-color: #332508;
+    border: 1px solid #6b4e12;
+    border-radius: 8px;
+}
+
+QFrame#tabSwitcher {
+    background-color: transparent;
+    border: none;
+}
+
+QPushButton#tabButton,
+QPushButton#tabButtonActive {
+    min-height: 38px;
+    padding: 0 20px;
+    font-size: 13px;
+    font-weight: 700;
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: #7d93aa;
+}
+
+QPushButton#tabButtonActive {
+    background-color: #12283c;
+    border-color: #2a5f7d;
+    color: #39c5e0;
+}
+
+QPushButton#tabButton:hover {
+    color: #eaf8ff;
+}
+
+QPushButton#routeChip,
+QPushButton#routeChipActive {
+    min-height: 24px;
+    padding: 0 10px;
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 10px;
+    background-color: #0b1622;
+    border: 1px solid #1d3348;
+    color: #a8bdd2;
+}
+
+QPushButton#routeChipActive {
+    background-color: #0e2438;
+    border-color: #2a5f7d;
+    color: #39c5e0;
 }
 
 /* ---- Mission stepper (LiveControlPage) ---- */

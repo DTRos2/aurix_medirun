@@ -7,6 +7,7 @@ enum class PageId {
     MissionOps,
     RemoteControl,
     SlamMapping,
+    WaypointManagement,
     RecordsPlayback,
     CallHistory,
     UserManagement,

@@ -86,11 +86,11 @@ SlamMappingPage::SlamMappingPage(QWidget *parent)
     bodyRow->addLayout(leftCol, 7);
 
     auto *rightCol = new QVBoxLayout;
-    rightCol->setSpacing(9);
+    rightCol->setContentsMargins(0, 0, 0, 0);
+    rightCol->setSpacing(8);
     rightCol->addWidget(buildMappingStatusPanel());
     rightCol->addWidget(buildDirectionPad());
-    rightCol->addWidget(buildSpeedLimitPanel());
-    rightCol->addStretch();
+    rightCol->addWidget(buildSpeedLimitPanel(), 1);
 
     auto *rightColWidget = new QWidget(canvas);
     rightColWidget->setFixedWidth(200);
@@ -183,5 +183,6 @@ QWidget *SlamMappingPage::buildSpeedLimitPanel()
     topRow->addWidget(valueLabel);
     layout->addLayout(topRow);
     layout->addWidget(makeProportionalBar(50, DashboardPalette::Cyan, panel));
+    layout->addStretch();
     return panel;
 }
