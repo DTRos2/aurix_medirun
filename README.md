@@ -40,7 +40,7 @@ cp config/device.yaml.example config/device.yaml
 │   ├── medirun_mission/        # 미션 상태 관리 (구현 예정)
 │   ├── medirun_sensor/         # 버튼·초음파·홀센서·LED 브리지 (구현 예정)
 │   ├── medirun_vision/         # 카메라·ArUco 도킹 (구현 예정)
-│   ├── medirun_gui/            # Qt(C++) 대시보드 (구현 예정)
+│   ├── medirun_gui/            # Qt(C++) 대시보드 (구현 중)
 │   ├── medirun_db/             # PostgreSQL 연동 (구현 예정)
 │   └── medirun_msgs/           # 커스텀 메시지·서비스·액션
 ├── firmware/                # Arduino/ESP32 펌웨어
@@ -49,6 +49,7 @@ cp config/device.yaml.example config/device.yaml
 ├── db/                      # PostgreSQL 스키마·마이그레이션
 ├── docs/                    # 제출 문서, 시험표
 │   ├── tests/                   # 시험 기록 문서(.md)·측정 원본(data/*.csv)
+│   ├── dashboard_wireframe/     # Qt 대시보드 와이어프레임
 │   └── screenshots/gui/         # Qt 대시보드 화면 캡처
 ├── scripts/                 # 기동·자동 실행 스크립트
 │   └── analysis/                # 측정값 사후 분석 도구 (ROS 비의존)
@@ -61,7 +62,8 @@ cp config/device.yaml.example config/device.yaml
 
 ```bash
 source /opt/ros/humble/setup.bash
-colcon build --symlink-install
+# 현재 인터페이스가 빠져있기 때문에 (--packages-skip medirun_msgs) 추가해주어야 함
+colcon build --symlink-install --packages-skip medirun_msgs
 source install/setup.bash
 ```
 
