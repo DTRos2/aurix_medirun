@@ -12,6 +12,7 @@
 #include "../pages/slammappingpage.h"
 #include "../pages/systemsettingspage.h"
 #include "../pages/usermanagementpage.h"
+#include "../pages/waypointmanagementpage.h"
 
 #include <QHBoxLayout>
 #include <QStackedWidget>
@@ -33,15 +34,16 @@ DashboardCentralWidget::DashboardCentralWidget(const AppSession &session, AuthSe
 
     m_headerBar = new HeaderBar(this);
     connect(m_headerBar, &HeaderBar::estopRequested, this, &DashboardCentralWidget::estopRequested);
-    connect(m_headerBar, &HeaderBar::logoutRequested, this, &DashboardCentralWidget::logoutRequested);
     rootLayout->addWidget(m_headerBar);
 
     auto *bodyLayout = new QHBoxLayout;
     bodyLayout->setContentsMargins(0, 0, 0, 0);
     bodyLayout->setSpacing(12);
 
-    m_sideNav = new SideNav(m_session.role, this);
+    m_sideNav = new SideNav(m_session, this);
     connect(m_sideNav, &SideNav::pageSelected, this, &DashboardCentralWidget::navigateTo);
+    connect(m_sideNav, &SideNav::logoutRequested, this, &DashboardCentralWidget::logoutRequested);
+    connect(m_sideNav, &SideNav::exitRequested, this, &DashboardCentralWidget::exitRequested);
     bodyLayout->addWidget(m_sideNav);
 
     m_stack = new QStackedWidget(this);
@@ -66,15 +68,17 @@ DashboardCentralWidget::DashboardCentralWidget(const AppSession &session, AuthSe
     connect(callHistory, &CallHistoryPage::replayRequested, this, [this]() { navigateTo(PageId::RecordsPlayback); });
     addPage(PageId::CallHistory, callHistory);
 
+    addPage(PageId::OperationsOverview, new OperationsOverviewPage(m_stack));
+    addPage(PageId::RemoteControl, new RemoteControlPage(m_stack));
+
     if (m_session.role == UserRole::Admin) {
-        addPage(PageId::OperationsOverview, new OperationsOverviewPage(m_stack));
-        addPage(PageId::RemoteControl, new RemoteControlPage(m_stack));
         addPage(PageId::SlamMapping, new SlamMappingPage(m_stack));
+        addPage(PageId::WaypointManagement, new WaypointManagementPage(m_stack));
         addPage(PageId::UserManagement, new UserManagementPage(m_authService, m_stack));
         addPage(PageId::SystemSettings, new SystemSettingsPage(m_stack));
     }
 
-    navigateTo(PageId::LiveControl);
+    navigateTo(PageId::OperationsOverview);
 }
 
 void DashboardCentralWidget::applySnapshot(const TelemetrySnapshot &snapshot)
@@ -112,6 +116,8 @@ QString DashboardCentralWidget::titleForPage(PageId page) const
         return QStringLiteral("원격 제어");
     case PageId::SlamMapping:
         return QStringLiteral("지도 생성 (SLAM)");
+    case PageId::WaypointManagement:
+        return QStringLiteral("웨이포인트 관리");
     case PageId::RecordsPlayback:
         return QStringLiteral("주행 기록");
     case PageId::CallHistory:

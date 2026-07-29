@@ -15,14 +15,18 @@ class SideNav : public QFrame
     Q_OBJECT
 
 public:
-    explicit SideNav(UserRole role, QWidget *parent = nullptr);
+    explicit SideNav(const AppSession &session, QWidget *parent = nullptr);
 
     void setActivePage(PageId page);
 
 signals:
     void pageSelected(PageId page);
+    void logoutRequested();
+    void exitRequested();
 
 private:
+    QWidget *buildAccountFooter(const AppSession &session);
+
     QHash<PageId, QPushButton *> m_buttons;
 };
 

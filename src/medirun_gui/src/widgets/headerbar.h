@@ -19,7 +19,6 @@ public:
 
 signals:
     void estopRequested();
-    void logoutRequested();
 
 private:
     QLabel *m_pageTitleLabel;

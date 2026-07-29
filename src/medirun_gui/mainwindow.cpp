@@ -55,7 +55,11 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
 
 void MainWindow::handleDashboardExit()
 {
-    close();
+    const auto confirm = QMessageBox::question(
+        this, QStringLiteral("대시보드 종료"), QStringLiteral("대시보드를 종료하시겠습니까?"));
+    if (confirm == QMessageBox::Yes) {
+        close();
+    }
 }
 
 void MainWindow::handleEmergencyStop()
