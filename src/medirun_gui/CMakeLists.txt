@@ -38,6 +38,8 @@ qt_add_executable(medirun_gui
     src/widgets/headerbar.h
     src/widgets/mapviewwidget.cpp
     src/widgets/mapviewwidget.h
+    src/widgets/waypointmapwidget.cpp
+    src/widgets/waypointmapwidget.h
     src/widgets/pageid.h
     src/widgets/proportionalbar.h
     src/widgets/sidenav.cpp
@@ -60,6 +62,8 @@ qt_add_executable(medirun_gui
     src/pages/systemsettingspage.h
     src/pages/usermanagementpage.cpp
     src/pages/usermanagementpage.h
+    src/pages/waypointmanagementpage.cpp
+    src/pages/waypointmanagementpage.h
     src/windows/mainwindowstyler.cpp
     src/windows/mainwindowstyler.h
     src/widgets/logocarouselwidget.cpp

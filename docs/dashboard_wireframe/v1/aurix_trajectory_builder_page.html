@@ -1,0 +1,63 @@
+<h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">경로(Trajectory) 편집 화면: 웨이포인트/경로 탭, 지도에 순서 표시, 경로 구성 목록, 저장</h2>
+<div style="background:#0b1622;border:0.5px solid #1d3348;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;gap:8px">
+<div><p style="font-size:14px;font-weight:500;color:#e8eef5;margin:0">웨이포인트 · 경로 관리</p><p style="font-size:10px;color:#7d93aa;margin:2px 0 0">등록된 웨이포인트를 순서대로 엮어 주행 경로를 만듭니다.</p></div>
+<span style="flex:1"></span>
+<div style="display:flex;background:#0d1a29;border:0.5px solid #1d3348;border-radius:7px;padding:2px">
+<span style="font-size:11px;padding:5px 12px;border-radius:5px;color:#7d93aa">웨이포인트</span>
+<span style="font-size:11px;padding:5px 12px;border-radius:5px;background:#12283c;color:#39c5e0;border:0.5px solid #2a5f7d">경로 만들기</span>
+</div>
+</div>
+<div style="display:flex;gap:10px">
+<div style="flex:1.5;background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;position:relative;min-height:260px">
+<svg viewBox="0 0 380 260" style="width:100%;height:100%" role="img" aria-label="경로 순서가 표시된 지도: wp1에서 wp4까지 번호 순으로 연결">
+<rect x="26" y="20" width="328" height="220" fill="none" stroke="#2a4a66" stroke-width="1" stroke-dasharray="5 4"/>
+<line x1="26" y1="130" x2="354" y2="130" stroke="#16293c" stroke-width="1"/>
+<line x1="190" y1="20" x2="190" y2="240" stroke="#16293c" stroke-width="1"/>
+<path d="M270 70 L150 65 L120 150 L145 190" fill="none" stroke="#39c5e0" stroke-width="2.5"/>
+<path d="M205 67 l-9 -3 l3 8" fill="#39c5e0"/>
+<path d="M133 108 l0 9 l7 -5" fill="#39c5e0"/>
+<circle cx="270" cy="70" r="11" fill="#39c5e0"/><text x="270" y="74" text-anchor="middle" font-size="10" fill="#062633" font-weight="600">1</text><text x="270" y="54" text-anchor="middle" font-size="9" fill="#a8bdd2">wp1</text>
+<circle cx="150" cy="65" r="11" fill="#39c5e0"/><text x="150" y="69" text-anchor="middle" font-size="10" fill="#062633" font-weight="600">2</text><text x="150" y="49" text-anchor="middle" font-size="9" fill="#a8bdd2">wp2</text>
+<circle cx="120" cy="150" r="11" fill="#39c5e0"/><text x="120" y="154" text-anchor="middle" font-size="10" fill="#062633" font-weight="600">3</text><text x="102" y="150" text-anchor="middle" font-size="9" fill="#a8bdd2">wp3</text>
+<circle cx="145" cy="190" r="11" fill="#39c5e0"/><text x="145" y="194" text-anchor="middle" font-size="10" fill="#062633" font-weight="600">4</text><text x="145" y="214" text-anchor="middle" font-size="9" fill="#a8bdd2">wp4</text>
+<circle cx="300" cy="180" r="7" fill="none" stroke="#4a6b88" stroke-width="1.5"/><text x="300" y="198" text-anchor="middle" font-size="9" fill="#7d93aa">wp5</text>
+</svg>
+<span style="position:absolute;top:9px;left:11px;font-size:10px;color:#7d93aa">경로에 담긴 웨이포인트는 번호·연결선으로 표시됩니다</span>
+<span style="position:absolute;bottom:9px;left:11px;font-size:9px;color:#a8bdd2">① 순서 · ○ 미포함 웨이포인트</span>
+</div>
+<div style="width:210px;display:flex;flex-direction:column;gap:8px">
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:9px 10px">
+<p style="font-size:10px;color:#7d93aa;margin:0 0 6px;letter-spacing:0.5px">경로에 추가</p>
+<div style="display:flex;gap:6px">
+<div style="flex:1;height:28px;border:0.5px solid #2a4a66;border-radius:6px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;font-size:10px;color:#e8eef5;background:#0b1622"><span>wp5</span><i class="ti ti-chevron-down" style="font-size:12px;color:#7d93aa" aria-hidden="true"></i></div>
+<div style="width:52px;height:28px;background:#39c5e0;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#062633;font-weight:500">추가</div>
+</div>
+</div>
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:9px 10px;flex:1">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px"><p style="font-size:10px;color:#7d93aa;margin:0;letter-spacing:0.5px">경로 순서 · 4개</p><span style="font-size:9px;color:#4a6b88">드래그로 순서 변경</span></div>
+<div style="display:flex;align-items:center;gap:7px;padding:6px 8px;background:#0e2438;border:0.5px solid #2a5f7d;border-radius:6px;margin-bottom:4px"><i class="ti ti-grip-vertical" style="font-size:13px;color:#4a6b88" aria-hidden="true"></i><span style="font-size:11px;color:#39c5e0;width:16px">1</span><span style="font-size:11px;color:#e8eef5;flex:1">wp1</span><i class="ti ti-x" style="font-size:12px;color:#7d93aa" aria-hidden="true"></i></div>
+<div style="display:flex;align-items:center;gap:7px;padding:6px 8px;background:#0b1622;border:0.5px solid #1d3348;border-radius:6px;margin-bottom:4px"><i class="ti ti-grip-vertical" style="font-size:13px;color:#4a6b88" aria-hidden="true"></i><span style="font-size:11px;color:#7d93aa;width:16px">2</span><span style="font-size:11px;color:#a8bdd2;flex:1">wp2</span><i class="ti ti-x" style="font-size:12px;color:#7d93aa" aria-hidden="true"></i></div>
+<div style="display:flex;align-items:center;gap:7px;padding:6px 8px;background:#0b1622;border:0.5px solid #1d3348;border-radius:6px;margin-bottom:4px"><i class="ti ti-grip-vertical" style="font-size:13px;color:#4a6b88" aria-hidden="true"></i><span style="font-size:11px;color:#7d93aa;width:16px">3</span><span style="font-size:11px;color:#a8bdd2;flex:1">wp3</span><i class="ti ti-x" style="font-size:12px;color:#7d93aa" aria-hidden="true"></i></div>
+<div style="display:flex;align-items:center;gap:7px;padding:6px 8px;background:#0b1622;border:0.5px solid #1d3348;border-radius:6px"><i class="ti ti-grip-vertical" style="font-size:13px;color:#4a6b88" aria-hidden="true"></i><span style="font-size:11px;color:#7d93aa;width:16px">4</span><span style="font-size:11px;color:#a8bdd2;flex:1">wp4</span><i class="ti ti-x" style="font-size:12px;color:#7d93aa" aria-hidden="true"></i></div>
+<div style="display:flex;gap:6px;margin-top:8px">
+<div style="flex:1;height:26px;border:0.5px solid #2a4a66;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#a8bdd2">선택 제거</div>
+<div style="flex:1;height:26px;border:0.5px solid #2a4a66;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#a8bdd2">전체 초기화</div>
+</div>
+</div>
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:9px 10px">
+<p style="font-size:10px;color:#7d93aa;margin:0 0 6px;letter-spacing:0.5px">경로 이름</p>
+<div style="height:26px;border:0.5px solid #2a4a66;border-radius:5px;display:flex;align-items:center;padding:0 8px;font-size:10px;color:#e8eef5;background:#0b1622;margin-bottom:7px">first_test</div>
+<div style="height:30px;background:#39c5e0;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#062633;font-weight:500"><i class="ti ti-route" style="margin-right:5px;font-size:14px" aria-hidden="true"></i>Trajectory로 저장</div>
+</div>
+</div>
+</div>
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:9px 12px;display:flex;align-items:center;gap:10px">
+<p style="font-size:10px;color:#7d93aa;margin:0;letter-spacing:0.5px">저장된 경로</p>
+<span style="font-size:10px;padding:3px 10px;border-radius:10px;background:#0e2438;border:0.5px solid #2a5f7d;color:#39c5e0">first_test · 4점</span>
+<span style="font-size:10px;padding:3px 10px;border-radius:10px;background:#0b1622;border:0.5px solid #1d3348;color:#a8bdd2">patrol_a · 6점</span>
+<span style="font-size:10px;padding:3px 10px;border-radius:10px;background:#0b1622;border:0.5px solid #1d3348;color:#a8bdd2">delivery_b2 · 3점</span>
+<span style="flex:1"></span>
+<span style="font-size:10px;color:#f87171"><i class="ti ti-trash" style="font-size:12px" aria-hidden="true"></i> 선택 삭제</span>
+</div>
+</div>

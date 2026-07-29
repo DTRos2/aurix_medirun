@@ -104,11 +104,6 @@ HeaderBar::HeaderBar(QWidget *parent)
     estopButton->setObjectName(QStringLiteral("estopButton"));
     connect(estopButton, &QPushButton::clicked, this, &HeaderBar::estopRequested);
     layout->addWidget(estopButton);
-
-    auto *logoutButton = new QPushButton(QStringLiteral("로그아웃"), this);
-    logoutButton->setObjectName(QStringLiteral("inlineGhostButton"));
-    connect(logoutButton, &QPushButton::clicked, this, &HeaderBar::logoutRequested);
-    layout->addWidget(logoutButton);
 }
 
 void HeaderBar::setPageTitle(const QString &title)
