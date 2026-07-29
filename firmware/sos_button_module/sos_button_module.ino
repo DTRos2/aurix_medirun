@@ -7,9 +7,8 @@ const uint8_t BUTTON_PINS[BUTTON_COUNT] = {2, 3, 4};
 const char *BUTTON_IDS[BUTTON_COUNT] = {"BTN_01", "BTN_02", "BTN_03"};
 
 // 2026-07-25 벤치 테스트: 문서 스펙은 300ms이나 버튼을 0.3초 눌러야 반응해 체감이 느림 →
-// 50ms로 낮춰 시험 중. 아직 PDF(04_ROS2_소프트웨어_설계, 05_시스템_아키텍처)와
-// emergency_dispatcher의 debounce_ms 파라미터는 300ms 그대로라 값이 어긋나 있음.
-// PDF 동기화 전까지 임시값. CONVENTIONS.md §6.3 절차대로 문서 반영 필요.
+// 50ms로 낮춰 확정. docx(04_ROS2_소프트웨어_설계, 05_시스템_아키텍처)에 반영 완료(2026-07-29).
+// PDF는 CONVENTIONS.md §3.3에 따라 주차 동결 시점에 한 번에 재출력 예정.
 const unsigned long DEBOUNCE_MS = 50;
 const unsigned long BAUD_RATE = 9600;
 
