@@ -7,76 +7,264 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPushButton>
+#include <QRadialGradient>
 #include <QResizeEvent>
 
 namespace {
 
-QPolygonF headingTriangle()
+// AURIX mascot marker geometry, ported from
+// docs/dashboard_wireframe/v2/aurix_mascot_marker_states.html (symbol
+// #aurix-bot, viewBox 0 0 56 56, displayed at 44x44 offset (14,18) inside a
+// 72x78 card whose heading-cone apex sits at the card's (36,40) — i.e. the
+// bot's own visual center). kMarkerScale converts those wireframe "card
+// units" into on-canvas pixels for our much smaller map markers.
+constexpr qreal kMarkerScale = 0.62;
+constexpr qreal kSymbolToCard = 44.0 / 56.0;
+
+QPointF symPoint(qreal x, qreal y)
 {
-    return QPolygonF({QPointF(0, -6), QPointF(5, 6), QPointF(-5, 6)});
+    return QPointF(x * kSymbolToCard - 22.0, y * kSymbolToCard - 22.0);
+}
+
+qreal symLen(qreal v)
+{
+    return v * kSymbolToCard;
+}
+
+QPainterPath quadPath(const QPointF &start, const QPointF &ctrl, const QPointF &end)
+{
+    QPainterPath path(start);
+    path.quadTo(ctrl, end);
+    return path;
+}
+
+QColor colorForState(RobotMarkerState state)
+{
+    switch (state) {
+    case RobotMarkerState::Ready:
+        return DashboardPalette::RobotReady;
+    case RobotMarkerState::Moving:
+        return DashboardPalette::Cyan;
+    case RobotMarkerState::Arrived:
+        return DashboardPalette::Green;
+    case RobotMarkerState::Warning:
+        return DashboardPalette::Amber;
+    case RobotMarkerState::ErrorStopped:
+        return DashboardPalette::Red;
+    }
+    return DashboardPalette::RobotReady;
+}
+
+qreal coneOpacityForState(RobotMarkerState state)
+{
+    switch (state) {
+    case RobotMarkerState::Ready:
+        return 0.7;
+    case RobotMarkerState::Arrived:
+        return 0.8;
+    case RobotMarkerState::ErrorStopped:
+        return 0.6;
+    default:
+        return 1.0;
+    }
+}
+
+// Body + antenna + ears + face window + default (open-eyed) face. Drawn
+// upright regardless of heading; only the cone beneath it rotates.
+void paintAurixBotBody(QPainter &painter, const QColor &bodyColor)
+{
+    painter.setPen(QPen(bodyColor, 2));
+    painter.drawLine(symPoint(28, 11), symPoint(28, 16));
+
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(0xff, 0xd4, 0x5e));
+    painter.drawEllipse(symPoint(28, 8), symLen(3.4), symLen(3.4));
+
+    painter.setPen(QPen(bodyColor, 1.4));
+    painter.setBrush(DashboardPalette::CardBg);
+    painter.drawEllipse(symPoint(18, 44), symLen(4.4), symLen(4.4));
+    painter.drawEllipse(symPoint(38, 44), symLen(4.4), symLen(4.4));
+
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(bodyColor);
+    painter.drawRoundedRect(QRectF(symPoint(9, 15), QSizeF(symLen(38), symLen(27))), symLen(12), symLen(12));
+
+    painter.setBrush(DashboardPalette::CardBg);
+    painter.drawRoundedRect(QRectF(symPoint(15, 19), QSizeF(symLen(26), symLen(15))), symLen(7), symLen(7));
+
+    painter.setBrush(Qt::white);
+    painter.drawEllipse(symPoint(21.5, 26.5), symLen(3.3), symLen(3.3));
+    painter.drawEllipse(symPoint(34.5, 26.5), symLen(3.3), symLen(3.3));
+    painter.setBrush(QColor(0x12, 0x32, 0x44));
+    painter.drawEllipse(symPoint(22, 27), symLen(1.7), symLen(1.7));
+    painter.drawEllipse(symPoint(35, 27), symLen(1.7), symLen(1.7));
+
+    painter.setBrush(Qt::white);
+    painter.drawRoundedRect(QRectF(symPoint(24, 36.4), QSizeF(symLen(8), symLen(2.6))), symLen(1), symLen(1));
+    painter.drawRoundedRect(QRectF(symPoint(26.7, 33.7), QSizeF(symLen(2.6), symLen(8))), symLen(1), symLen(1));
+}
+
+void paintFaceCover(QPainter &painter, qreal coverHeight)
+{
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(DashboardPalette::CardBg);
+    painter.drawRoundedRect(QRectF(symPoint(16, 20), QSizeF(symLen(24), symLen(coverHeight))), symLen(5), symLen(5));
+}
+
+void paintFaceReady(QPainter &painter)
+{
+    paintFaceCover(painter, 11);
+    QPen pen(QColor(0xa8, 0xbd, 0xd2), symLen(2.2));
+    pen.setCapStyle(Qt::RoundCap);
+    painter.setPen(pen);
+    painter.setBrush(Qt::NoBrush);
+    painter.drawPath(quadPath(symPoint(18, 27), symPoint(21.5, 30), symPoint(25, 27)));
+    painter.drawPath(quadPath(symPoint(31, 27), symPoint(34.5, 30), symPoint(38, 27)));
+}
+
+void paintFaceArrived(QPainter &painter)
+{
+    paintFaceCover(painter, 12);
+    QPen pen(Qt::white, symLen(2.4));
+    pen.setCapStyle(Qt::RoundCap);
+    painter.setPen(pen);
+    painter.setBrush(Qt::NoBrush);
+    painter.drawPath(quadPath(symPoint(18, 27), symPoint(21.5, 22.5), symPoint(25, 27)));
+    painter.drawPath(quadPath(symPoint(31, 27), symPoint(34.5, 22.5), symPoint(38, 27)));
+}
+
+void paintFaceWarningExtras(QPainter &painter)
+{
+    QPen pen(Qt::white, symLen(1.8));
+    pen.setCapStyle(Qt::RoundCap);
+    painter.setPen(pen);
+    painter.setBrush(Qt::NoBrush);
+    painter.drawPath(quadPath(symPoint(18, 21.5), symPoint(21.5, 19.5), symPoint(24.5, 21)));
+    painter.drawPath(quadPath(symPoint(31.5, 21), symPoint(34.5, 19.5), symPoint(38, 21.5)));
+
+    QPainterPath drop(symPoint(47, 15));
+    drop.quadTo(symPoint(51, 22), symPoint(47, 24));
+    drop.quadTo(symPoint(43, 22), symPoint(47, 15));
+    drop.closeSubpath();
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(0x8e, 0xd6, 0xff));
+    painter.drawPath(drop);
+}
+
+void paintFaceErrorStopped(QPainter &painter)
+{
+    paintFaceCover(painter, 12);
+    QPen pen(Qt::white, symLen(2.4));
+    pen.setCapStyle(Qt::RoundCap);
+    painter.setPen(pen);
+    painter.drawLine(symPoint(18.5, 23), symPoint(24.5, 29));
+    painter.drawLine(symPoint(24.5, 23), symPoint(18.5, 29));
+    painter.drawLine(symPoint(31.5, 23), symPoint(37.5, 29));
+    painter.drawLine(symPoint(37.5, 23), symPoint(31.5, 29));
+}
+
+// Field-of-view wedge, apex at the marker center, drawn in its own
+// save/rotate block so only the cone (never the bot's face) turns with
+// heading.
+void paintHeadingCone(QPainter &painter, qreal headingDeg, const QColor &color, qreal opacity, bool withOutline)
+{
+    const qreal radius = 24.0;
+    const qreal halfAngleDeg = 25.0;
+
+    painter.save();
+    painter.rotate(headingDeg);
+
+    QPainterPath cone;
+    cone.moveTo(0, 0);
+    cone.arcTo(QRectF(-radius, -radius, radius * 2, radius * 2), 90.0 + halfAngleDeg, -2.0 * halfAngleDeg);
+    cone.closeSubpath();
+
+    QRadialGradient gradient(QPointF(0, 0), radius);
+    QColor centerColor = color;
+    centerColor.setAlphaF(0.55);
+    QColor edgeColor = color;
+    edgeColor.setAlphaF(0.0);
+    gradient.setColorAt(0.0, centerColor);
+    gradient.setColorAt(1.0, edgeColor);
+
+    painter.setOpacity(opacity);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(gradient);
+    painter.drawPath(cone);
+
+    if (withOutline) {
+        QColor outlineColor = color;
+        outlineColor.setAlphaF(0.45);
+        painter.setPen(QPen(outlineColor, 0.8));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawPath(cone);
+    }
+
+    painter.setOpacity(1.0);
+    painter.restore();
+}
+
+void paintStateRing(QPainter &painter, RobotMarkerState state)
+{
+    painter.setBrush(Qt::NoBrush);
+    switch (state) {
+    case RobotMarkerState::Moving: {
+        QColor ring = DashboardPalette::Cyan;
+        ring.setAlphaF(0.32);
+        painter.setPen(QPen(ring, 1.3));
+        painter.drawEllipse(QPointF(0, 0), 27.0, 27.0);
+        break;
+    }
+    case RobotMarkerState::Warning: {
+        QPen pen(DashboardPalette::Amber, 1.8);
+        pen.setStyle(Qt::DashLine);
+        painter.setPen(pen);
+        painter.drawEllipse(QPointF(0, 0), 26.0, 26.0);
+        break;
+    }
+    case RobotMarkerState::ErrorStopped: {
+        QColor outer = DashboardPalette::Red;
+        outer.setAlphaF(0.5);
+        painter.setPen(QPen(outer, 1.2));
+        painter.drawEllipse(QPointF(0, 0), 30.0, 30.0);
+        painter.setPen(QPen(DashboardPalette::Red, 2.2));
+        painter.drawEllipse(QPointF(0, 0), 26.5, 26.5);
+        break;
+    }
+    default:
+        break;
+    }
 }
 
 void paintRobotMarker(QPainter &painter, const QPointF &center, RobotMarkerState state, qreal headingDeg)
 {
-    QColor fill;
-    QColor ringColor;
-    qreal ringWidth = 0;
-    Qt::PenStyle ringStyle = Qt::SolidLine;
-    bool doubleRing = false;
-
-    switch (state) {
-    case RobotMarkerState::Ready:
-        fill = DashboardPalette::RobotReady;
-        break;
-    case RobotMarkerState::Moving:
-        fill = DashboardPalette::Cyan;
-        ringColor = DashboardPalette::Cyan;
-        ringColor.setAlpha(90);
-        ringWidth = 5;
-        break;
-    case RobotMarkerState::Arrived:
-        fill = DashboardPalette::Green;
-        break;
-    case RobotMarkerState::Warning:
-        fill = DashboardPalette::Amber;
-        ringColor = DashboardPalette::Amber;
-        ringWidth = 6;
-        ringStyle = Qt::DashLine;
-        break;
-    case RobotMarkerState::ErrorStopped:
-        fill = DashboardPalette::Red;
-        ringColor = DashboardPalette::Red;
-        ringWidth = 9;
-        doubleRing = true;
-        break;
-    }
-
-    const qreal robotRadius = 9.0;
-
-    if (ringWidth > 0) {
-        QColor outerRing = ringColor;
-        outerRing.setAlpha(state == RobotMarkerState::ErrorStopped ? 90 : outerRing.alpha());
-        painter.setPen(QPen(outerRing, 1.5, ringStyle));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawEllipse(center, robotRadius + ringWidth, robotRadius + ringWidth);
-        if (doubleRing) {
-            QColor innerRing = ringColor;
-            innerRing.setAlpha(220);
-            painter.setPen(QPen(innerRing, 2.2));
-            painter.drawEllipse(center, robotRadius + ringWidth * 0.55, robotRadius + ringWidth * 0.55);
-        }
-    }
-
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(fill);
-    painter.drawEllipse(center, robotRadius, robotRadius);
+    const QColor color = colorForState(state);
 
     painter.save();
     painter.translate(center);
-    painter.rotate(headingDeg);
-    painter.setBrush(DashboardPalette::CardBg);
-    painter.setPen(Qt::NoPen);
-    painter.drawPolygon(headingTriangle());
+    painter.scale(kMarkerScale, kMarkerScale);
+
+    paintStateRing(painter, state);
+    paintHeadingCone(painter, headingDeg, color, coneOpacityForState(state), state == RobotMarkerState::Moving);
+    paintAurixBotBody(painter, color);
+
+    switch (state) {
+    case RobotMarkerState::Ready:
+        paintFaceReady(painter);
+        break;
+    case RobotMarkerState::Arrived:
+        paintFaceArrived(painter);
+        break;
+    case RobotMarkerState::Warning:
+        paintFaceWarningExtras(painter);
+        break;
+    case RobotMarkerState::ErrorStopped:
+        paintFaceErrorStopped(painter);
+        break;
+    case RobotMarkerState::Moving:
+        break;
+    }
+
     painter.restore();
 }
 
