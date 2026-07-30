@@ -483,6 +483,19 @@ QPushButton#amberFilledButton:hover {
     border-color: #fbbf24;
 }
 
+QPushButton#cyanOutlineButton {
+    min-height: 34px;
+    background-color: transparent;
+    border: 1px solid #2a5f7d;
+    color: #39c5e0;
+    font-weight: 700;
+}
+
+QPushButton#cyanOutlineButton:hover {
+    background-color: #0e2438;
+    border-color: #39c5e0;
+}
+
 QPushButton#cyanChipButton {
     min-height: 26px;
     padding: 0 12px;

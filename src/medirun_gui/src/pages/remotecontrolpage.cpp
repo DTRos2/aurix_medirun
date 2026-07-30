@@ -10,6 +10,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QSizePolicy>
 #include <QVBoxLayout>
 
 namespace {
@@ -56,22 +57,60 @@ RemoteControlPage::RemoteControlPage(QWidget *parent)
 
     auto *bodyRow = new QHBoxLayout;
     bodyRow->setSpacing(10);
-    bodyRow->addWidget(buildCameraPanel(), 15);
+
+    auto *bigSlotWidget = new QWidget(canvas);
+    bigSlotWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+    m_bigSlot = new QVBoxLayout(bigSlotWidget);
+    m_bigSlot->setContentsMargins(0, 0, 0, 0);
+    bodyRow->addWidget(bigSlotWidget, 15);
 
     auto *rightCol = new QVBoxLayout;
     rightCol->setContentsMargins(0, 0, 0, 0);
     rightCol->setSpacing(8);
-    rightCol->addWidget(buildMinimapPanel());
-    rightCol->addWidget(buildDirectionPad());
-    rightCol->addWidget(buildSpeedLimitPanel(), 1);
 
+    auto *smallSlotWidget = new QWidget;
+    smallSlotWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    m_smallSlot = new QVBoxLayout(smallSlotWidget);
+    m_smallSlot->setContentsMargins(0, 0, 0, 0);
+    rightCol->addWidget(smallSlotWidget);
+
+    auto *swapButton = buildViewSwapButton();
+    swapButton->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    rightCol->addWidget(swapButton);
+
+    m_cameraPanel = buildCameraPanel();
+    m_minimapPanel = buildMinimapPanel();
+    m_bigSlot->addWidget(m_cameraPanel);
+    m_smallSlot->addWidget(m_minimapPanel);
+
+    auto *directionPad = buildDirectionPad();
+    directionPad->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    rightCol->addWidget(directionPad);
+
+    auto *speedPresetPanel = buildSpeedPresetPanel();
+    speedPresetPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    rightCol->addWidget(speedPresetPanel);
+
+    auto *cmdVelPanel = buildCmdVelPanel();
+    cmdVelPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    rightCol->addWidget(cmdVelPanel);
+
+    rightCol->addStretch(1);
+
+    auto *bottomButtonRow = new QHBoxLayout;
+    bottomButtonRow->setSpacing(6);
     auto *dockButton = new QPushButton(QStringLiteral("도킹 재시도"));
-    auto *autonomyButton = new QPushButton(QStringLiteral("자율 모드 복귀"));
-    rightCol->addWidget(dockButton);
-    rightCol->addWidget(autonomyButton);
+    dockButton->setObjectName(QStringLiteral("cyanOutlineButton"));
+    dockButton->setMinimumHeight(46);
+    auto *autonomyButton = new QPushButton(QStringLiteral("자율 복귀"));
+    autonomyButton->setMinimumHeight(46);
+    bottomButtonRow->addWidget(dockButton, 1);
+    bottomButtonRow->addWidget(autonomyButton, 1);
+    rightCol->addLayout(bottomButtonRow);
 
     auto *rightColWidget = new QWidget(canvas);
-    rightColWidget->setFixedWidth(196);
+    rightColWidget->setFixedWidth(224);
+    rightColWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
     rightColWidget->setLayout(rightCol);
     bodyRow->addWidget(rightColWidget);
 
@@ -86,9 +125,12 @@ QWidget *RemoteControlPage::buildManualControlBanner()
     layout->setSpacing(8);
 
     auto *title = makeLabel(QStringLiteral("🎮  수동 제어 활성"));
+    title->setWordWrap(false);
     title->setStyleSheet(QStringLiteral("color: %1; font-size: 12px; font-weight: 600;").arg(DashboardPalette::Red.name()));
     layout->addWidget(title);
-    layout->addWidget(makeLabel(QStringLiteral("자율 목표 취소됨 · 제어권 qt / admin_lee"), QStringLiteral("metricCaption")));
+    auto *caption = makeLabel(QStringLiteral("자율 목표 취소됨 · 제어권 qt / admin_lee"), QStringLiteral("metricCaption"));
+    caption->setWordWrap(false);
+    layout->addWidget(caption);
     layout->addStretch();
     return panel;
 }
@@ -97,6 +139,7 @@ QWidget *RemoteControlPage::buildCameraPanel()
 {
     auto *panel = panelFrame(QStringLiteral("contentPanel"));
     panel->setMinimumHeight(230);
+    panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *layout = new QVBoxLayout(panel);
     layout->setContentsMargins(11, 9, 11, 9);
 
@@ -132,18 +175,71 @@ QWidget *RemoteControlPage::buildCameraPanel()
 QWidget *RemoteControlPage::buildMinimapPanel()
 {
     auto *panel = panelFrame(QStringLiteral("contentPanel"));
+    // MapViewWidget already paints its own dashed extent border, so the
+    // panel's own QSS border is dropped here to avoid a doubled box outline.
+    panel->setStyleSheet(QStringLiteral("background-color: %1; border: none; border-radius: 8px;").arg(DashboardPalette::PanelBg.name()));
     auto *layout = new QVBoxLayout(panel);
     layout->setContentsMargins(6, 6, 6, 6);
 
-    auto *mapView = new MapViewWidget(panel);
-    mapView->setFixedSize(184, 100);
-    mapView->setMode(MapViewMode::Reference);
-    mapView->setCaption(QStringLiteral("미니맵 · 방향 참조용"));
-    mapView->setRobotPose(QPointF(0.35, 0.65), 0.0);
-    mapView->setRobotState(RobotMarkerState::Warning);
-    mapView->setHome(QPointF(0.78, 0.3));
-    layout->addWidget(mapView);
+    m_mapView = new MapViewWidget(panel);
+    // Fixed height only; width follows the panel so the dashed extent rect
+    // (drawn relative to the widget's own size) hugs both left and right
+    // edges symmetrically instead of leaving dead space on the right.
+    m_mapView->setFixedHeight(100);
+    m_mapView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_mapView->setMode(MapViewMode::Reference);
+    m_mapView->setCaption(QStringLiteral("미니맵 · 방향 참조용"));
+    m_mapView->setRobotPose(QPointF(0.35, 0.65), 0.0);
+    m_mapView->setRobotState(RobotMarkerState::Warning);
+    m_mapView->setHome(QPointF(0.78, 0.3));
+    layout->addWidget(m_mapView);
     return panel;
+}
+
+QWidget *RemoteControlPage::buildViewSwapButton()
+{
+    auto *button = new QPushButton(QStringLiteral("⇄  지도/카메라 전환"));
+    button->setObjectName(QStringLiteral("ghostChipButton"));
+    connect(button, &QPushButton::clicked, this, &RemoteControlPage::swapCameraAndMap);
+    return button;
+}
+
+void RemoteControlPage::swapCameraAndMap()
+{
+    m_mapIsMain = !m_mapIsMain;
+
+    m_bigSlot->removeWidget(m_cameraPanel);
+    m_bigSlot->removeWidget(m_minimapPanel);
+    m_smallSlot->removeWidget(m_cameraPanel);
+    m_smallSlot->removeWidget(m_minimapPanel);
+
+    QWidget *bigWidget = m_mapIsMain ? m_minimapPanel : m_cameraPanel;
+    QWidget *smallWidget = m_mapIsMain ? m_cameraPanel : m_minimapPanel;
+    m_bigSlot->addWidget(bigWidget);
+    m_smallSlot->addWidget(smallWidget);
+
+    if (m_mapIsMain) {
+        m_mapView->setMinimumSize(0, 0);
+        m_mapView->setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+        m_mapView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        m_minimapPanel->setMinimumHeight(230);
+        m_minimapPanel->setMaximumHeight(QWIDGETSIZE_MAX);
+        m_minimapPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        m_cameraPanel->setMinimumHeight(0);
+        m_cameraPanel->setFixedHeight(100);
+        m_cameraPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    } else {
+        m_mapView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        m_mapView->setMinimumWidth(0);
+        m_mapView->setMaximumWidth(QWIDGETSIZE_MAX);
+        m_mapView->setFixedHeight(100);
+        m_minimapPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+        m_minimapPanel->setMinimumHeight(0);
+        m_minimapPanel->setMaximumHeight(QWIDGETSIZE_MAX);
+        m_cameraPanel->setMaximumHeight(QWIDGETSIZE_MAX);
+        m_cameraPanel->setMinimumHeight(230);
+        m_cameraPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    }
 }
 
 QWidget *RemoteControlPage::buildDirectionPad()
@@ -161,21 +257,95 @@ QWidget *RemoteControlPage::buildDirectionPad()
     return panel;
 }
 
-QWidget *RemoteControlPage::buildSpeedLimitPanel()
+QWidget *RemoteControlPage::buildSpeedPresetPanel()
 {
     auto *panel = panelFrame(QStringLiteral("contentPanel"));
     auto *layout = new QVBoxLayout(panel);
-    layout->setContentsMargins(10, 8, 10, 8);
+    layout->setContentsMargins(11, 9, 11, 9);
+    layout->setSpacing(7);
+
+    auto *headerRow = new QHBoxLayout;
+    headerRow->addWidget(makeLabel(QStringLiteral("속도 프리셋"), QStringLiteral("metricCaption")));
+    headerRow->addStretch();
+    auto *sharedCaption = makeLabel(QStringLiteral("세 방식 값 공유"));
+    sharedCaption->setStyleSheet(QStringLiteral("color: %1; font-size: 9px;").arg(DashboardPalette::TextMuted.name()));
+    headerRow->addWidget(sharedCaption);
+    layout->addLayout(headerRow);
+
+    auto *presetRow = new QHBoxLayout;
+    presetRow->setSpacing(5);
+    auto *fineButton = new QPushButton(QStringLiteral("미세"));
+    fineButton->setObjectName(QStringLiteral("ghostChipButton"));
+    auto *normalButton = new QPushButton(QStringLiteral("보통"));
+    normalButton->setObjectName(QStringLiteral("cyanChipButton"));
+    auto *fastButton = new QPushButton(QStringLiteral("빠름"));
+    fastButton->setObjectName(QStringLiteral("ghostChipButton"));
+    presetRow->addWidget(fineButton, 1);
+    presetRow->addWidget(normalButton, 1);
+    presetRow->addWidget(fastButton, 1);
+    layout->addLayout(presetRow);
+
+    layout->addWidget(buildSpeedAxisRow(QStringLiteral("▲ 직진"), QStringLiteral("0.12"), QStringLiteral("m/s"), 55));
+    layout->addWidget(buildSpeedAxisRow(QStringLiteral("↻ 회전"), QStringLiteral("0.80"), QStringLiteral("rad/s"), 28));
+
+    return panel;
+}
+
+QWidget *RemoteControlPage::buildSpeedAxisRow(const QString &label, const QString &value, const QString &unit, int percent)
+{
+    auto *container = new QWidget;
+    auto *layout = new QVBoxLayout(container);
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(6);
 
-    auto *topRow = new QHBoxLayout;
-    topRow->addWidget(makeLabel(QStringLiteral("속도 제한"), QStringLiteral("metricCaption")));
-    topRow->addStretch();
-    auto *valueLabel = makeLabel(QStringLiteral("0.12 m/s"));
-    valueLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 10px;").arg(DashboardPalette::Cyan.name()));
-    topRow->addWidget(valueLabel);
-    layout->addLayout(topRow);
-    layout->addWidget(makeProportionalBar(40, DashboardPalette::Cyan, panel));
-    layout->addStretch();
+    auto *row = new QHBoxLayout;
+    auto *labelWidget = makeLabel(label);
+    labelWidget->setStyleSheet(QStringLiteral("color: %1; font-size: 10px;").arg(DashboardPalette::TextSecondary.name()));
+    row->addWidget(labelWidget);
+    row->addStretch();
+
+    auto *valueBox = makeLabel(value);
+    valueBox->setAlignment(Qt::AlignCenter);
+    valueBox->setFixedSize(50, 22);
+    valueBox->setStyleSheet(QStringLiteral("color: %1; font-size: 10px; background-color: %2; border: 1px solid %3; border-radius: 5px;")
+                                 .arg(DashboardPalette::TextPrimary.name(), DashboardPalette::CardBg.name(), DashboardPalette::BorderGuide.name()));
+    row->addWidget(valueBox);
+
+    auto *unitLabel = makeLabel(unit);
+    unitLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 9px;").arg(DashboardPalette::TextTertiary.name()));
+    row->addWidget(unitLabel);
+    layout->addLayout(row);
+
+    layout->addWidget(makeProportionalBar(percent, DashboardPalette::Cyan, container));
+    return container;
+}
+
+QWidget *RemoteControlPage::buildCmdVelPanel()
+{
+    auto *panel = panelFrame(QStringLiteral("callQueueCard"));
+    auto *layout = new QVBoxLayout(panel);
+    layout->setContentsMargins(11, 8, 11, 8);
+    layout->setSpacing(4);
+
+    auto *title = makeLabel(QStringLiteral("발행 중 · /cmd_vel"));
+    title->setStyleSheet(QStringLiteral("color: %1; font-size: 9px; letter-spacing: 0.5px;").arg(DashboardPalette::Cyan.name()));
+    layout->addWidget(title);
+
+    auto *linearRow = new QHBoxLayout;
+    linearRow->addWidget(makeLabel(QStringLiteral("linear.x"), QStringLiteral("metricCaption")));
+    linearRow->addStretch();
+    auto *linearValue = makeLabel(QStringLiteral("0.00 m/s"));
+    linearValue->setStyleSheet(QStringLiteral("color: %1; font-size: 11px;").arg(DashboardPalette::TextPrimary.name()));
+    linearRow->addWidget(linearValue);
+    layout->addLayout(linearRow);
+
+    auto *angularRow = new QHBoxLayout;
+    angularRow->addWidget(makeLabel(QStringLiteral("angular.z"), QStringLiteral("metricCaption")));
+    angularRow->addStretch();
+    auto *angularValue = makeLabel(QStringLiteral("0.00 rad/s"));
+    angularValue->setStyleSheet(QStringLiteral("color: %1; font-size: 11px;").arg(DashboardPalette::TextPrimary.name()));
+    angularRow->addWidget(angularValue);
+    layout->addLayout(angularRow);
+
     return panel;
 }
