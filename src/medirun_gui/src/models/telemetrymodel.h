@@ -2,6 +2,7 @@
 #define TELEMETRYMODEL_H
 
 #include <QDateTime>
+#include <QMetaType>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -38,6 +39,9 @@ struct TelemetrySnapshot
     QString mode;
     QString stopReason;
     QString batteryPercentText;
+    int batteryPercent {-1};
+    double batteryVoltage {0.0};
+    bool batteryMessageReceived {false};
     QString positionText;
     QString networkText;
     QString rosText;
@@ -55,5 +59,7 @@ struct TelemetrySnapshot
     QStringList autoResumeConditions;
     QVector<QPair<QString, QString>> deviceStates;
 };
+
+Q_DECLARE_METATYPE(TelemetrySnapshot)
 
 #endif // TELEMETRYMODEL_H

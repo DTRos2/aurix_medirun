@@ -26,6 +26,7 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
+
 qt_standard_project_setup()
 
 qt_add_executable(medirun_gui
@@ -53,6 +54,8 @@ qt_add_executable(medirun_gui
     src/services/mapfile.h
     src/services/mocktelemetryprovider.cpp
     src/services/mocktelemetryprovider.h
+    src/services/rosbatterytelemetryprovider.cpp
+    src/services/rosbatterytelemetryprovider.h
     src/services/telemetryprovider.h
     src/services/waypointfile.cpp
     src/services/waypointfile.h

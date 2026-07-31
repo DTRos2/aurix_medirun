@@ -40,7 +40,11 @@ MainWindow::~MainWindow()
 
 void MainWindow::setTelemetryProvider(TelemetryProvider *provider)
 {
-    connect(provider, &TelemetryProvider::snapshotUpdated, m_dashboardWidget, &DashboardCentralWidget::applySnapshot);
+    connect(provider,
+            &TelemetryProvider::snapshotUpdated,
+            m_dashboardWidget,
+            &DashboardCentralWidget::applySnapshot,
+            Qt::QueuedConnection);
 }
 
 void MainWindow::setNavigationService(NavigationService *service)

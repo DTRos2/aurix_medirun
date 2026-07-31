@@ -48,7 +48,10 @@ TelemetrySnapshot MockTelemetryProvider::buildSnapshot() const
     snapshot.buttonId = QStringLiteral("BTN_0%1").arg((m_step % 3) + 1);
     snapshot.mode = (m_step % 8 == 7) ? QStringLiteral("E-STOP") : QStringLiteral("AUTO");
     snapshot.stopReason = (m_step % 8 == 7) ? QStringLiteral("비상 정지 활성") : QStringLiteral("--");
-    snapshot.batteryPercentText = QStringLiteral("%1%").arg(82 - (m_step % 20));
+    snapshot.batteryPercent = 82 - (m_step % 20);
+    snapshot.batteryPercentText = QStringLiteral("%1%").arg(snapshot.batteryPercent);
+    snapshot.batteryVoltage = 11.8 - ((m_step % 5) * 0.1);
+    snapshot.batteryMessageReceived = true;
     snapshot.positionText = QStringLiteral("X: 12.%1 / Y: 4.%2").arg(m_step % 10).arg((m_step + 3) % 10);
     snapshot.networkText = (m_step % 6 == 5) ? QStringLiteral("지연 2.3s") : QStringLiteral("정상");
     snapshot.rosText = (m_step % 6 == 5) ? QStringLiteral("미수신") : QStringLiteral("연결됨");
