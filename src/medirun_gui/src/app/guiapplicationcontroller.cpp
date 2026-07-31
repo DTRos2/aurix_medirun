@@ -2,6 +2,7 @@
 
 #include "../../mainwindow.h"
 #include "../dialogs/logindialog.h"
+#include "../ros/nav2navigationservice.h"
 #include "../services/authservice.h"
 #include "../services/localauthservice.h"
 #include "../services/mocktelemetryprovider.h"
@@ -16,6 +17,7 @@ GuiApplicationController::GuiApplicationController(QApplication &application, QO
     : QObject(parent)
     , m_application(application)
     , m_authService(std::make_unique<LocalAuthService>())
+    , m_navigationService(std::make_unique<Nav2NavigationService>())
     , m_telemetryProvider(nullptr)
     , m_splashScreen(nullptr)
     , m_loginDialog(nullptr)
@@ -72,6 +74,7 @@ void GuiApplicationController::createMainWindow()
         m_telemetryProvider = new RosBatteryTelemetryProvider(m_mainWindow);
     }
     m_mainWindow->setTelemetryProvider(m_telemetryProvider);
+    m_mainWindow->setNavigationService(m_navigationService.get());
     QObject::connect(m_mainWindow, &MainWindow::logoutRequested, this, &GuiApplicationController::handleLogout);
 }
 

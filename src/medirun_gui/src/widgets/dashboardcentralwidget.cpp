@@ -73,7 +73,8 @@ DashboardCentralWidget::DashboardCentralWidget(const AppSession &session, AuthSe
 
     if (m_session.role == UserRole::Admin) {
         addPage(PageId::SlamMapping, new SlamMappingPage(m_stack));
-        addPage(PageId::WaypointManagement, new WaypointManagementPage(m_stack));
+        m_waypointPage = new WaypointManagementPage(m_stack);
+        addPage(PageId::WaypointManagement, m_waypointPage);
         addPage(PageId::UserManagement, new UserManagementPage(m_authService, m_stack));
         addPage(PageId::SystemSettings, new SystemSettingsPage(m_stack));
     }
@@ -84,6 +85,13 @@ DashboardCentralWidget::DashboardCentralWidget(const AppSession &session, AuthSe
 void DashboardCentralWidget::applySnapshot(const TelemetrySnapshot &snapshot)
 {
     m_headerBar->applySnapshot(snapshot);
+}
+
+void DashboardCentralWidget::setNavigationService(NavigationService *service)
+{
+    if (m_waypointPage != nullptr) {
+        m_waypointPage->setNavigationService(service);
+    }
 }
 
 void DashboardCentralWidget::addPage(PageId id, QWidget *page)
