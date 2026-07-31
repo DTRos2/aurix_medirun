@@ -53,6 +53,21 @@ QString kindForConnectionState(ConnectionState state)
     return QStringLiteral("muted");
 }
 
+QString kindForBatterySnapshot(const TelemetrySnapshot &snapshot)
+{
+    if (!snapshot.batteryMessageReceived) {
+        return snapshot.rosState == ConnectionState::Disconnected ? QStringLiteral("red") : QStringLiteral("muted");
+    }
+
+    if (snapshot.batteryPercent >= 50) {
+        return QStringLiteral("green");
+    }
+    if (snapshot.batteryPercent >= 20) {
+        return QStringLiteral("amber");
+    }
+    return QStringLiteral("red");
+}
+
 } // namespace
 
 HeaderBar::HeaderBar(QWidget *parent)
@@ -121,7 +136,16 @@ void HeaderBar::applySnapshot(const TelemetrySnapshot &snapshot)
     m_dbChip->style()->unpolish(m_dbChip);
     m_dbChip->style()->polish(m_dbChip);
 
-    if (!snapshot.batteryPercentText.isEmpty()) {
-        m_batteryLabel->setText(snapshot.batteryPercentText);
+    m_batteryLabel->setText(snapshot.batteryPercentText.isEmpty() ? QStringLiteral("--%") : snapshot.batteryPercentText);
+    m_batteryLabel->setProperty("batteryKind", kindForBatterySnapshot(snapshot));
+    m_batteryLabel->style()->unpolish(m_batteryLabel);
+    m_batteryLabel->style()->polish(m_batteryLabel);
+
+    if (snapshot.batteryMessageReceived) {
+        m_batteryLabel->setToolTip(QStringLiteral("배터리 전압 %1 V").arg(snapshot.batteryVoltage, 0, 'f', 2));
+    } else if (snapshot.rosState == ConnectionState::Disconnected) {
+        m_batteryLabel->setToolTip(QStringLiteral("배터리 상태 수신 끊김"));
+    } else {
+        m_batteryLabel->setToolTip(QStringLiteral("배터리 상태 수신 대기 중"));
     }
 }

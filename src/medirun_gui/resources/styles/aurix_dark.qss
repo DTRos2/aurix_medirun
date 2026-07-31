@@ -98,6 +98,26 @@ QLabel#demoHint {
     font-size: 12px;
 }
 
+QLabel#pageSubtitle[batteryKind="green"] {
+    color: #4ade80;
+    font-weight: 700;
+}
+
+QLabel#pageSubtitle[batteryKind="amber"] {
+    color: #fbbf24;
+    font-weight: 700;
+}
+
+QLabel#pageSubtitle[batteryKind="red"] {
+    color: #f87171;
+    font-weight: 700;
+}
+
+QLabel#pageSubtitle[batteryKind="muted"] {
+    color: #7f9bb0;
+    font-weight: 600;
+}
+
 QLabel#loginErrorLabel {
     color: #f87171;
     font-size: 11px;

@@ -5,6 +5,7 @@
 #include "../services/authservice.h"
 #include "../services/localauthservice.h"
 #include "../services/mocktelemetryprovider.h"
+#include "../services/rosbatterytelemetryprovider.h"
 #include "../widgets/splashscreenwidget.h"
 
 #include <QApplication>
@@ -65,7 +66,11 @@ void GuiApplicationController::showLoginPage()
 void GuiApplicationController::createMainWindow()
 {
     m_mainWindow = new MainWindow(m_session, *m_authService);
-    m_telemetryProvider = new MockTelemetryProvider(m_mainWindow);
+    if (mockModeEnabled()) {
+        m_telemetryProvider = new MockTelemetryProvider(m_mainWindow);
+    } else {
+        m_telemetryProvider = new RosBatteryTelemetryProvider(m_mainWindow);
+    }
     m_mainWindow->setTelemetryProvider(m_telemetryProvider);
     QObject::connect(m_mainWindow, &MainWindow::logoutRequested, this, &GuiApplicationController::handleLogout);
 }
