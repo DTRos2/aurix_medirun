@@ -15,6 +15,7 @@ class QKeyEvent;
 class AuthService;
 class DashboardCentralWidget;
 class TelemetryProvider;
+class NavigationService;
 
 class MainWindow : public QMainWindow
 {
@@ -25,6 +26,7 @@ public:
     ~MainWindow() override;
 
     void setTelemetryProvider(TelemetryProvider *provider);
+    void setNavigationService(NavigationService *service);
 
 signals:
     void logoutRequested();

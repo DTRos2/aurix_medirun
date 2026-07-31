@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.19)
 project(medirun_gui LANGUAGES CXX)
 
+# medirun_gui는 시스템 Qt가 6.5 미만이면 사용자가 직접 빌드한 Qt를
+# LD_LIBRARY_PATH로 지정해 실행한다(README 참고). 그 값을 통째로 덮어써도
+# (ROS2 lib 경로가 날아가도) 이 바이너리가 rclcpp/nav2 계열 공유 라이브러리를
+# 계속 찾도록, LD_LIBRARY_PATH에 의존하지 않고 링크 시점 라이브러리 경로를
+# RPATH로 실행 파일에 직접 새겨 넣는다.
+set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
@@ -8,7 +16,16 @@ set(CMAKE_AUTORCC ON)
 find_package(ament_cmake REQUIRED)
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
+find_package(nav2_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(action_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(yaml-cpp REQUIRED)
+
 
 qt_standard_project_setup()
 
@@ -25,15 +42,23 @@ qt_add_executable(medirun_gui
     src/dialogs/logindialog.cpp
     src/dialogs/logindialog.h
     src/models/telemetrymodel.h
+    src/models/waypointtypes.h
+    src/ros/navigationservice.h
+    src/ros/nav2navigationservice.cpp
+    src/ros/nav2navigationservice.h
     src/services/authservice.h
     src/services/localauthservice.cpp
     src/services/localauthservice.h
     src/services/eventrepository.h
+    src/services/mapfile.cpp
+    src/services/mapfile.h
     src/services/mocktelemetryprovider.cpp
     src/services/mocktelemetryprovider.h
     src/services/rosbatterytelemetryprovider.cpp
     src/services/rosbatterytelemetryprovider.h
     src/services/telemetryprovider.h
+    src/services/waypointfile.cpp
+    src/services/waypointfile.h
     src/theme/dashboardpalette.h
     src/widgets/badgelabel.h
     src/widgets/dashboardcentralwidget.cpp
@@ -89,20 +114,20 @@ target_link_libraries(medirun_gui
         Qt::Core
         Qt::Gui
         Qt::Widgets
-        ${rclcpp_LIBRARIES}
-        ${sensor_msgs_LIBRARIES}
+        yaml-cpp
 )
 
-target_include_directories(medirun_gui
-    PRIVATE
-        ${rclcpp_INCLUDE_DIRS}
-        ${sensor_msgs_INCLUDE_DIRS}
-)
-
-target_compile_definitions(medirun_gui
-    PRIVATE
-        ${rclcpp_DEFINITIONS}
-        ${sensor_msgs_DEFINITIONS}
+ament_target_dependencies(medirun_gui
+    PUBLIC
+        rclcpp
+        rclcpp_action
+        nav2_msgs
+        geometry_msgs
+        nav_msgs
+        sensor_msgs
+        action_msgs
+        tf2
+        tf2_ros
 )
 
 install(TARGETS medirun_gui
