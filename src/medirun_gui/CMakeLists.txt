@@ -7,6 +7,8 @@ set(CMAKE_AUTORCC ON)
 
 find_package(ament_cmake REQUIRED)
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(rclcpp REQUIRED)
+find_package(sensor_msgs REQUIRED)
 
 qt_standard_project_setup()
 
@@ -29,6 +31,8 @@ qt_add_executable(medirun_gui
     src/services/eventrepository.h
     src/services/mocktelemetryprovider.cpp
     src/services/mocktelemetryprovider.h
+    src/services/rosbatterytelemetryprovider.cpp
+    src/services/rosbatterytelemetryprovider.h
     src/services/telemetryprovider.h
     src/theme/dashboardpalette.h
     src/widgets/badgelabel.h
@@ -85,6 +89,20 @@ target_link_libraries(medirun_gui
         Qt::Core
         Qt::Gui
         Qt::Widgets
+        ${rclcpp_LIBRARIES}
+        ${sensor_msgs_LIBRARIES}
+)
+
+target_include_directories(medirun_gui
+    PRIVATE
+        ${rclcpp_INCLUDE_DIRS}
+        ${sensor_msgs_INCLUDE_DIRS}
+)
+
+target_compile_definitions(medirun_gui
+    PRIVATE
+        ${rclcpp_DEFINITIONS}
+        ${sensor_msgs_DEFINITIONS}
 )
 
 install(TARGETS medirun_gui
