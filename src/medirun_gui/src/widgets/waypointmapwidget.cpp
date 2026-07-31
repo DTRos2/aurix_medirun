@@ -8,8 +8,16 @@
 #include <QPainter>
 #include <QPainterPath>
 
+#include <algorithm>
+#include <cmath>
+
 namespace {
 constexpr qreal kMarkerHitRadius = 14.0;
+constexpr qreal kClickVsDragPx = 5.0;
+constexpr qreal kArrowLengthPx = 14.0;
+constexpr qreal kRobotMarkerRadiusPx = 6.0;
+constexpr qreal kRobotArrowLengthPx = 18.0;
+constexpr qreal kScanPointRadiusPx = 1.4;
 
 void paintMarkerGlyph(QPainter &painter, const QPointF &center, WaypointMarkerKind kind, bool selected)
 {
@@ -86,7 +94,13 @@ void WaypointMapWidget::setBackgroundImage(const QImage &image)
 void WaypointMapWidget::clearBackgroundImage()
 {
     m_backgroundPixmap = QPixmap();
+    m_mapMeta = MapMeta();
     update();
+}
+
+void WaypointMapWidget::setMapMeta(const MapMeta &meta)
+{
+    m_mapMeta = meta;
 }
 
 void WaypointMapWidget::setMarkers(const QVector<WaypointMapMarker> &markers)
@@ -107,16 +121,53 @@ void WaypointMapWidget::setRouteOrder(const QVector<QString> &orderedIds)
     update();
 }
 
+void WaypointMapWidget::setRobotPose(const QPointF &normalizedPos, double yawRadians, bool valid)
+{
+    m_hasRobotPose = valid;
+    m_robotNormalizedPos = normalizedPos;
+    m_robotYawRad = yawRadians;
+    update();
+}
+
+void WaypointMapWidget::setScanPoints(const QVector<QPointF> &normalizedPoints)
+{
+    m_scanNormalizedPoints = normalizedPoints;
+    update();
+}
+
 QRectF WaypointMapWidget::drawableArea() const
 {
     const qreal margin = 10.0;
     return QRectF(margin, margin, width() - margin * 2, height() - margin * 2);
 }
 
+QRectF WaypointMapWidget::imageRect() const
+{
+    const QRectF area = drawableArea();
+    if (m_backgroundPixmap.isNull()) {
+        return area;
+    }
+
+    const QSizeF scaled = m_backgroundPixmap.size().scaled(area.size().toSize(), Qt::KeepAspectRatio);
+    const QPointF topLeft(area.left() + (area.width() - scaled.width()) / 2.0,
+                           area.top() + (area.height() - scaled.height()) / 2.0);
+    return QRectF(topLeft, scaled);
+}
+
 QPointF WaypointMapWidget::toCanvas(const QPointF &normalized, const QRectF &area) const
 {
     return QPointF(area.left() + normalized.x() * area.width(),
                     area.top() + normalized.y() * area.height());
+}
+
+QPointF WaypointMapWidget::canvasToNormalized(const QPointF &canvasPos, const QRectF &area) const
+{
+    if (area.width() <= 0.0 || area.height() <= 0.0) {
+        return QPointF(0.0, 0.0);
+    }
+    const qreal u = (canvasPos.x() - area.left()) / area.width();
+    const qreal v = (canvasPos.y() - area.top()) / area.height();
+    return QPointF(std::clamp(u, 0.0, 1.0), std::clamp(v, 0.0, 1.0));
 }
 
 void WaypointMapWidget::layoutOverlay()
@@ -136,16 +187,63 @@ void WaypointMapWidget::resizeEvent(QResizeEvent *event)
 
 void WaypointMapWidget::mousePressEvent(QMouseEvent *event)
 {
-    const QRectF area = drawableArea();
+    if (event->button() != Qt::LeftButton) {
+        QFrame::mousePressEvent(event);
+        return;
+    }
+
+    const QRectF area = imageRect();
+    m_pressedMarkerId.clear();
     for (const WaypointMapMarker &marker : m_markers) {
         const QPointF center = toCanvas(marker.normalizedPos, area);
-        const QPointF delta = center - event->pos();
+        const QPointF delta = center - event->position();
         if (QPointF::dotProduct(delta, delta) <= kMarkerHitRadius * kMarkerHitRadius) {
-            emit markerClicked(marker.id);
-            return;
+            m_pressedMarkerId = marker.id;
+            break;
         }
     }
-    QFrame::mousePressEvent(event);
+
+    m_dragging = true;
+    m_dragStartPos = event->position();
+    m_dragCurrentPos = m_dragStartPos;
+    update();
+}
+
+void WaypointMapWidget::mouseMoveEvent(QMouseEvent *event)
+{
+    if (!m_dragging) {
+        QFrame::mouseMoveEvent(event);
+        return;
+    }
+    m_dragCurrentPos = event->position();
+    update();
+}
+
+void WaypointMapWidget::mouseReleaseEvent(QMouseEvent *event)
+{
+    if (!m_dragging || event->button() != Qt::LeftButton) {
+        QFrame::mouseReleaseEvent(event);
+        return;
+    }
+
+    m_dragging = false;
+    const qreal dxPx = m_dragCurrentPos.x() - m_dragStartPos.x();
+    const qreal dyPx = m_dragCurrentPos.y() - m_dragStartPos.y();
+    const qreal dragDistance = std::hypot(dxPx, dyPx);
+
+    if (!m_pressedMarkerId.isEmpty()) {
+        if (dragDistance < kClickVsDragPx) {
+            emit markerClicked(m_pressedMarkerId);
+        }
+    } else {
+        // 이미지 행(row) 축은 world y축과 반대 방향이므로 dy를 뒤집는다.
+        const double yaw = dragDistance < kClickVsDragPx ? 0.0 : std::atan2(-dyPx, dxPx);
+        const QPointF normalized = canvasToNormalized(m_dragStartPos, imageRect());
+        emit waypointPickRequested(normalized, yaw);
+    }
+
+    m_pressedMarkerId.clear();
+    update();
 }
 
 void WaypointMapWidget::paintEvent(QPaintEvent *event)
@@ -156,12 +254,11 @@ void WaypointMapWidget::paintEvent(QPaintEvent *event)
     painter.setRenderHint(QPainter::Antialiasing, true);
 
     const QRectF area = drawableArea();
+    const QRectF imgRect = imageRect();
 
     if (!m_backgroundPixmap.isNull()) {
-        const QPixmap scaled = m_backgroundPixmap.scaled(area.size().toSize(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        const QPointF topLeft(area.left() + (area.width() - scaled.width()) / 2.0,
-                               area.top() + (area.height() - scaled.height()) / 2.0);
-        painter.drawPixmap(topLeft, scaled);
+        const QPixmap scaled = m_backgroundPixmap.scaled(imgRect.size().toSize(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        painter.drawPixmap(imgRect.topLeft(), scaled);
     }
 
     painter.setPen(QPen(DashboardPalette::BorderGuide, 1, Qt::DashLine));
@@ -172,6 +269,14 @@ void WaypointMapWidget::paintEvent(QPaintEvent *event)
     painter.drawLine(toCanvas(QPointF(0.0, 0.5), area), toCanvas(QPointF(1.0, 0.5), area));
     painter.drawLine(toCanvas(QPointF(0.5, 0.0), area), toCanvas(QPointF(0.5, 1.0), area));
 
+    if (m_dragging && m_pressedMarkerId.isEmpty()) {
+        painter.setPen(QPen(DashboardPalette::Cyan, 1, Qt::DashLine));
+        painter.drawLine(m_dragStartPos, m_dragCurrentPos);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(DashboardPalette::Cyan);
+        painter.drawEllipse(m_dragStartPos, 3, 3);
+    }
+
     if (!m_routeOrder.isEmpty()) {
         QHash<QString, WaypointMapMarker> byId;
         for (const WaypointMapMarker &marker : m_markers) {
@@ -181,7 +286,7 @@ void WaypointMapWidget::paintEvent(QPaintEvent *event)
         QVector<QPointF> orderedPoints;
         for (const QString &id : m_routeOrder) {
             if (byId.contains(id)) {
-                orderedPoints.append(toCanvas(byId.value(id).normalizedPos, area));
+                orderedPoints.append(toCanvas(byId.value(id).normalizedPos, imgRect));
             }
         }
 
@@ -196,7 +301,7 @@ void WaypointMapWidget::paintEvent(QPaintEvent *event)
         }
 
         for (const WaypointMapMarker &marker : m_markers) {
-            const QPointF center = toCanvas(marker.normalizedPos, area);
+            const QPointF center = toCanvas(marker.normalizedPos, imgRect);
             const int order = m_routeOrder.indexOf(marker.id);
             if (order < 0) {
                 paintMarkerGlyph(painter, center, marker.kind, false);
@@ -221,22 +326,39 @@ void WaypointMapWidget::paintEvent(QPaintEvent *event)
             painter.setPen(DashboardPalette::TextSecondary);
             painter.drawText(QRectF(center.x() - 30, center.y() - 27, 60, 12), Qt::AlignCenter, marker.label);
         }
-        return;
+    } else {
+        for (const WaypointMapMarker &marker : m_markers) {
+            const QPointF center = toCanvas(marker.normalizedPos, imgRect);
+            const bool selected = (marker.id == m_selectedId);
+            paintMarkerGlyph(painter, center, marker.kind, selected);
+
+            QFont labelFont = painter.font();
+            labelFont.setPixelSize(9);
+            painter.setFont(labelFont);
+            painter.setPen(selected ? DashboardPalette::Cyan : DashboardPalette::TextSecondary);
+            const QString text = selected ? QStringLiteral("%1 (편집 중)").arg(marker.label) : marker.label;
+            const QFontMetrics metrics(labelFont);
+            const int textWidth = metrics.horizontalAdvance(text) + 12;
+            painter.drawText(QRectF(center.x() - textWidth / 2.0, center.y() - (selected ? 30 : 24), textWidth, 12),
+                              Qt::AlignCenter, text);
+        }
     }
 
-    for (const WaypointMapMarker &marker : m_markers) {
-        const QPointF center = toCanvas(marker.normalizedPos, area);
-        const bool selected = (marker.id == m_selectedId);
-        paintMarkerGlyph(painter, center, marker.kind, selected);
+    if (!m_scanNormalizedPoints.isEmpty()) {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(DashboardPalette::Red);
+        for (const QPointF &normalized : m_scanNormalizedPoints) {
+            painter.drawEllipse(toCanvas(normalized, imgRect), kScanPointRadiusPx, kScanPointRadiusPx);
+        }
+    }
 
-        QFont labelFont = painter.font();
-        labelFont.setPixelSize(9);
-        painter.setFont(labelFont);
-        painter.setPen(selected ? DashboardPalette::Cyan : DashboardPalette::TextSecondary);
-        const QString text = selected ? QStringLiteral("%1 (편집 중)").arg(marker.label) : marker.label;
-        const QFontMetrics metrics(labelFont);
-        const int textWidth = metrics.horizontalAdvance(text) + 12;
-        painter.drawText(QRectF(center.x() - textWidth / 2.0, center.y() - (selected ? 30 : 24), textWidth, 12),
-                          Qt::AlignCenter, text);
+    if (m_hasRobotPose) {
+        const QPointF center = toCanvas(m_robotNormalizedPos, imgRect);
+        const double dx = std::cos(m_robotYawRad) * kRobotArrowLengthPx;
+        const double dy = -std::sin(m_robotYawRad) * kRobotArrowLengthPx;
+        painter.setPen(QPen(DashboardPalette::Green, 2));
+        painter.setBrush(DashboardPalette::Green);
+        painter.drawEllipse(center, kRobotMarkerRadiusPx, kRobotMarkerRadiusPx);
+        painter.drawLine(center, QPointF(center.x() + dx, center.y() + dy));
     }
 }

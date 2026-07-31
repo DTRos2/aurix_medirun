@@ -43,6 +43,11 @@ void MainWindow::setTelemetryProvider(TelemetryProvider *provider)
     connect(provider, &TelemetryProvider::snapshotUpdated, m_dashboardWidget, &DashboardCentralWidget::applySnapshot);
 }
 
+void MainWindow::setNavigationService(NavigationService *service)
+{
+    m_dashboardWidget->setNavigationService(service);
+}
+
 void MainWindow::keyPressEvent(QKeyEvent *event)
 {
     if (event->key() == Qt::Key_Escape) {

@@ -35,7 +35,7 @@ cp config/device.yaml.example config/device.yaml
 ```
 .
 ├── src/                    # ROS 2 패키지 (빌드 대상만 둔다)
-│   ├── medirun_bringup/        # 전체 시스템 기동 launch (구현 예정)
+│   ├── medirun_bringup/        # 전체 시스템 기동 launch (Nav2 + 대시보드)
 │   ├── medirun_navigation/     # Nav2·AMCL, 이동 정밀도 시험
 │   ├── medirun_mission/        # 미션 상태 관리 (구현 예정)
 │   ├── medirun_sensor/         # 버튼·초음파·홀센서·LED 브리지 (구현 예정)
@@ -71,11 +71,17 @@ source install/setup.bash
 
 ### 메인 (전체 시스템 기동)
 
-`medirun_bringup`의 통합 launch 파일은 아직 작성되지 않았다 (1주차: 기반·지도·정밀도 단계). 완성되면 아래 형태로 실행할 예정이다.
+로봇 본체 드라이버(`turtlebot3_bringup robot.launch.py` 등, 라이다·모터)는 로봇(Pi) 쪽에서 별도로 이미 떠 있어야 한다. 그 위에서 Nav2 스택과 `medirun_gui` 대시보드를 한 번에 띄운다.
 
 ```bash
+./scripts/run.sh
+# 또는 직접
+source /opt/ros/humble/setup.bash
+source install/setup.bash
 ros2 launch medirun_bringup bringup.launch.py
 ```
+
+기본 맵은 `maps/last_class_map_modi.yaml`이며, `map:=/path/other.yaml`로 바꿀 수 있다. RViz를 같이 띄우려면 `use_rviz:=true`, 대시보드 없이 Nav2만 띄우려면 `use_gui:=false`를 붙인다.
 
 ### GUI (Qt 대시보드 단독 실행)
 

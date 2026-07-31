@@ -12,6 +12,8 @@ class AuthService;
 class HeaderBar;
 class SideNav;
 class QStackedWidget;
+class NavigationService;
+class WaypointManagementPage;
 
 class DashboardCentralWidget : public QWidget
 {
@@ -21,6 +23,7 @@ public:
     explicit DashboardCentralWidget(const AppSession &session, AuthService &authService, QWidget *parent = nullptr);
 
     void applySnapshot(const TelemetrySnapshot &snapshot);
+    void setNavigationService(NavigationService *service);
 
 signals:
     void exitRequested();
@@ -40,6 +43,7 @@ private:
     SideNav *m_sideNav;
     QStackedWidget *m_stack;
     QHash<PageId, int> m_pageIndex;
+    WaypointManagementPage *m_waypointPage {nullptr};
 };
 
 #endif // DASHBOARDCENTRALWIDGET_H

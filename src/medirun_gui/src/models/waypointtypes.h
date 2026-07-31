@@ -1,0 +1,41 @@
+#ifndef WAYPOINTTYPES_H
+#define WAYPOINTTYPES_H
+
+#include <QMap>
+#include <QPointF>
+#include <QString>
+#include <QStringList>
+
+enum class WaypointMarkerKind {
+    CallZone,
+    Waypoint,
+    Home
+};
+
+struct WaypointMapMarker
+{
+    QString id;
+    QString label;
+    QPointF normalizedPos;
+    WaypointMarkerKind kind {WaypointMarkerKind::Waypoint};
+};
+
+// A waypoint definition in map (world) coordinates. x/y are meters in the
+// map frame, yaw is radians. Mirrors the waypoints.py schema used by the
+// reference pyqt dashboard (frame_id + waypoints + trajectories), extended
+// with an optional `kind` so this GUI's call-zone / waypoint / home
+// distinction survives a save/load round trip.
+struct WaypointDef
+{
+    QString name;   // YAML key / stable id, e.g. "BTN_01", "W-04", "HOME"
+    QString label;  // human-readable display name, e.g. "중앙 대합실"
+    double x {0.0};
+    double y {0.0};
+    double yaw {0.0};
+    WaypointMarkerKind kind {WaypointMarkerKind::Waypoint};
+};
+
+using WaypointMap = QMap<QString, WaypointDef>;
+using TrajectoryMap = QMap<QString, QStringList>; // name -> ordered waypoint names
+
+#endif // WAYPOINTTYPES_H

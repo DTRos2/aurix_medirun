@@ -1,0 +1,71 @@
+<h2 class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">원격 제어 화면: 넓은 카메라와 우측 컬럼에 미니맵·방향패드·프리셋·속도·cmd_vel을 모두 배치</h2>
+<div style="background:#0b1622;border:0.5px solid #1d3348;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px">
+<div style="background:#1a0f18;border:0.5px solid #7c2438;border-radius:8px;padding:9px 12px;display:flex;align-items:center;gap:8px">
+<i class="ti ti-device-gamepad-2" style="font-size:15px;color:#f87171" aria-hidden="true"></i>
+<span style="font-size:12px;color:#f87171;font-weight:500">수동 제어 활성</span>
+<span style="font-size:10px;color:#c78a95">자율 목표 취소됨 · 제어권 qt / admin_lee</span>
+</div>
+<div style="display:flex;gap:10px">
+<div style="flex:1;background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;min-height:340px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#4a6b88">
+<i class="ti ti-video" style="font-size:32px" aria-hidden="true"></i>
+<span style="font-size:11px;color:#7d93aa">카메라 라이브 · 14FPS</span>
+<span style="position:absolute;top:10px;left:12px;font-size:10px;padding:3px 9px;border-radius:8px;background:#332508;color:#fbbf24">ArUco 미검출</span>
+<span style="position:absolute;top:10px;right:12px;font-size:10px;color:#a8bdd2">지연 120ms</span>
+<div style="position:absolute;bottom:10px;left:12px;display:flex;gap:6px">
+<span style="font-size:10px;padding:3px 9px;border-radius:6px;background:#0b1622;border:0.5px solid #2a4a66;color:#4ade80">전방 0.42m</span>
+<span style="font-size:10px;padding:3px 9px;border-radius:6px;background:#0b1622;border:0.5px solid #2a4a66;color:#a8bdd2">좌 0.88m</span>
+<span style="font-size:10px;padding:3px 9px;border-radius:6px;background:#0b1622;border:0.5px solid #2a4a66;color:#a8bdd2">우 1.14m</span>
+</div>
+</div>
+<div style="width:224px;display:flex;flex-direction:column;gap:8px">
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:6px;position:relative">
+<svg viewBox="0 0 208 60" style="width:100%;height:auto" role="img" aria-label="미니맵">
+<rect x="10" y="8" width="188" height="44" fill="none" stroke="#2a4a66" stroke-width="1" stroke-dasharray="4 3"/>
+<circle cx="66" cy="38" r="10" fill="none" stroke="#f87171" stroke-width="1.5" opacity="0.5"/>
+<circle cx="66" cy="38" r="8" fill="#f87171"/><path d="M66 33 L70 41 L66 39 L62 41 Z" fill="#3d1220"/>
+<circle cx="168" cy="22" r="6" fill="none" stroke="#4a6b88" stroke-width="1.3"/><text x="168" y="14" text-anchor="middle" font-size="8" fill="#7d93aa">HOME</text>
+</svg>
+<span style="position:absolute;top:9px;left:12px;font-size:9px;color:#7d93aa">미니맵 · 방향 참조</span>
+</div>
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:9px;display:flex;justify-content:center">
+<div style="display:grid;grid-template-columns:repeat(3,42px);gap:6px;justify-items:center">
+<span></span><div style="width:42px;height:38px;border:0.5px solid #2a4a66;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#e8eef5"><i class="ti ti-arrow-up" style="font-size:17px" aria-hidden="true"></i></div><span></span>
+<div style="width:42px;height:38px;border:0.5px solid #2a4a66;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#e8eef5"><i class="ti ti-rotate-2" style="font-size:17px" aria-hidden="true"></i></div>
+<div style="width:42px;height:38px;background:#7c2438;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fecdd3;font-size:11px;font-weight:500">정지</div>
+<div style="width:42px;height:38px;border:0.5px solid #2a4a66;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#e8eef5"><i class="ti ti-rotate-clockwise-2" style="font-size:17px" aria-hidden="true"></i></div>
+<span></span><div style="width:42px;height:38px;border:0.5px solid #2a4a66;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#e8eef5"><i class="ti ti-arrow-down" style="font-size:17px" aria-hidden="true"></i></div><span></span>
+</div>
+</div>
+<div style="background:#0d1f30;border:0.5px solid #1d3348;border-radius:8px;padding:9px 11px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+<span style="font-size:10px;color:#7d93aa;letter-spacing:0.5px">속도 프리셋</span>
+<span style="font-size:9px;color:#4a6b88">세 방식 값 공유</span>
+</div>
+<div style="display:flex;gap:5px;margin-bottom:11px">
+<div style="flex:1;height:28px;border:0.5px solid #2a4a66;border-radius:6px;display:flex;align-items:center;justify-content:center"><span style="font-size:10px;color:#a8bdd2">미세</span></div>
+<div style="flex:1;height:28px;background:#0e2438;border:0.5px solid #2a5f7d;border-radius:6px;display:flex;align-items:center;justify-content:center"><span style="font-size:10px;color:#39c5e0;font-weight:500">보통</span></div>
+<div style="flex:1;height:28px;border:0.5px solid #2a4a66;border-radius:6px;display:flex;align-items:center;justify-content:center"><span style="font-size:10px;color:#a8bdd2">빠름</span></div>
+</div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+<span style="font-size:10px;color:#a8bdd2"><i class="ti ti-arrow-up" style="font-size:11px;margin-right:3px" aria-hidden="true"></i>직진</span>
+<div style="display:flex;align-items:center;gap:5px"><div style="width:50px;height:22px;border:0.5px solid #2a4a66;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#e8eef5;background:#0b1622">0.12</div><span style="font-size:9px;color:#7d93aa">m/s</span></div>
+</div>
+<div style="height:4px;background:#12283c;border-radius:2px;position:relative;margin-bottom:11px"><div style="width:55%;height:100%;background:#39c5e0;border-radius:2px"></div><div style="position:absolute;top:-4px;left:55%;width:12px;height:12px;border-radius:50%;background:#39c5e0"></div></div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+<span style="font-size:10px;color:#a8bdd2"><i class="ti ti-rotate-clockwise-2" style="font-size:11px;margin-right:3px" aria-hidden="true"></i>회전</span>
+<div style="display:flex;align-items:center;gap:5px"><div style="width:50px;height:22px;border:0.5px solid #2a4a66;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#e8eef5;background:#0b1622">0.80</div><span style="font-size:9px;color:#7d93aa">rad/s</span></div>
+</div>
+<div style="height:4px;background:#12283c;border-radius:2px;position:relative"><div style="width:28%;height:100%;background:#39c5e0;border-radius:2px"></div><div style="position:absolute;top:-4px;left:28%;width:12px;height:12px;border-radius:50%;background:#39c5e0"></div></div>
+</div>
+<div style="background:#0e2438;border:0.5px solid #2a5f7d;border-radius:8px;padding:8px 11px">
+<p style="font-size:9px;color:#39c5e0;margin:0 0 5px;letter-spacing:0.5px">발행 중 · /cmd_vel</p>
+<div style="display:flex;justify-content:space-between;margin-bottom:2px"><span style="font-size:10px;color:#7d93aa">linear.x</span><span style="font-size:11px;color:#e8eef5">0.00 m/s</span></div>
+<div style="display:flex;justify-content:space-between"><span style="font-size:10px;color:#7d93aa">angular.z</span><span style="font-size:11px;color:#e8eef5">0.00 rad/s</span></div>
+</div>
+<div style="display:flex;gap:6px">
+<div style="flex:1;height:32px;border:0.5px solid #2a5f7d;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#39c5e0">도킹 재시도</div>
+<div style="flex:1;height:32px;border:0.5px solid #2a4a66;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#a8bdd2">자율 복귀</div>
+</div>
+</div>
+</div>
+</div>
