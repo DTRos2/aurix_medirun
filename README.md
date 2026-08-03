@@ -83,6 +83,17 @@ ros2 launch medirun_bringup bringup.launch.py
 
 기본 맵은 `maps/last_class_map_modi.yaml`이며, `map:=/path/other.yaml`로 바꿀 수 있다. RViz를 같이 띄우려면 `use_rviz:=true`, 대시보드 없이 Nav2만 띄우려면 `use_gui:=false`를 붙인다.
 
+### 카메라 (Pi에서 별도 실행)
+
+로봇 본체 드라이버와 마찬가지로 Pi 쪽에서 직접 띄운다. 로봇 카메라는 CSI 카메라(IMX219)라 `v4l2_camera`가 아니라 `libcamera` 기반 `camera_ros`(`turtlebot3_bringup` 소유 launch)로 구동하며, `/camera/image_raw`(+ `compressed`)를 발행하면 원격 제어 페이지의 카메라 화면이 이를 구독한다.
+
+```bash
+source /opt/ros/humble/setup.bash
+ros2 launch turtlebot3_bringup camera.launch.py format:=BGR888
+```
+
+> `src/medirun_bringup/launch/camera.launch.py`(`v4l2_camera` 기반)는 UVC 웹캠 등 다른 하드웨어 대비용으로 남겨둔 미사용 파일이며, 실제 로봇에서는 쓰지 않는다.
+
 ### GUI (Qt 대시보드 단독 실행)
 
 `medirun_gui`는 `ament_cmake` 패키지로, 다른 `medirun_*` 패키지와 동일하게 colcon으로 빌드·실행한다. Qt6 6.5 이상이 필요하며, 시스템 Qt 버전이 더 낮다면 `--cmake-args -DCMAKE_PREFIX_PATH=<Qt6.5+ 설치 경로>`로 지정한다.

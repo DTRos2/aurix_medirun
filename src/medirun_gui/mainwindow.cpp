@@ -73,6 +73,11 @@ void MainWindow::setNavigationService(NavigationService *service)
     m_dashboardWidget->setNavigationService(service);
 }
 
+void MainWindow::setCameraFeedProvider(CameraFeedProvider *provider)
+{
+    m_dashboardWidget->setCameraFeedProvider(provider);
+}
+
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
     if (!isActiveWindow() || m_dashboardWidget == nullptr) {

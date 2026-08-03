@@ -16,6 +16,7 @@ class AuthService;
 class DashboardCentralWidget;
 class TelemetryProvider;
 class NavigationService;
+class CameraFeedProvider;
 
 class MainWindow : public QMainWindow
 {
@@ -27,6 +28,7 @@ public:
 
     void setTelemetryProvider(TelemetryProvider *provider);
     void setNavigationService(NavigationService *service);
+    void setCameraFeedProvider(CameraFeedProvider *provider);
 
 signals:
     void logoutRequested();
