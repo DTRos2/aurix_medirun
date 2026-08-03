@@ -1,0 +1,22 @@
+routes:
+  BTN_01:
+    target_waypoint_id: "DEMO_WP_01"
+    frame_id: "map"
+    pose:
+      x: 2.1
+      y: 0.5
+      yaw: 0.0
+  BTN_02:
+    target_waypoint_id: "DEMO_WP_02"
+    frame_id: "map"
+    pose:
+      x: 3.5
+      y: -1.1
+      yaw: 1.57
+  BTN_03:
+    target_waypoint_id: "DEMO_WP_03"
+    frame_id: "map"
+    pose:
+      x: 1.2
+      y: -2.4
+      yaw: 3.14

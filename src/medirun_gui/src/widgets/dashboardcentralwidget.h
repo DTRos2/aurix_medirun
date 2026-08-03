@@ -14,6 +14,7 @@ class SideNav;
 class QStackedWidget;
 class NavigationService;
 class WaypointManagementPage;
+class SlamMappingPage;
 
 class DashboardCentralWidget : public QWidget
 {
@@ -24,6 +25,8 @@ public:
 
     void applySnapshot(const TelemetrySnapshot &snapshot);
     void setNavigationService(NavigationService *service);
+    bool handleManualKeyPress(int key);
+    bool handleManualKeyRelease(int key);
 
 signals:
     void exitRequested();
@@ -44,6 +47,7 @@ private:
     QStackedWidget *m_stack;
     QHash<PageId, int> m_pageIndex;
     WaypointManagementPage *m_waypointPage {nullptr};
+    SlamMappingPage *m_slamMappingPage {nullptr};
 };
 
 #endif // DASHBOARDCENTRALWIDGET_H

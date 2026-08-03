@@ -1,0 +1,12 @@
+/**:
+  ros__parameters:
+    battery_reject_percent: 30.0
+    call_cooldown_sec: 2.0
+    arrival_timeout_sec: 180.0
+    return_delay_after_payload_removed_sec: 15.0
+    payload_removed_confirm_sec: 0.5
+    home_waypoint_id: "HOME"
+    docking_waypoint_id: "DOCK"
+    front_stop_distance_cm: 35
+    rear_stop_distance_cm: 25
+    simulate_navigation: true
