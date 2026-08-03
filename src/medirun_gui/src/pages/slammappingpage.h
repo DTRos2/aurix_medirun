@@ -60,13 +60,14 @@ private:
     void setLiveStatusMessage(const QString &message, const QString &kind = QStringLiteral("metricCaption"));
     QString mapsDirectoryPath() const;
     QString nextMapBasePath() const;
-    bool finalizeSavedMap(const QString &basePath, QString *errorMessage) const;
     bool startMappingProcess();
     void stopMappingProcess();
     void setMappingUiState(MappingUiState state, const QString &detail = QString());
     void refreshSensorStatus();
     void handleSlamProcessStdout();
     void handleSlamProcessStderr();
+    void handleSaveProcessStdout();
+    void handleSaveProcessStderr();
 
 private slots:
     void handleStartMapping();
@@ -108,7 +109,11 @@ private:
     QTimer *m_mapTimeoutTimer;
     std::unique_ptr<SlamMapBridge> m_mapBridge;
     QString m_lastSavedBasePath;
+    QString m_pendingSaveBasePath;
+    QString m_lastSaveStdout;
+    QString m_lastSaveStderr;
     bool m_mappingActive;
+    bool m_stoppingSlamProcess {false};
     bool m_hasReceivedRealMap {false};
     double m_manualLinearX;
     double m_manualAngularZ;

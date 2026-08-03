@@ -5,6 +5,7 @@
 #include <QImage>
 #include <QPixmap>
 #include <QPointF>
+#include <QSize>
 #include <QVector>
 
 class QLabel;
@@ -40,6 +41,7 @@ public:
     void setOverlayChipsVisible(bool visible);
     void setBackgroundImage(const QImage &image);
     void clearBackgroundImage();
+    void setRobotVisible(bool visible);
 
     void setRobotPose(const QPointF &normalizedPos, qreal headingDegrees);
     void setRobotState(RobotMarkerState state);
@@ -62,6 +64,7 @@ private:
     QRectF mapContentArea(const QRectF &area) const;
     QPointF toCanvas(const QPointF &normalized, const QRectF &area) const;
     void layoutOverlay();
+    void updateScaledBackgroundPixmap();
 
     MapViewMode m_mode;
     RobotMarkerState m_robotState;
@@ -70,12 +73,15 @@ private:
     QVector<QPointF> m_solidPath;
     QVector<QPointF> m_dashedPath;
     QColor m_dashedPathColor;
+    QImage m_originalBackgroundImage;
     QPixmap m_backgroundPixmap;
+    QSize m_backgroundPixmapTargetSize;
     QVector<QPointF> m_waypoints;
     QPointF m_destination;
     bool m_hasDestination;
     QPointF m_home;
     bool m_hasHome;
+    bool m_robotVisible;
     bool m_recording;
     bool m_overlayChipsVisible;
 
