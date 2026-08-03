@@ -6,8 +6,8 @@ from launch.actions import (
     DeclareLaunchArgument,
     ExecuteProcess,
     IncludeLaunchDescription,
-    TimerAction,
 )
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -19,6 +19,9 @@ def generate_launch_description():
     opencr_port = LaunchConfiguration("opencr_port")
     baud = LaunchConfiguration("baud")
     audio_sink = LaunchConfiguration("audio_sink")
+    enable_bringup_monitor = LaunchConfiguration("enable_bringup_monitor")
+    enable_audio_output = LaunchConfiguration("enable_audio_output")
+    enable_startup_audio = LaunchConfiguration("enable_startup_audio")
     turtlebot3_bringup = get_package_share_directory("turtlebot3_bringup")
 
     return LaunchDescription([
@@ -39,6 +42,21 @@ def generate_launch_description():
             description="TurtleBot3 OpenCR serial port",
         ),
         DeclareLaunchArgument("baud", default_value="9600"),
+        DeclareLaunchArgument(
+            "enable_bringup_monitor",
+            default_value="true",
+            description="핵심 토픽(/scan, /odom, /tf, /map, /cmd_vel) 모니터 노드 실행 여부",
+        ),
+        DeclareLaunchArgument(
+            "enable_audio_output",
+            default_value="false",
+            description="외부 robot_audio_output 패키지의 audio_output_node 실행 여부",
+        ),
+        DeclareLaunchArgument(
+            "enable_startup_audio",
+            default_value="false",
+            description="브링업 직후 '주행을 시작합니다' 음성을 자동 재생할지 여부",
+        ),
         DeclareLaunchArgument(
             "audio_sink",
             default_value=(
@@ -78,11 +96,19 @@ def generate_launch_description():
             output="screen",
         ),
         Node(
+            package="arduino_bridge",
+            executable="bringup_monitor_node",
+            name="bringup_monitor_node",
+            output="screen",
+            condition=IfCondition(enable_bringup_monitor),
+        ),
+        Node(
             package="robot_audio_output",
             executable="audio_output_node",
             name="audio_output_node",
             additional_env={"PULSE_SINK": audio_sink},
             output="screen",
+            condition=IfCondition(enable_audio_output),
         ),
         ExecuteProcess(
             cmd=[
@@ -90,30 +116,30 @@ def generate_launch_description():
                 "topic",
                 "pub",
                 "--once",
+                "-w",
+                "0",
                 "/arduino/led",
                 "std_msgs/msg/String",
                 "{data: IDLE}",
             ],
             output="screen",
         ),
-        TimerAction(
-            period=2.0,
-            actions=[
-                ExecuteProcess(
-                    cmd=[
-                        "ros2",
-                        "topic",
-                        "pub",
-                        "--once",
-                        "/audio/command",
-                        "robot_audio_interfaces/msg/AudioCommand",
-                        (
-                            "{type: 0, text: '주행을 시작합니다', sound_id: '', "
-                            "volume: 1.0, repeat: 1}"
-                        ),
-                    ],
-                    output="screen",
+        ExecuteProcess(
+            cmd=[
+                "bash",
+                "-lc",
+                (
+                    "for i in $(seq 1 10); do "
+                    "ros2 topic pub --once -w 1 /audio/command "
+                    "robot_audio_interfaces/msg/AudioCommand "
+                    "\"{type: 0, text: '주행을 시작합니다', sound_id: '', volume: 1.0, repeat: 1}\" "
+                    "&& exit 0; "
+                    "sleep 1; "
+                    "done; "
+                    "exit 0"
                 ),
             ],
+            output="screen",
+            condition=IfCondition([enable_audio_output, " and ", enable_startup_audio]),
         ),
     ])
