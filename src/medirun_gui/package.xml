@@ -20,6 +20,7 @@
   <depend>image_transport</depend>
   <exec_depend>compressed_image_transport</exec_depend>
   <depend>tf2</depend>
+  <depend>tf2_msgs</depend>
   <depend>tf2_ros</depend>
   <depend>yaml-cpp</depend>
 

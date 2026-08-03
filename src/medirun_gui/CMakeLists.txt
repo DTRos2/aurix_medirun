@@ -25,6 +25,7 @@ find_package(action_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(tf2 REQUIRED)
+find_package(tf2_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
@@ -136,6 +137,7 @@ ament_target_dependencies(medirun_gui
         cv_bridge
         image_transport
         tf2
+        tf2_msgs
         tf2_ros
 )
 
