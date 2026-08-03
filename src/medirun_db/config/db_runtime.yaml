@@ -1,0 +1,7 @@
+/**:
+  ros__parameters:
+    log_dir: "logs/medirun"
+    retention_days: 7
+    heartbeat_host: "8.8.8.8"
+    heartbeat_port: 53
+    heartbeat_interval_sec: 5.0

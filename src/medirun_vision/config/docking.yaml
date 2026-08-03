@@ -1,0 +1,4 @@
+/**:
+  ros__parameters:
+    simulate_docking: true
+    simulated_docking_sec: 4.0
