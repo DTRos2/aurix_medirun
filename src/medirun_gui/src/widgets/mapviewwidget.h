@@ -2,6 +2,8 @@
 #define MAPVIEWWIDGET_H
 
 #include <QFrame>
+#include <QImage>
+#include <QPixmap>
 #include <QPointF>
 #include <QVector>
 
@@ -35,6 +37,9 @@ public:
     void setMode(MapViewMode mode);
     void setCaption(const QString &text);
     void setRecording(bool recording);
+    void setOverlayChipsVisible(bool visible);
+    void setBackgroundImage(const QImage &image);
+    void clearBackgroundImage();
 
     void setRobotPose(const QPointF &normalizedPos, qreal headingDegrees);
     void setRobotState(RobotMarkerState state);
@@ -54,6 +59,7 @@ protected:
 
 private:
     QRectF drawableArea() const;
+    QRectF mapContentArea(const QRectF &area) const;
     QPointF toCanvas(const QPointF &normalized, const QRectF &area) const;
     void layoutOverlay();
 
@@ -64,12 +70,14 @@ private:
     QVector<QPointF> m_solidPath;
     QVector<QPointF> m_dashedPath;
     QColor m_dashedPathColor;
+    QPixmap m_backgroundPixmap;
     QVector<QPointF> m_waypoints;
     QPointF m_destination;
     bool m_hasDestination;
     QPointF m_home;
     bool m_hasHome;
     bool m_recording;
+    bool m_overlayChipsVisible;
 
     QLabel *m_captionLabel;
     QLabel *m_recBadge;

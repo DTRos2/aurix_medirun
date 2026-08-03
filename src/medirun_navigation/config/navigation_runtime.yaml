@@ -1,0 +1,5 @@
+/**:
+  ros__parameters:
+    simulate_navigation: true
+    simulated_travel_sec: 5.0
+    cruise_linear_x: 0.12

@@ -163,6 +163,26 @@ void paintFaceErrorStopped(QPainter &painter)
     painter.drawLine(symPoint(37.5, 23), symPoint(31.5, 29));
 }
 
+void paintInnerRadarSweep(QPainter &painter, qreal headingDeg, const QColor &color)
+{
+    painter.save();
+    painter.rotate(headingDeg);
+
+    QColor sweepColor = color;
+    sweepColor.setAlphaF(0.55);
+    QPen pen(sweepColor, symLen(1.4));
+    pen.setCapStyle(Qt::RoundCap);
+    painter.setPen(pen);
+    painter.setBrush(Qt::NoBrush);
+
+    const QPointF center = symPoint(28, 26.5);
+    painter.drawLine(center, center + QPointF(0.0, -symLen(7.0)));
+    painter.drawArc(QRectF(symPoint(22, 20.5), QSizeF(symLen(12), symLen(12))), 50 * 16, 80 * 16);
+    painter.drawArc(QRectF(symPoint(19.5, 18.0), QSizeF(symLen(17), symLen(17))), 58 * 16, 64 * 16);
+
+    painter.restore();
+}
+
 // Field-of-view wedge, apex at the marker center, drawn in its own
 // save/rotate block so only the cone (never the bot's face) turns with
 // heading.
@@ -247,6 +267,7 @@ void paintRobotMarker(QPainter &painter, const QPointF &center, RobotMarkerState
     paintStateRing(painter, state);
     paintHeadingCone(painter, headingDeg, color, coneOpacityForState(state), state == RobotMarkerState::Moving);
     paintAurixBotBody(painter, color);
+    paintInnerRadarSweep(painter, headingDeg, color);
 
     switch (state) {
     case RobotMarkerState::Ready:
@@ -314,6 +335,7 @@ MapViewWidget::MapViewWidget(QWidget *parent)
     , m_hasDestination(false)
     , m_hasHome(false)
     , m_recording(false)
+    , m_overlayChipsVisible(true)
 {
     setObjectName(QStringLiteral("mapViewCanvas"));
     setMinimumSize(160, 90);
@@ -341,8 +363,8 @@ void MapViewWidget::setMode(MapViewMode mode)
 {
     m_mode = mode;
     const bool live = (mode == MapViewMode::Live);
-    m_followChip->setVisible(live);
-    m_hidePathChip->setVisible(live);
+    m_followChip->setVisible(live && m_overlayChipsVisible);
+    m_hidePathChip->setVisible(live && m_overlayChipsVisible);
     m_recBadge->setVisible(live && m_recording);
     layoutOverlay();
     update();
@@ -360,6 +382,27 @@ void MapViewWidget::setRecording(bool recording)
     m_recording = recording;
     m_recBadge->setVisible(recording && m_mode == MapViewMode::Live);
     layoutOverlay();
+}
+
+void MapViewWidget::setOverlayChipsVisible(bool visible)
+{
+    m_overlayChipsVisible = visible;
+    const bool live = (m_mode == MapViewMode::Live);
+    m_followChip->setVisible(live && m_overlayChipsVisible);
+    m_hidePathChip->setVisible(live && m_overlayChipsVisible);
+    layoutOverlay();
+}
+
+void MapViewWidget::setBackgroundImage(const QImage &image)
+{
+    m_backgroundPixmap = QPixmap::fromImage(image);
+    update();
+}
+
+void MapViewWidget::clearBackgroundImage()
+{
+    m_backgroundPixmap = QPixmap();
+    update();
 }
 
 void MapViewWidget::setRobotPose(const QPointF &normalizedPos, qreal headingDegrees)
@@ -417,6 +460,18 @@ QRectF MapViewWidget::drawableArea() const
     return QRectF(margin, margin, width() - margin * 2, height() - margin * 2);
 }
 
+QRectF MapViewWidget::mapContentArea(const QRectF &area) const
+{
+    if (m_backgroundPixmap.isNull()) {
+        return area;
+    }
+
+    const QSize scaledSize = m_backgroundPixmap.size().scaled(area.size().toSize(), Qt::KeepAspectRatio);
+    const QPointF topLeft(area.left() + (area.width() - scaledSize.width()) / 2.0,
+                          area.top() + (area.height() - scaledSize.height()) / 2.0);
+    return QRectF(topLeft, QSizeF(scaledSize));
+}
+
 QPointF MapViewWidget::toCanvas(const QPointF &normalized, const QRectF &area) const
 {
     return QPointF(area.left() + normalized.x() * area.width(),
@@ -452,6 +507,13 @@ void MapViewWidget::paintEvent(QPaintEvent *event)
     painter.setRenderHint(QPainter::Antialiasing, true);
 
     const QRectF area = drawableArea();
+    const QRectF contentArea = mapContentArea(area);
+
+    if (!m_backgroundPixmap.isNull()) {
+        const QPixmap scaled = m_backgroundPixmap.scaled(
+            contentArea.size().toSize(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        painter.drawPixmap(contentArea.topLeft(), scaled);
+    }
 
     painter.setPen(QPen(DashboardPalette::BorderGuide, 1, Qt::DashLine));
     painter.setBrush(Qt::NoBrush);
@@ -460,9 +522,9 @@ void MapViewWidget::paintEvent(QPaintEvent *event)
     if (m_mode != MapViewMode::Reference) {
         if (m_solidPath.size() >= 2) {
             QPainterPath path;
-            path.moveTo(toCanvas(m_solidPath.first(), area));
+            path.moveTo(toCanvas(m_solidPath.first(), contentArea));
             for (int i = 1; i < m_solidPath.size(); ++i) {
-                path.lineTo(toCanvas(m_solidPath.at(i), area));
+                path.lineTo(toCanvas(m_solidPath.at(i), contentArea));
             }
             painter.setPen(QPen(DashboardPalette::Cyan, 2.5));
             painter.drawPath(path);
@@ -470,26 +532,26 @@ void MapViewWidget::paintEvent(QPaintEvent *event)
 
         if (m_dashedPath.size() >= 2) {
             QPainterPath path;
-            path.moveTo(toCanvas(m_dashedPath.first(), area));
+            path.moveTo(toCanvas(m_dashedPath.first(), contentArea));
             for (int i = 1; i < m_dashedPath.size(); ++i) {
-                path.lineTo(toCanvas(m_dashedPath.at(i), area));
+                path.lineTo(toCanvas(m_dashedPath.at(i), contentArea));
             }
             painter.setPen(QPen(m_dashedPathColor, 2.5, Qt::DashLine));
             painter.drawPath(path);
         }
 
         for (const QPointF &waypoint : m_waypoints) {
-            paintWaypointMarker(painter, toCanvas(waypoint, area));
+            paintWaypointMarker(painter, toCanvas(waypoint, contentArea));
         }
 
         if (m_hasDestination) {
-            paintDestinationMarker(painter, toCanvas(m_destination, area));
+            paintDestinationMarker(painter, toCanvas(m_destination, contentArea));
         }
     }
 
     if (m_hasHome) {
-        paintHomeMarker(painter, toCanvas(m_home, area));
+        paintHomeMarker(painter, toCanvas(m_home, contentArea));
     }
 
-    paintRobotMarker(painter, toCanvas(m_robotPos, area), m_robotState, m_robotHeadingDeg);
+    paintRobotMarker(painter, toCanvas(m_robotPos, contentArea), m_robotState, m_robotHeadingDeg);
 }
