@@ -4,15 +4,19 @@
 #include "../theme/dashboardpalette.h"
 
 #include <QLabel>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPushButton>
 #include <QRadialGradient>
 #include <QResizeEvent>
 
-#include <cstring>
+#include <algorithm>
+#include <cmath>
 
 namespace {
+
+constexpr qreal kClickVsDragPx = 5.0;
 
 // AURIX mascot marker geometry, ported from
 // docs/dashboard_wireframe/v2/aurix_mascot_marker_states.html (symbol
@@ -329,6 +333,8 @@ void paintHomeMarker(QPainter &painter, const QPointF &center)
 
 MapViewWidget::MapViewWidget(QWidget *parent)
     : QFrame(parent)
+    , m_poseSettingEnabled(false)
+    , m_dragging(false)
     , m_mode(MapViewMode::Live)
     , m_robotState(RobotMarkerState::Ready)
     , m_robotPos(0.2, 0.8)
@@ -353,7 +359,7 @@ MapViewWidget::MapViewWidget(QWidget *parent)
     m_followChip = new QPushButton(QStringLiteral("로봇 따라가기"), this);
     m_followChip->setObjectName(QStringLiteral("mapToggleChip"));
     m_followChip->setCheckable(true);
-    m_followChip->setChecked(true);
+    m_followChip->setChecked(false);
     m_followChip->hide();
 
     m_hidePathChip = new QPushButton(QStringLiteral("경로 숨기기"), this);
@@ -383,6 +389,14 @@ void MapViewWidget::setCaption(const QString &text)
     layoutOverlay();
 }
 
+
+void MapViewWidget::setPoseSettingEnabled(bool enabled)
+{
+    m_poseSettingEnabled = enabled;
+    m_dragging = false;
+    update();
+}
+
 void MapViewWidget::setRecording(bool recording)
 {
     m_recording = recording;
@@ -401,13 +415,11 @@ void MapViewWidget::setOverlayChipsVisible(bool visible)
 
 void MapViewWidget::setBackgroundImage(const QImage &image)
 {
-    if (!m_originalBackgroundImage.isNull()
-        && m_originalBackgroundImage.size() == image.size()
-        && m_originalBackgroundImage.format() == image.format()
-        && m_originalBackgroundImage.sizeInBytes() == image.sizeInBytes()
-        && std::memcmp(m_originalBackgroundImage.constBits(), image.constBits(), image.sizeInBytes()) == 0) {
+    if (image.isNull()) {
+        clearBackgroundImage();
         return;
     }
+
     m_originalBackgroundImage = image;
     m_backgroundPixmap = QPixmap();
     m_backgroundPixmapTargetSize = QSize();
@@ -422,7 +434,6 @@ void MapViewWidget::clearBackgroundImage()
     m_backgroundPixmapTargetSize = QSize();
     update();
 }
-
 void MapViewWidget::setRobotPose(const QPointF &normalizedPos, qreal headingDegrees)
 {
     if (qFuzzyCompare(m_robotPos.x(), normalizedPos.x())
@@ -495,15 +506,19 @@ QRectF MapViewWidget::drawableArea() const
     return QRectF(margin, margin, width() - margin * 2, height() - margin * 2);
 }
 
-QRectF MapViewWidget::mapContentArea(const QRectF &area) const
+QRectF MapViewWidget::imageRect() const
 {
+    const QRectF area = drawableArea();
+
     if (m_originalBackgroundImage.isNull()) {
         return area;
     }
 
-    const QSize scaledSize = m_originalBackgroundImage.size().scaled(area.size().toSize(), Qt::KeepAspectRatio);
-    const QPointF topLeft(area.left() + (area.width() - scaledSize.width()) / 2.0,
-                          area.top() + (area.height() - scaledSize.height()) / 2.0);
+    const QSize scaledSize = m_originalBackgroundImage.size().scaled(
+        area.size().toSize(), Qt::KeepAspectRatio);
+    const QPointF topLeft(
+        area.left() + (area.width() - scaledSize.width()) / 2.0,
+        area.top() + (area.height() - scaledSize.height()) / 2.0);
     return QRectF(topLeft, QSizeF(scaledSize));
 }
 
@@ -511,6 +526,16 @@ QPointF MapViewWidget::toCanvas(const QPointF &normalized, const QRectF &area) c
 {
     return QPointF(area.left() + normalized.x() * area.width(),
                     area.top() + normalized.y() * area.height());
+}
+
+QPointF MapViewWidget::canvasToNormalized(const QPointF &canvasPos, const QRectF &area) const
+{
+    if (area.width() <= 0.0 || area.height() <= 0.0) {
+        return QPointF(0.0, 0.0);
+    }
+    const qreal u = (canvasPos.x() - area.left()) / area.width();
+    const qreal v = (canvasPos.y() - area.top()) / area.height();
+    return QPointF(std::clamp(u, 0.0, 1.0), std::clamp(v, 0.0, 1.0));
 }
 
 void MapViewWidget::layoutOverlay()
@@ -536,7 +561,7 @@ void MapViewWidget::updateScaledBackgroundPixmap()
         return;
     }
 
-    const QSize targetSize = mapContentArea(drawableArea()).size().toSize();
+    const QSize targetSize = imageRect().size().toSize();
     if (!targetSize.isValid()) {
         m_backgroundPixmap = QPixmap();
         m_backgroundPixmapTargetSize = QSize();
@@ -566,6 +591,49 @@ void MapViewWidget::resizeEvent(QResizeEvent *event)
     updateScaledBackgroundPixmap();
 }
 
+void MapViewWidget::mousePressEvent(QMouseEvent *event)
+{
+    if (!m_poseSettingEnabled || event->button() != Qt::LeftButton) {
+        QFrame::mousePressEvent(event);
+        return;
+    }
+
+    m_dragging = true;
+    m_dragStartPos = event->position();
+    m_dragCurrentPos = m_dragStartPos;
+    update();
+}
+
+void MapViewWidget::mouseMoveEvent(QMouseEvent *event)
+{
+    if (!m_dragging) {
+        QFrame::mouseMoveEvent(event);
+        return;
+    }
+    m_dragCurrentPos = event->position();
+    update();
+}
+
+void MapViewWidget::mouseReleaseEvent(QMouseEvent *event)
+{
+    if (!m_dragging || event->button() != Qt::LeftButton) {
+        QFrame::mouseReleaseEvent(event);
+        return;
+    }
+
+    m_dragging = false;
+    const qreal dxPx = m_dragCurrentPos.x() - m_dragStartPos.x();
+    const qreal dyPx = m_dragCurrentPos.y() - m_dragStartPos.y();
+    const qreal dragDistance = std::hypot(dxPx, dyPx);
+
+    // 이미지 행(row) 축은 world y축과 반대 방향 — WaypointMapWidget과 동일 규칙.
+    const double yaw = dragDistance < kClickVsDragPx ? 0.0 : std::atan2(-dyPx, dxPx);
+    const QPointF normalized = canvasToNormalized(m_dragStartPos, imageRect());
+    emit posePickRequested(normalized, yaw);
+
+    update();
+}
+
 void MapViewWidget::paintEvent(QPaintEvent *event)
 {
     QFrame::paintEvent(event);
@@ -575,23 +643,31 @@ void MapViewWidget::paintEvent(QPaintEvent *event)
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
     const QRectF area = drawableArea();
-    const QRectF contentArea = mapContentArea(area);
+    const QRectF imgRect = imageRect();
     updateScaledBackgroundPixmap();
 
     if (!m_backgroundPixmap.isNull()) {
-        painter.drawPixmap(contentArea.topLeft(), m_backgroundPixmap);
+        painter.drawPixmap(imgRect.topLeft(), m_backgroundPixmap);
     }
 
     painter.setPen(QPen(DashboardPalette::BorderGuide, 1, Qt::DashLine));
     painter.setBrush(Qt::NoBrush);
     painter.drawRect(area);
 
+    if (m_dragging) {
+        painter.setPen(QPen(DashboardPalette::Cyan, 1, Qt::DashLine));
+        painter.drawLine(m_dragStartPos, m_dragCurrentPos);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(DashboardPalette::Cyan);
+        painter.drawEllipse(m_dragStartPos, 3, 3);
+    }
+
     if (m_mode != MapViewMode::Reference) {
         if (m_solidPath.size() >= 2) {
             QPainterPath path;
-            path.moveTo(toCanvas(m_solidPath.first(), contentArea));
+            path.moveTo(toCanvas(m_solidPath.first(), imgRect));
             for (int i = 1; i < m_solidPath.size(); ++i) {
-                path.lineTo(toCanvas(m_solidPath.at(i), contentArea));
+                path.lineTo(toCanvas(m_solidPath.at(i), imgRect));
             }
             painter.setPen(QPen(DashboardPalette::Cyan, 2.5));
             painter.drawPath(path);
@@ -599,26 +675,28 @@ void MapViewWidget::paintEvent(QPaintEvent *event)
 
         if (m_dashedPath.size() >= 2) {
             QPainterPath path;
-            path.moveTo(toCanvas(m_dashedPath.first(), contentArea));
+            path.moveTo(toCanvas(m_dashedPath.first(), imgRect));
             for (int i = 1; i < m_dashedPath.size(); ++i) {
-                path.lineTo(toCanvas(m_dashedPath.at(i), contentArea));
+                path.lineTo(toCanvas(m_dashedPath.at(i), imgRect));
             }
             painter.setPen(QPen(m_dashedPathColor, 2.5, Qt::DashLine));
             painter.drawPath(path);
         }
 
         for (const QPointF &waypoint : m_waypoints) {
-            paintWaypointMarker(painter, toCanvas(waypoint, contentArea));
+            paintWaypointMarker(painter, toCanvas(waypoint, imgRect));
         }
 
         if (m_hasDestination) {
-            paintDestinationMarker(painter, toCanvas(m_destination, contentArea));
+            paintDestinationMarker(painter, toCanvas(m_destination, imgRect));
         }
     }
 
     if (m_hasHome) {
-        paintHomeMarker(painter, toCanvas(m_home, contentArea));
+        paintHomeMarker(painter, toCanvas(m_home, imgRect));
     }
 
-    paintRobotMarker(painter, toCanvas(m_robotPos, contentArea), m_robotState, m_robotHeadingDeg);
+    if (m_robotVisible) {
+        paintRobotMarker(painter, toCanvas(m_robotPos, imgRect), m_robotState, m_robotHeadingDeg);
+    }
 }

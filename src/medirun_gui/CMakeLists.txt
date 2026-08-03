@@ -22,6 +22,8 @@ find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(action_msgs REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(image_transport REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
@@ -50,11 +52,16 @@ qt_add_executable(medirun_gui
     src/services/authservice.h
     src/services/localauthservice.cpp
     src/services/localauthservice.h
+    src/services/camerafeedprovider.h
     src/services/eventrepository.h
     src/services/mapfile.cpp
     src/services/mapfile.h
+    src/services/mockcamerafeedprovider.cpp
+    src/services/mockcamerafeedprovider.h
     src/services/mocktelemetryprovider.cpp
     src/services/mocktelemetryprovider.h
+    src/services/roscamerafeedprovider.cpp
+    src/services/roscamerafeedprovider.h
     src/services/rosbatterytelemetryprovider.cpp
     src/services/rosbatterytelemetryprovider.h
     src/services/telemetryprovider.h
@@ -127,6 +134,8 @@ ament_target_dependencies(medirun_gui
         nav_msgs
         sensor_msgs
         action_msgs
+        cv_bridge
+        image_transport
         tf2
         tf2_msgs
         tf2_ros

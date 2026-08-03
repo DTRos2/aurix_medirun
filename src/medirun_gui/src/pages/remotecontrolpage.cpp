@@ -1,17 +1,25 @@
 #include "remotecontrolpage.h"
 
+#include "../ros/navigationservice.h"
+#include "../services/camerafeedprovider.h"
+#include "../services/mapfile.h"
 #include "../theme/dashboardpalette.h"
 #include "../widgets/badgelabel.h"
 #include "../widgets/mapviewwidget.h"
 #include "../widgets/proportionalbar.h"
 
+#include <QFileDialog>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMessageBox>
+#include <QPixmap>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QSizePolicy>
 #include <QVBoxLayout>
+#include <QtMath>
 
 namespace {
 QLabel *makeLabel(const QString &text, const QString &objectName = {})
@@ -78,6 +86,10 @@ RemoteControlPage::RemoteControlPage(QWidget *parent)
     swapButton->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     rightCol->addWidget(swapButton);
 
+    auto *loadMapButton = buildLoadMapButton();
+    loadMapButton->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    rightCol->addWidget(loadMapButton);
+
     m_cameraPanel = buildCameraPanel();
     m_minimapPanel = buildMinimapPanel();
     m_bigSlot->addWidget(m_cameraPanel);
@@ -115,6 +127,87 @@ RemoteControlPage::RemoteControlPage(QWidget *parent)
     bodyRow->addWidget(rightColWidget);
 
     layout->addLayout(bodyRow, 1);
+
+    // 기본 큰 화면은 카메라가 아니라 지도 — 진입하자마자 로봇 위치/지도 정렬부터
+    // 확인할 수 있도록 한다. swapCameraAndMap()이 이미 큰/작은 슬롯 크기·오버레이
+    // 가시성을 전부 처리하므로 그대로 재사용.
+    swapCameraAndMap();
+}
+
+void RemoteControlPage::setCameraFeedProvider(CameraFeedProvider *provider)
+{
+    if (m_cameraFeedProvider != nullptr) {
+        disconnect(m_cameraFeedProvider, nullptr, this, nullptr);
+    }
+
+    m_cameraFeedProvider = provider;
+    m_lastCameraFrame = QImage();
+    applyCameraConnectionState(false);
+
+    if (m_cameraFeedProvider == nullptr) {
+        return;
+    }
+
+    connect(m_cameraFeedProvider, &CameraFeedProvider::frameReady, this, &RemoteControlPage::applyCameraFrame);
+    connect(m_cameraFeedProvider, &CameraFeedProvider::connectionStateChanged, this, &RemoteControlPage::applyCameraConnectionState);
+}
+
+void RemoteControlPage::setNavigationService(NavigationService *service)
+{
+    if (m_navigationService != nullptr) {
+        disconnect(m_navigationService, nullptr, this, nullptr);
+    }
+
+    m_navigationService = service;
+    updateInitialPoseButtonEnabled();
+
+    if (m_navigationService == nullptr) {
+        return;
+    }
+
+    connect(m_navigationService, &NavigationService::amclPoseUpdated, this, &RemoteControlPage::handleAmclPoseUpdated);
+}
+
+void RemoteControlPage::handleAmclPoseUpdated(double x, double y, double yawRad)
+{
+    if (!m_mapIsMain || !m_currentMapMeta.valid) {
+        return;
+    }
+
+    m_mapView->setRobotPose(worldToNormalized(x, y), qRadiansToDegrees(yawRad));
+    m_mapView->setRobotState(RobotMarkerState::Ready);
+}
+
+void RemoteControlPage::applyCameraFrame(const QImage &frame)
+{
+    if (m_cameraFrameLabel == nullptr) {
+        return;
+    }
+
+    m_lastCameraFrame = frame;
+    m_cameraFrameLabel->setText(QString());
+    m_cameraFrameLabel->setPixmap(
+        QPixmap::fromImage(frame).scaled(m_cameraFrameLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}
+
+void RemoteControlPage::applyCameraConnectionState(bool connected)
+{
+    if (m_cameraFrameLabel == nullptr || connected) {
+        return;
+    }
+
+    m_lastCameraFrame = QImage();
+    m_cameraFrameLabel->setPixmap(QPixmap());
+    m_cameraFrameLabel->setText(QStringLiteral("🎥  카메라 연결 대기"));
+}
+
+void RemoteControlPage::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+
+    if (!m_lastCameraFrame.isNull()) {
+        applyCameraFrame(m_lastCameraFrame);
+    }
 }
 
 QWidget *RemoteControlPage::buildManualControlBanner()
@@ -143,20 +236,24 @@ QWidget *RemoteControlPage::buildCameraPanel()
     auto *layout = new QVBoxLayout(panel);
     layout->setContentsMargins(11, 9, 11, 9);
 
-    auto *topRow = new QHBoxLayout;
+    m_cameraTopRow = new QWidget(panel);
+    auto *topRow = new QHBoxLayout(m_cameraTopRow);
+    topRow->setContentsMargins(0, 0, 0, 0);
     topRow->addWidget(makeBadgeLabel(QStringLiteral("ArUco 미검출"), QStringLiteral("amber"), panel));
     topRow->addStretch();
     topRow->addWidget(makeLabel(QStringLiteral("지연 120ms"), QStringLiteral("metricCaption")));
-    layout->addLayout(topRow);
+    layout->addWidget(m_cameraTopRow);
 
-    layout->addStretch();
-    auto *centerLabel = makeLabel(QStringLiteral("🎥  카메라 라이브 · 14FPS"));
-    centerLabel->setAlignment(Qt::AlignCenter);
-    centerLabel->setStyleSheet(QStringLiteral("color: %1;").arg(DashboardPalette::TextTertiary.name()));
-    layout->addWidget(centerLabel);
-    layout->addStretch();
+    m_cameraFrameLabel = makeLabel(QStringLiteral("🎥  카메라 연결 대기"));
+    m_cameraFrameLabel->setAlignment(Qt::AlignCenter);
+    m_cameraFrameLabel->setStyleSheet(QStringLiteral("color: %1;").arg(DashboardPalette::TextTertiary.name()));
+    m_cameraFrameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_cameraFrameLabel->setMinimumSize(1, 1);
+    layout->addWidget(m_cameraFrameLabel, 1);
 
-    auto *bottomRow = new QHBoxLayout;
+    m_cameraBottomRow = new QWidget(panel);
+    auto *bottomRow = new QHBoxLayout(m_cameraBottomRow);
+    bottomRow->setContentsMargins(0, 0, 0, 0);
     bottomRow->addStretch();
     auto *front = makeLabel(QStringLiteral("전방 0.42m"));
     front->setStyleSheet(QStringLiteral("color: %1; font-size: 10px; padding: 3px 9px; border: 1px solid #2a4a66; border-radius: 6px;").arg(DashboardPalette::Green.name()));
@@ -168,7 +265,7 @@ QWidget *RemoteControlPage::buildCameraPanel()
     right->setStyleSheet(QStringLiteral("color: %1; font-size: 10px; padding: 3px 9px; border: 1px solid #2a4a66; border-radius: 6px;").arg(DashboardPalette::TextSecondary.name()));
     bottomRow->addWidget(right);
     bottomRow->addStretch();
-    layout->addLayout(bottomRow);
+    layout->addWidget(m_cameraBottomRow);
     return panel;
 }
 
@@ -180,6 +277,13 @@ QWidget *RemoteControlPage::buildMinimapPanel()
     panel->setStyleSheet(QStringLiteral("background-color: %1; border: none; border-radius: 8px;").arg(DashboardPalette::PanelBg.name()));
     auto *layout = new QVBoxLayout(panel);
     layout->setContentsMargins(6, 6, 6, 6);
+    layout->setSpacing(6);
+
+    // 미니맵(작은) 상태에서는 실시간 위치/초기 위치 설정이 의미 없고 클릭
+    // 정밀도도 떨어지므로, 큰 화면(m_mapIsMain)일 때만 보이게 한다 —
+    // swapCameraAndMap()에서 visibility를 토글.
+    m_mapPoseHintBanner = buildPoseHintBanner();
+    layout->addWidget(m_mapPoseHintBanner);
 
     m_mapView = new MapViewWidget(panel);
     // Fixed height only; width follows the panel so the dashed extent rect
@@ -192,7 +296,36 @@ QWidget *RemoteControlPage::buildMinimapPanel()
     m_mapView->setRobotPose(QPointF(0.35, 0.65), 0.0);
     m_mapView->setRobotState(RobotMarkerState::Warning);
     m_mapView->setHome(QPointF(0.78, 0.3));
-    layout->addWidget(m_mapView);
+    connect(m_mapView, &MapViewWidget::posePickRequested, this, &RemoteControlPage::handlePosePickRequested);
+    layout->addWidget(m_mapView, 1);
+
+    m_setInitialPoseButton = new QPushButton(QStringLiteral("📍  초기 위치 설정"));
+    m_setInitialPoseButton->setObjectName(QStringLiteral("ghostChipButton"));
+    m_setInitialPoseButton->setCheckable(true);
+    m_setInitialPoseButton->setEnabled(false);
+    m_setInitialPoseButton->setToolTip(
+        QStringLiteral("RViz의 2D Pose Estimate와 동일 · 켠 뒤 지도를 클릭+드래그하면 그 위치·방향으로 AMCL 초기 위치를 설정합니다"));
+    connect(m_setInitialPoseButton, &QPushButton::toggled, this, &RemoteControlPage::handleSetInitialPoseToggled);
+    layout->addWidget(m_setInitialPoseButton);
+
+    return panel;
+}
+
+QWidget *RemoteControlPage::buildPoseHintBanner()
+{
+    auto *panel = panelFrame(QStringLiteral("warningBanner"));
+    auto *layout = new QHBoxLayout(panel);
+    layout->setContentsMargins(9, 6, 9, 6);
+    layout->setSpacing(6);
+
+    auto *icon = makeLabel(QStringLiteral("⚠"));
+    icon->setStyleSheet(QStringLiteral("color: %1; font-size: 11px;").arg(DashboardPalette::Amber.name()));
+    layout->addWidget(icon);
+
+    auto *text = makeLabel(QStringLiteral("로봇의 실제 위치와 지도 위 마커가 일치하는지 확인하세요 · 다르면 초기 위치 설정"));
+    text->setStyleSheet(QStringLiteral("color: %1; font-size: 10px;").arg(DashboardPalette::Amber.name()));
+    layout->addWidget(text, 1);
+
     return panel;
 }
 
@@ -202,6 +335,79 @@ QWidget *RemoteControlPage::buildViewSwapButton()
     button->setObjectName(QStringLiteral("ghostChipButton"));
     connect(button, &QPushButton::clicked, this, &RemoteControlPage::swapCameraAndMap);
     return button;
+}
+
+QWidget *RemoteControlPage::buildLoadMapButton()
+{
+    auto *button = new QPushButton(QStringLiteral("🗂  지도 불러오기"));
+    button->setObjectName(QStringLiteral("ghostChipButton"));
+    connect(button, &QPushButton::clicked, this, &RemoteControlPage::handleLoadMap);
+    return button;
+}
+
+void RemoteControlPage::handleLoadMap()
+{
+    const QString path = QFileDialog::getOpenFileName(
+        this, QStringLiteral("지도 불러오기 (nav2 map_server YAML)"), QString(),
+        QStringLiteral("맵 YAML (*.yaml *.yml)"));
+    if (path.isEmpty()) {
+        return;
+    }
+
+    MapMeta meta;
+    QString errorMessage;
+    if (!loadMapYaml(path, meta, errorMessage)) {
+        QMessageBox::warning(this, QStringLiteral("지도 불러오기 실패"), errorMessage);
+        return;
+    }
+
+    m_currentMapMeta = meta;
+    m_mapView->setBackgroundImage(meta.image);
+    updateInitialPoseButtonEnabled();
+
+    if (!errorMessage.isEmpty()) {
+        // 회전(origin theta) 경고 등 — 실패는 아니므로 로드는 이미 적용된 상태.
+        QMessageBox::information(this, QStringLiteral("지도 불러오기"), errorMessage);
+    }
+}
+
+void RemoteControlPage::handleSetInitialPoseToggled(bool checked)
+{
+    m_settingInitialPose = checked;
+    m_mapView->setPoseSettingEnabled(checked);
+}
+
+void RemoteControlPage::handlePosePickRequested(const QPointF &normalizedPos, double yawRadians)
+{
+    if (!m_settingInitialPose || m_navigationService == nullptr || !m_currentMapMeta.valid) {
+        return;
+    }
+
+    // 한 번 찍으면 바로 꺼짐 — 웨이포인트 페이지의 "초기 위치 설정"과 동일한 UX.
+    m_setInitialPoseButton->setChecked(false);
+
+    const QPointF world = normalizedToWorld(normalizedPos);
+    m_navigationService->publishInitialPose(world.x(), world.y(), yawRadians, QStringLiteral("map"));
+}
+
+QPointF RemoteControlPage::worldToNormalized(double x, double y) const
+{
+    const QPointF pixel = worldToPixel(QPointF(x, y), m_currentMapMeta);
+    return QPointF(pixel.x() / m_currentMapMeta.width, pixel.y() / m_currentMapMeta.height);
+}
+
+QPointF RemoteControlPage::normalizedToWorld(const QPointF &normalized) const
+{
+    const QPointF pixel(normalized.x() * m_currentMapMeta.width, normalized.y() * m_currentMapMeta.height);
+    return pixelToWorld(pixel, m_currentMapMeta);
+}
+
+void RemoteControlPage::updateInitialPoseButtonEnabled()
+{
+    if (m_setInitialPoseButton == nullptr) {
+        return;
+    }
+    m_setInitialPoseButton->setEnabled(m_navigationService != nullptr && m_currentMapMeta.valid);
 }
 
 void RemoteControlPage::swapCameraAndMap()
@@ -226,8 +432,16 @@ void RemoteControlPage::swapCameraAndMap()
         m_minimapPanel->setMaximumHeight(QWIDGETSIZE_MAX);
         m_minimapPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         m_cameraPanel->setMinimumHeight(0);
-        m_cameraPanel->setFixedHeight(100);
+        // 배지/거리칩 오버레이를 감춰서 축소된 높이 대부분을 실제 영상에 내준다
+        // (100px로는 오버레이만 겨우 보이고 영상은 안 보이던 문제 수정).
+        m_cameraTopRow->setVisible(false);
+        m_cameraBottomRow->setVisible(false);
+        m_cameraPanel->setFixedHeight(150);
         m_cameraPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+
+        // 지도가 큰 화면이 됐을 때만 실시간 위치/초기 위치 설정 UI를 노출한다.
+        m_mapPoseHintBanner->setVisible(true);
+        m_setInitialPoseButton->setVisible(true);
     } else {
         m_mapView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         m_mapView->setMinimumWidth(0);
@@ -236,9 +450,17 @@ void RemoteControlPage::swapCameraAndMap()
         m_minimapPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
         m_minimapPanel->setMinimumHeight(0);
         m_minimapPanel->setMaximumHeight(QWIDGETSIZE_MAX);
+        m_cameraTopRow->setVisible(true);
+        m_cameraBottomRow->setVisible(true);
         m_cameraPanel->setMaximumHeight(QWIDGETSIZE_MAX);
         m_cameraPanel->setMinimumHeight(230);
         m_cameraPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+        // 미니맵으로 축소되면 초기 위치 설정 제스처도 같이 꺼서, 숨겨진 상태에서
+        // 지도 클릭 좌표가 엉뚱하게 해석되는 일이 없도록 한다.
+        m_mapPoseHintBanner->setVisible(false);
+        m_setInitialPoseButton->setChecked(false);
+        m_setInitialPoseButton->setVisible(false);
     }
 }
 

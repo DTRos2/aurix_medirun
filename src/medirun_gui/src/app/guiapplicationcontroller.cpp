@@ -5,7 +5,9 @@
 #include "../ros/nav2navigationservice.h"
 #include "../services/authservice.h"
 #include "../services/localauthservice.h"
+#include "../services/mockcamerafeedprovider.h"
 #include "../services/mocktelemetryprovider.h"
+#include "../services/roscamerafeedprovider.h"
 #include "../services/rosbatterytelemetryprovider.h"
 #include "../widgets/splashscreenwidget.h"
 
@@ -19,6 +21,7 @@ GuiApplicationController::GuiApplicationController(QApplication &application, QO
     , m_authService(std::make_unique<LocalAuthService>())
     , m_navigationService(std::make_unique<Nav2NavigationService>())
     , m_telemetryProvider(nullptr)
+    , m_cameraFeedProvider(nullptr)
     , m_splashScreen(nullptr)
     , m_loginDialog(nullptr)
     , m_mainWindow(nullptr)
@@ -75,6 +78,13 @@ void GuiApplicationController::createMainWindow()
     }
     m_mainWindow->setTelemetryProvider(m_telemetryProvider);
     m_mainWindow->setNavigationService(m_navigationService.get());
+
+    if (mockModeEnabled()) {
+        m_cameraFeedProvider = new MockCameraFeedProvider(m_mainWindow);
+    } else {
+        m_cameraFeedProvider = new RosCameraFeedProvider(m_mainWindow);
+    }
+    m_mainWindow->setCameraFeedProvider(m_cameraFeedProvider);
     QObject::connect(m_mainWindow, &MainWindow::logoutRequested, this, &GuiApplicationController::handleLogout);
 }
 
@@ -84,6 +94,9 @@ void GuiApplicationController::presentMainWindow()
     m_mainWindow->showMaximized();
     if (m_telemetryProvider != nullptr) {
         m_telemetryProvider->start();
+    }
+    if (m_cameraFeedProvider != nullptr) {
+        m_cameraFeedProvider->start();
     }
 }
 
@@ -118,6 +131,7 @@ void GuiApplicationController::handleLogout()
     }
 
     m_telemetryProvider = nullptr;
+    m_cameraFeedProvider = nullptr;
     showLoginPage();
 }
 

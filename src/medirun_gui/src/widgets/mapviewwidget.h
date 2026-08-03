@@ -10,6 +10,7 @@
 
 class QLabel;
 class QPushButton;
+class QMouseEvent;
 
 enum class MapViewMode {
     Live,
@@ -39,6 +40,9 @@ public:
     void setCaption(const QString &text);
     void setRecording(bool recording);
     void setOverlayChipsVisible(bool visible);
+
+    // nav2 map_server YAML에서 불러온 배경 지도 이미지. 없으면(비어있으면)
+    // 지금까지처럼 점선 테두리만 있는 빈 캔버스로 그려진다.
     void setBackgroundImage(const QImage &image);
     void clearBackgroundImage();
     void setRobotVisible(bool visible);
@@ -55,17 +59,37 @@ public:
     void setDestination(const QPointF &normalizedPos, bool visible = true);
     void setHome(const QPointF &normalizedPos, bool visible = true);
 
+    // 지도 클릭+드래그로 초기 위치(AMCL 2D Pose Estimate)를 지정하는 제스처를
+    // 켠다/끈다. 기본은 꺼짐 — LiveControlPage/RecordsPlaybackPage처럼 보기
+    // 전용으로 쓰는 페이지는 켤 필요가 없어서 옵트인으로 둔다.
+    void setPoseSettingEnabled(bool enabled);
+
+signals:
+    void posePickRequested(const QPointF &normalizedPos, double yawRadians);
+
 protected:
     void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
 
 private:
     QRectF drawableArea() const;
-    QRectF mapContentArea(const QRectF &area) const;
+    // 배경 이미지가 있으면 drawableArea() 안에서 종횡비 유지로 축소/중앙정렬된
+    // 사각형, 없으면 drawableArea()와 동일. 마커/경로/로봇 위치는 전부 이
+    // 사각형 기준으로 그려진다 (WaypointMapWidget과 동일한 패턴).
+    QRectF imageRect() const;
     QPointF toCanvas(const QPointF &normalized, const QRectF &area) const;
+    QPointF canvasToNormalized(const QPointF &canvasPos, const QRectF &area) const;
     void layoutOverlay();
     void updateScaledBackgroundPixmap();
 
+    QPixmap m_backgroundPixmap;
+    bool m_poseSettingEnabled;
+    bool m_dragging;
+    QPointF m_dragStartPos;
+    QPointF m_dragCurrentPos;
     MapViewMode m_mode;
     RobotMarkerState m_robotState;
     QPointF m_robotPos;
@@ -73,9 +97,11 @@ private:
     QVector<QPointF> m_solidPath;
     QVector<QPointF> m_dashedPath;
     QColor m_dashedPathColor;
+
     QImage m_originalBackgroundImage;
     QPixmap m_backgroundPixmap;
     QSize m_backgroundPixmapTargetSize;
+
     QVector<QPointF> m_waypoints;
     QPointF m_destination;
     bool m_hasDestination;

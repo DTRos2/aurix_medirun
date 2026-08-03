@@ -14,6 +14,8 @@ class SideNav;
 class QStackedWidget;
 class NavigationService;
 class WaypointManagementPage;
+class RemoteControlPage;
+class CameraFeedProvider;
 class SlamMappingPage;
 
 class DashboardCentralWidget : public QWidget
@@ -25,6 +27,7 @@ public:
 
     void applySnapshot(const TelemetrySnapshot &snapshot);
     void setNavigationService(NavigationService *service);
+    void setCameraFeedProvider(CameraFeedProvider *provider);
     bool handleManualKeyPress(int key);
     bool handleManualKeyRelease(int key);
 
@@ -47,6 +50,7 @@ private:
     QStackedWidget *m_stack;
     QHash<PageId, int> m_pageIndex;
     WaypointManagementPage *m_waypointPage {nullptr};
+    RemoteControlPage *m_remoteControlPage {nullptr};
     SlamMappingPage *m_slamMappingPage {nullptr};
 };
 
