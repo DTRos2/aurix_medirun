@@ -73,7 +73,8 @@ DashboardCentralWidget::DashboardCentralWidget(const AppSession &session, AuthSe
     addPage(PageId::RemoteControl, m_remoteControlPage);
 
     if (m_session.role == UserRole::Admin) {
-        addPage(PageId::SlamMapping, new SlamMappingPage(m_stack));
+        m_slamMappingPage = new SlamMappingPage(m_stack);
+        addPage(PageId::SlamMapping, m_slamMappingPage);
         m_waypointPage = new WaypointManagementPage(m_stack);
         addPage(PageId::WaypointManagement, m_waypointPage);
         addPage(PageId::UserManagement, new UserManagementPage(m_authService, m_stack));
@@ -103,6 +104,22 @@ void DashboardCentralWidget::setCameraFeedProvider(CameraFeedProvider *provider)
     if (m_remoteControlPage != nullptr) {
         m_remoteControlPage->setCameraFeedProvider(provider);
     }
+}
+
+bool DashboardCentralWidget::handleManualKeyPress(int key)
+{
+    if (m_slamMappingPage != nullptr && m_stack->currentWidget() == m_slamMappingPage) {
+        return m_slamMappingPage->handleManualKeyPress(key);
+    }
+    return false;
+}
+
+bool DashboardCentralWidget::handleManualKeyRelease(int key)
+{
+    if (m_slamMappingPage != nullptr && m_stack->currentWidget() == m_slamMappingPage) {
+        return m_slamMappingPage->handleManualKeyRelease(key);
+    }
+    return false;
 }
 
 void DashboardCentralWidget::addPage(PageId id, QWidget *page)

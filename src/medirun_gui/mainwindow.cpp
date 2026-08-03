@@ -5,9 +5,27 @@
 #include "src/windows/mainwindowstyler.h"
 #include "ui_mainwindow.h"
 
+#include <QApplication>
+#include <QEvent>
 #include <QKeyEvent>
 #include <QMessageBox>
 #include <QVBoxLayout>
+
+namespace {
+bool isManualControlKey(int key)
+{
+    switch (key) {
+    case Qt::Key_Up:
+    case Qt::Key_Down:
+    case Qt::Key_Left:
+    case Qt::Key_Right:
+    case Qt::Key_Space:
+        return true;
+    default:
+        return false;
+    }
+}
+} // namespace
 
 MainWindow::MainWindow(const AppSession &session, AuthService &authService, QWidget *parent)
     : QMainWindow(parent)
@@ -31,10 +49,13 @@ MainWindow::MainWindow(const AppSession &session, AuthService &authService, QWid
     connect(m_dashboardWidget, &DashboardCentralWidget::missionCancelRequested, this, &MainWindow::handleMissionCancel);
     connect(m_dashboardWidget, &DashboardCentralWidget::returnHomeRequested, this, &MainWindow::handleReturnHome);
     connect(m_dashboardWidget, &DashboardCentralWidget::logoutRequested, this, &MainWindow::handleLogout);
+
+    qApp->installEventFilter(this);
 }
 
 MainWindow::~MainWindow()
 {
+    qApp->removeEventFilter(this);
     delete ui;
 }
 
@@ -57,6 +78,32 @@ void MainWindow::setCameraFeedProvider(CameraFeedProvider *provider)
     m_dashboardWidget->setCameraFeedProvider(provider);
 }
 
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (!isActiveWindow() || m_dashboardWidget == nullptr) {
+        return QMainWindow::eventFilter(watched, event);
+    }
+
+    if (event->type() != QEvent::KeyPress && event->type() != QEvent::KeyRelease) {
+        return QMainWindow::eventFilter(watched, event);
+    }
+
+    auto *keyEvent = static_cast<QKeyEvent *>(event);
+    if (keyEvent->isAutoRepeat() && isManualControlKey(keyEvent->key())) {
+        return true;
+    }
+
+    const bool handled = (event->type() == QEvent::KeyPress)
+        ? m_dashboardWidget->handleManualKeyPress(keyEvent->key())
+        : m_dashboardWidget->handleManualKeyRelease(keyEvent->key());
+    if (handled) {
+        event->accept();
+        return true;
+    }
+
+    return QMainWindow::eventFilter(watched, event);
+}
+
 void MainWindow::keyPressEvent(QKeyEvent *event)
 {
     if (event->key() == Qt::Key_Escape) {
@@ -64,7 +111,24 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
         return;
     }
 
+    if (!event->isAutoRepeat() && m_dashboardWidget != nullptr
+        && m_dashboardWidget->handleManualKeyPress(event->key())) {
+        event->accept();
+        return;
+    }
+
     QMainWindow::keyPressEvent(event);
+}
+
+void MainWindow::keyReleaseEvent(QKeyEvent *event)
+{
+    if (!event->isAutoRepeat() && m_dashboardWidget != nullptr
+        && m_dashboardWidget->handleManualKeyRelease(event->key())) {
+        event->accept();
+        return;
+    }
+
+    QMainWindow::keyReleaseEvent(event);
 }
 
 void MainWindow::handleDashboardExit()

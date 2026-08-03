@@ -169,6 +169,26 @@ void paintFaceErrorStopped(QPainter &painter)
     painter.drawLine(symPoint(37.5, 23), symPoint(31.5, 29));
 }
 
+void paintInnerRadarSweep(QPainter &painter, qreal headingDeg, const QColor &color)
+{
+    painter.save();
+    painter.rotate(headingDeg);
+
+    QColor sweepColor = color;
+    sweepColor.setAlphaF(0.55);
+    QPen pen(sweepColor, symLen(1.4));
+    pen.setCapStyle(Qt::RoundCap);
+    painter.setPen(pen);
+    painter.setBrush(Qt::NoBrush);
+
+    const QPointF center = symPoint(28, 26.5);
+    painter.drawLine(center, center + QPointF(0.0, -symLen(7.0)));
+    painter.drawArc(QRectF(symPoint(22, 20.5), QSizeF(symLen(12), symLen(12))), 50 * 16, 80 * 16);
+    painter.drawArc(QRectF(symPoint(19.5, 18.0), QSizeF(symLen(17), symLen(17))), 58 * 16, 64 * 16);
+
+    painter.restore();
+}
+
 // Field-of-view wedge, apex at the marker center, drawn in its own
 // save/rotate block so only the cone (never the bot's face) turns with
 // heading.
@@ -253,6 +273,7 @@ void paintRobotMarker(QPainter &painter, const QPointF &center, RobotMarkerState
     paintStateRing(painter, state);
     paintHeadingCone(painter, headingDeg, color, coneOpacityForState(state), state == RobotMarkerState::Moving);
     paintAurixBotBody(painter, color);
+    paintInnerRadarSweep(painter, headingDeg, color);
 
     switch (state) {
     case RobotMarkerState::Ready:
@@ -322,6 +343,7 @@ MapViewWidget::MapViewWidget(QWidget *parent)
     , m_hasDestination(false)
     , m_hasHome(false)
     , m_recording(false)
+    , m_overlayChipsVisible(true)
 {
     setObjectName(QStringLiteral("mapViewCanvas"));
     setMinimumSize(160, 90);
@@ -349,8 +371,8 @@ void MapViewWidget::setMode(MapViewMode mode)
 {
     m_mode = mode;
     const bool live = (mode == MapViewMode::Live);
-    m_followChip->setVisible(live);
-    m_hidePathChip->setVisible(live);
+    m_followChip->setVisible(live && m_overlayChipsVisible);
+    m_hidePathChip->setVisible(live && m_overlayChipsVisible);
     m_recBadge->setVisible(live && m_recording);
     layoutOverlay();
     update();
@@ -386,6 +408,15 @@ void MapViewWidget::setRecording(bool recording)
 {
     m_recording = recording;
     m_recBadge->setVisible(recording && m_mode == MapViewMode::Live);
+    layoutOverlay();
+}
+
+void MapViewWidget::setOverlayChipsVisible(bool visible)
+{
+    m_overlayChipsVisible = visible;
+    const bool live = (m_mode == MapViewMode::Live);
+    m_followChip->setVisible(live && m_overlayChipsVisible);
+    m_hidePathChip->setVisible(live && m_overlayChipsVisible);
     layoutOverlay();
 }
 
