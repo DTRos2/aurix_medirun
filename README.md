@@ -21,7 +21,7 @@ Clone 직후 한 번만 실행해 Git 훅(커밋 규칙 검증)을 활성화한�
 | 빌드 도구 | colcon |
 | Python | 3.10 (`ament_python` 패키지) |
 | GUI | Qt6 (C++), `ament_cmake` |
-| DB | PostgreSQL (로컬 인스턴스) |
+| DB | PostgreSQL 16 (Docker Compose) |
 
 DB 접속 정보 등 실값 설정은 커밋하지 않는다. `config/*.yaml.example`을 복사해 `config/*.yaml`로 만들고 값을 채운다.
 
@@ -93,6 +93,21 @@ ros2 launch turtlebot3_bringup camera.launch.py format:=BGR888
 ```
 
 > `src/medirun_bringup/launch/camera.launch.py`(`v4l2_camera` 기반)는 UVC 웹캠 등 다른 하드웨어 대비용으로 남겨둔 미사용 파일이며, 실제 로봇에서는 쓰지 않는다.
+
+### DB (PostgreSQL, Docker)
+
+Docker / Docker Compose가 설치되어 있어야 한다. 최초 1회만 아래처럼 실행하면 `db/schema/postgresql_schema.sql`이 자동 적용된다.
+
+```bash
+cp .env.example .env   # 필요시 값 수정
+docker compose up -d
+```
+
+```bash
+docker exec aurix_postgres psql -U aurix -d aurix_medirun_db -c "\dt"   # 테이블 목록 확인
+```
+
+> `db/schema/postgresql_schema.sql`은 컨테이너를 **처음 만들 때(빈 볼륨일 때)만** 자동 실행된다. 스키마를 수정한 뒤 다시 적용하려면 기존 데이터를 지우고 재기동해야 한다: `docker compose down -v && docker compose up -d` (`-v`가 볼륨까지 삭제하므로 기존 데이터가 날아간다).
 
 ### GUI (Qt 대시보드 단독 실행)
 
