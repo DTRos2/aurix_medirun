@@ -14,6 +14,8 @@ class SideNav;
 class QStackedWidget;
 class NavigationService;
 class WaypointManagementPage;
+class RemoteControlPage;
+class CameraFeedProvider;
 
 class DashboardCentralWidget : public QWidget
 {
@@ -24,6 +26,7 @@ public:
 
     void applySnapshot(const TelemetrySnapshot &snapshot);
     void setNavigationService(NavigationService *service);
+    void setCameraFeedProvider(CameraFeedProvider *provider);
 
 signals:
     void exitRequested();
@@ -44,6 +47,7 @@ private:
     QStackedWidget *m_stack;
     QHash<PageId, int> m_pageIndex;
     WaypointManagementPage *m_waypointPage {nullptr};
+    RemoteControlPage *m_remoteControlPage {nullptr};
 };
 
 #endif // DASHBOARDCENTRALWIDGET_H

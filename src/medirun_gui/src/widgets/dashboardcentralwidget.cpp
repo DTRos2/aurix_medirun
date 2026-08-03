@@ -69,7 +69,8 @@ DashboardCentralWidget::DashboardCentralWidget(const AppSession &session, AuthSe
     addPage(PageId::CallHistory, callHistory);
 
     addPage(PageId::OperationsOverview, new OperationsOverviewPage(m_stack));
-    addPage(PageId::RemoteControl, new RemoteControlPage(m_stack));
+    m_remoteControlPage = new RemoteControlPage(m_stack);
+    addPage(PageId::RemoteControl, m_remoteControlPage);
 
     if (m_session.role == UserRole::Admin) {
         addPage(PageId::SlamMapping, new SlamMappingPage(m_stack));
@@ -91,6 +92,16 @@ void DashboardCentralWidget::setNavigationService(NavigationService *service)
 {
     if (m_waypointPage != nullptr) {
         m_waypointPage->setNavigationService(service);
+    }
+    if (m_remoteControlPage != nullptr) {
+        m_remoteControlPage->setNavigationService(service);
+    }
+}
+
+void DashboardCentralWidget::setCameraFeedProvider(CameraFeedProvider *provider)
+{
+    if (m_remoteControlPage != nullptr) {
+        m_remoteControlPage->setCameraFeedProvider(provider);
     }
 }
 

@@ -9,7 +9,7 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
-        (f"share/{package_name}/launch", ["launch/.gitkeep", "launch/bringup.launch.py"]),
+        (f"share/{package_name}/launch", ["launch/.gitkeep", "launch/bringup.launch.py", "launch/camera.launch.py"]),
         (f"share/{package_name}/config", ["config/.gitkeep"]),
     ],
     install_requires=["setuptools"],

@@ -13,6 +13,7 @@ class MainWindow;
 class SplashScreenWidget;
 class TelemetryProvider;
 class NavigationService;
+class CameraFeedProvider;
 
 class GuiApplicationController : public QObject
 {
@@ -39,6 +40,7 @@ private:
     std::unique_ptr<AuthService> m_authService;
     std::unique_ptr<NavigationService> m_navigationService;
     TelemetryProvider *m_telemetryProvider;
+    CameraFeedProvider *m_cameraFeedProvider;
     SplashScreenWidget *m_splashScreen;
     LoginDialog *m_loginDialog;
     MainWindow *m_mainWindow;

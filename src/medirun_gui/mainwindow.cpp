@@ -52,6 +52,11 @@ void MainWindow::setNavigationService(NavigationService *service)
     m_dashboardWidget->setNavigationService(service);
 }
 
+void MainWindow::setCameraFeedProvider(CameraFeedProvider *provider)
+{
+    m_dashboardWidget->setCameraFeedProvider(provider);
+}
+
 void MainWindow::keyPressEvent(QKeyEvent *event)
 {
     if (event->key() == Qt::Key_Escape) {
