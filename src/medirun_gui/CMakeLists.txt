@@ -23,6 +23,7 @@ find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(action_msgs REQUIRED)
 find_package(tf2 REQUIRED)
+find_package(tf2_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
@@ -127,6 +128,7 @@ ament_target_dependencies(medirun_gui
         sensor_msgs
         action_msgs
         tf2
+        tf2_msgs
         tf2_ros
 )
 
