@@ -7,6 +7,7 @@
 #include <QPointF>
 #include <QProcess>
 #include <QShowEvent>
+#include <QStringList>
 #include <QTimer>
 #include <QWidget>
 
@@ -62,6 +63,9 @@ private:
     QString nextMapBasePath() const;
     bool startMappingProcess();
     void stopMappingProcess();
+    void beginCartographerLaunch();
+    void handleNav2PauseCompleted(bool localizationPaused);
+    void logNav2ResumeResult(const QStringList &failedManagers);
     void setMappingUiState(MappingUiState state, const QString &detail = QString());
     void refreshSensorStatus();
     void handleSlamProcessStdout();
@@ -72,6 +76,7 @@ private:
 private slots:
     void handleStartMapping();
     void handleResetMapping();
+    void handleAboutToQuit();
     void handleSaveMap();
     void handleSlamProcessStateChanged();
     void handleSlamProcessErrorOccurred();
