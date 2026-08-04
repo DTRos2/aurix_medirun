@@ -42,7 +42,8 @@ cp config/device.yaml.example config/device.yaml
 │   ├── medirun_vision/         # 카메라·ArUco 도킹 (구현 예정)
 │   ├── medirun_gui/            # Qt(C++) 대시보드 (구현 중)
 │   ├── medirun_db/             # PostgreSQL 연동 (구현 예정)
-│   └── medirun_msgs/           # 커스텀 메시지·서비스·액션
+│   ├── medirun_msgs/           # 커스텀 메시지·서비스·액션
+│   └── arduino_bridge/         # 로봇(Pi) 실행 코드 팀 공유용 — 아래 "아두이노 브리지" 참고
 ├── firmware/                # Arduino/ESP32 펌웨어
 ├── maps/                    # 지도(.pgm/.yaml), 웨이포인트 정의
 ├── config/                  # DB·장비 설정 (`.example`만 커밋)
@@ -93,6 +94,12 @@ ros2 launch turtlebot3_bringup camera.launch.py format:=BGR888
 ```
 
 > `src/medirun_bringup/launch/camera.launch.py`(`v4l2_camera` 기반)는 UVC 웹캠 등 다른 하드웨어 대비용으로 남겨둔 미사용 파일이며, 실제 로봇에서는 쓰지 않는다.
+
+### 아두이노 브리지 (Pi 실행 코드 공유용)
+
+`src/arduino_bridge/`는 로봇(Pi)에서 도는 코드(시리얼 브리지, LED 상태, e-stop, PS4 텔레옵 등)를 팀원끼리 공유·관리하기 위한 폴더다. **실제 Pi는 이 저장소가 아니라 별도 워크스페이스(`~/arduino_bridge_ws`)에서 실행하므로, 두 쪽이 수시로 어긋날 수 있다.** Pi 쪽을 고치면 이 폴더에도 반영하고, 반대로 이 폴더를 고쳤으면 Pi에도 동기화하는 걸 잊지 않는다.
+
+**Pi와 GUI를 실행하는 PC 양쪽 모두 `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`로 통일**해서 쓴다 (각 머신의 `~/.bashrc`에 추가 권장). 서로 다른 DDS 벤더를 섞어 쓰면 노드 디스커버리가 꼬이거나, Fast-DDS 기본 설정에서는 Cartographer의 내부 상태 토픽이 커질 때 메시지가 드롭되는 문제가 있다.
 
 ### GUI (Qt 대시보드 단독 실행)
 
