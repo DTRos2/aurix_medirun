@@ -92,6 +92,7 @@ private:
     void applySpeedLimit(int percent);
 
     void handleNavStatusChanged(const QString &text);
+    void handleNav2ConnectionChanged(bool connected);
     void handleNavFeedback(double metersRemaining);
     void handleNavWaypointProgress(int currentIndex, int total);
     void handleAmclPoseUpdated(double x, double y, double yawRad);
@@ -116,6 +117,10 @@ private:
     QString m_selectedSavedRoute;
 
     NavigationService *m_navigationService {nullptr};
+    // navigate_to_pose/follow_waypoints 액션 서버가 실제로 goal을 받을 수
+    // 있는지(nav2ConnectionChanged로 갱신). SLAM 매핑 중 nav2가 PAUSE되면
+    // false가 되어 주행 버튼이 잠긴다.
+    bool m_nav2Connected {false};
 
     // shell
     QPushButton *m_waypointTabButton;
@@ -123,6 +128,7 @@ private:
     QStackedWidget *m_tabStack;
     QLabel *m_mapStatusLabel;
     QLabel *m_navStatusLabel;
+    QLabel *m_nav2ConnectionBadge {nullptr};
     QPushButton *m_setInitialPoseButton;
     QPushButton *m_speedButton;
 

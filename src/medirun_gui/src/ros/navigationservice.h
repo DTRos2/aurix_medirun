@@ -43,6 +43,12 @@ public slots:
     virtual void setSpeedLimit(int percent) = 0;
 
 signals:
+    // navigate_to_pose/follow_waypoints 액션 서버가 실제로 goal을 받을 수 있는
+    // 상태인지(둘 다 준비됨) — nav2 lifecycle이 inactive(SLAM 매핑 중 PAUSE된
+    // 경우 등)면 false. 페이지는 이 신호로 "Nav2 연결" 배지와 주행 버튼
+    // 활성화 여부를 결정해야 한다 (statusChanged는 최근 주행 결과/에러 텍스트라
+    // 연결 여부를 신뢰성 있게 반영하지 않는다).
+    void nav2ConnectionChanged(bool connected);
     void statusChanged(const QString &text);
     void feedbackDistanceRemaining(double metersRemaining);
     void waypointProgress(int currentIndex, int total);
