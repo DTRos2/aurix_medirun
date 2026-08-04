@@ -31,6 +31,8 @@ public:
         const QString &password,
         UserRole role,
         QString &errorMessage) = 0;
+
+    virtual bool deleteUser(const QString &loginId, QString &errorMessage) = 0;
 };
 
 #endif // AUTHSERVICE_H

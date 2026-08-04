@@ -14,7 +14,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
 find_package(ament_cmake REQUIRED)
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Sql)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(nav2_msgs REQUIRED)
@@ -50,6 +50,10 @@ qt_add_executable(medirun_gui
     src/ros/nav2navigationservice.cpp
     src/ros/nav2navigationservice.h
     src/services/authservice.h
+    src/services/dbauthservice.cpp
+    src/services/dbauthservice.h
+    src/services/dbconnection.cpp
+    src/services/dbconnection.h
     src/services/localauthservice.cpp
     src/services/localauthservice.h
     src/services/camerafeedprovider.h
@@ -122,7 +126,9 @@ target_link_libraries(medirun_gui
         Qt::Core
         Qt::Gui
         Qt::Widgets
+        Qt::Sql
         yaml-cpp
+        crypt
 )
 
 ament_target_dependencies(medirun_gui

@@ -1,6 +1,6 @@
 # Fill in local database connection values on each machine.
 host: localhost
 port: 5432
-database: aurix_medirun_db
-user: aurix
-password: 1234
+database:
+user:
+password:

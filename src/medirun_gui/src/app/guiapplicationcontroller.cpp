@@ -4,7 +4,7 @@
 #include "../dialogs/logindialog.h"
 #include "../ros/nav2navigationservice.h"
 #include "../services/authservice.h"
-#include "../services/localauthservice.h"
+#include "../services/dbauthservice.h"
 #include "../services/mockcamerafeedprovider.h"
 #include "../services/mocktelemetryprovider.h"
 #include "../services/roscamerafeedprovider.h"
@@ -18,7 +18,7 @@
 GuiApplicationController::GuiApplicationController(QApplication &application, QObject *parent)
     : QObject(parent)
     , m_application(application)
-    , m_authService(std::make_unique<LocalAuthService>())
+    , m_authService(std::make_unique<DbAuthService>())
     , m_navigationService(std::make_unique<Nav2NavigationService>())
     , m_telemetryProvider(nullptr)
     , m_cameraFeedProvider(nullptr)

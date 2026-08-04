@@ -10,6 +10,10 @@ __pycache__/
 .idea/
 .env
 
+# 실값 설정 (CONVENTIONS.md 3.2) — .example만 커밋
+config/db.yaml
+config/device.yaml
+
 # 대용량 산출물 (CONVENTIONS.md 3.1) — rosbag, 시연 영상, DB 덤프
 *.db3
 *.mp4

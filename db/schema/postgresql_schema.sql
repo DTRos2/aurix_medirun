@@ -43,25 +43,30 @@ DROP TABLE IF EXISTS aurix_user;
 
 CREATE TABLE aurix_user (
     id             INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    login_id       VARCHAR(64) NOT NULL UNIQUE,
+    login_id       VARCHAR(64) NOT NULL,
     password_hash  VARCHAR(255) NOT NULL,
     role           VARCHAR(16) NOT NULL CHECK (
         role IN ('admin', 'staff')
     ),
     created_at     TIMESTAMP NOT NULL DEFAULT NOW(),
     last_login_at  TIMESTAMP,
-    deactivated_at TIMESTAMP,
-    CHECK (deactivated_at IS NULL OR deactivated_at >= created_at)
+    deleted_at     TIMESTAMP,
+    CHECK (deleted_at IS NULL OR deleted_at >= created_at)
 );
+
+-- login_id는 삭제된(deleted_at IS NOT NULL) 계정끼리는 중복 가능(재사용 목적) —
+-- 동시에 활성 상태인 계정끼리만 중복을 막는 부분 유니크 인덱스.
+CREATE UNIQUE INDEX aurix_user_active_login_id_idx
+ON aurix_user (login_id) WHERE deleted_at IS NULL;
 
 COMMENT ON TABLE aurix_user IS '대시보드 로그인 계정 (usermanagementpage / AuthService)';
 COMMENT ON COLUMN aurix_user.id IS '사용자 PK, 자동 증가';
-COMMENT ON COLUMN aurix_user.login_id IS '로그인 ID';
+COMMENT ON COLUMN aurix_user.login_id IS '로그인 ID. 활성 계정끼리만 유니크(삭제된 아이디는 재사용 가능)';
 COMMENT ON COLUMN aurix_user.password_hash IS '비밀번호 해시';
 COMMENT ON COLUMN aurix_user.role IS '권한 (UserRole: admin/staff)';
 COMMENT ON COLUMN aurix_user.created_at IS '계정 생성 시간';
 COMMENT ON COLUMN aurix_user.last_login_at IS '마지막 로그인 시간';
-COMMENT ON COLUMN aurix_user.deactivated_at IS '계정 비활성화 시간. NULL이면 사용 중';
+COMMENT ON COLUMN aurix_user.deleted_at IS '계정 삭제 시간. NULL이면 사용 중';
 
 -- =========================================================
 -- 2. Core / Robot
