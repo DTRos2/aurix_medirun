@@ -9,6 +9,7 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -72,9 +73,10 @@ UserManagementPage::UserManagementPage(AuthService &authService, QWidget *parent
     listLayout->setSpacing(12);
     listLayout->addWidget(makeLabel(QStringLiteral("등록된 사용자"), QStringLiteral("panelTitle")));
     m_userTable = new QTableWidget(listPanel);
-    m_userTable->setColumnCount(2);
-    m_userTable->setHorizontalHeaderLabels({QStringLiteral("이메일/아이디"), QStringLiteral("권한")});
+    m_userTable->setColumnCount(3);
+    m_userTable->setHorizontalHeaderLabels({QStringLiteral("이메일/아이디"), QStringLiteral("권한"), QStringLiteral("")});
     m_userTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    m_userTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
     m_userTable->verticalHeader()->setVisible(false);
     m_userTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_userTable->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -133,6 +135,13 @@ void UserManagementPage::refreshUserTable()
         const AuthUserRecord &user = users.at(row);
         m_userTable->setItem(row, 0, new QTableWidgetItem(user.loginId));
         m_userTable->setItem(row, 1, new QTableWidgetItem(roleDisplayName(user.role)));
+
+        auto *deleteButton = new QPushButton(QStringLiteral("삭제"), m_userTable);
+        deleteButton->setObjectName(QStringLiteral("dangerFilledButton"));
+        connect(deleteButton, &QPushButton::clicked, this, [this, loginId = user.loginId]() {
+            handleDeleteUser(loginId);
+        });
+        m_userTable->setCellWidget(row, 2, deleteButton);
     }
 }
 
@@ -151,5 +160,26 @@ void UserManagementPage::handleCreateUser()
         QStringLiteral("%1 계정이 생성되었습니다. 이제 해당 계정으로 로그인할 수 있습니다.").arg(m_emailEdit->text().trimmed()));
     m_emailEdit->clear();
     m_passwordEdit->clear();
+    refreshUserTable();
+}
+
+void UserManagementPage::handleDeleteUser(const QString &loginId)
+{
+    const auto confirm = QMessageBox::question(
+        this,
+        QStringLiteral("계정 삭제"),
+        QStringLiteral("%1 계정을 삭제하시겠습니까?").arg(loginId));
+    if (confirm != QMessageBox::Yes) {
+        return;
+    }
+
+    QString errorMessage;
+    const bool ok = m_authService.deleteUser(loginId, errorMessage);
+    if (!ok) {
+        m_statusLabel->setText(errorMessage);
+        return;
+    }
+
+    m_statusLabel->setText(QStringLiteral("%1 계정이 삭제되었습니다.").arg(loginId));
     refreshUserTable();
 }

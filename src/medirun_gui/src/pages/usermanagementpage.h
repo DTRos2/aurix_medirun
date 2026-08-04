@@ -20,6 +20,7 @@ private:
     QWidget *buildCreateForm();
     void refreshUserTable();
     void handleCreateUser();
+    void handleDeleteUser(const QString &loginId);
 
     AuthService &m_authService;
     QLineEdit *m_emailEdit;

@@ -21,7 +21,7 @@ Clone 직후 한 번만 실행해 Git 훅(커밋 규칙 검증)을 활성화한�
 | 빌드 도구 | colcon |
 | Python | 3.10 (`ament_python` 패키지) |
 | GUI | Qt6 (C++), `ament_cmake` |
-| DB | PostgreSQL (로컬 인스턴스) |
+| DB | PostgreSQL 16 (Docker Compose) |
 
 DB 접속 정보 등 실값 설정은 커밋하지 않는다. `config/*.yaml.example`을 복사해 `config/*.yaml`로 만들고 값을 채운다.
 
@@ -95,11 +95,28 @@ ros2 launch turtlebot3_bringup camera.launch.py format:=BGR888
 
 > `src/medirun_bringup/launch/camera.launch.py`(`v4l2_camera` 기반)는 UVC 웹캠 등 다른 하드웨어 대비용으로 남겨둔 미사용 파일이며, 실제 로봇에서는 쓰지 않는다.
 
+
+### DB (PostgreSQL, Docker)
+
+Docker / Docker Compose가 설치되어 있어야 한다. 최초 1회만 아래처럼 실행하면 `db/schema/postgresql_schema.sql`이 자동 적용된다.
+
+```bash
+cp .env.example .env   # 필요시 값 수정
+docker compose up -d
+```
+
+```bash
+docker exec aurix_postgres psql -U aurix -d aurix_medirun_db -c "\dt"   # 테이블 목록 확인
+```
+
+> `db/schema/postgresql_schema.sql`은 컨테이너를 **처음 만들 때(빈 볼륨일 때)만** 자동 실행된다. 스키마를 수정한 뒤 다시 적용하려면 기존 데이터를 지우고 재기동해야 한다: `docker compose down -v && docker compose up -d` (`-v`가 볼륨까지 삭제하므로 기존 데이터가 날아간다).
+
 ### 아두이노 브리지 (Pi 실행 코드 공유용)
 
 `src/arduino_bridge/`는 로봇(Pi)에서 도는 코드(시리얼 브리지, LED 상태, e-stop, PS4 텔레옵 등)를 팀원끼리 공유·관리하기 위한 폴더다. **실제 Pi는 이 저장소가 아니라 별도 워크스페이스(`~/arduino_bridge_ws`)에서 실행하므로, 두 쪽이 수시로 어긋날 수 있다.** Pi 쪽을 고치면 이 폴더에도 반영하고, 반대로 이 폴더를 고쳤으면 Pi에도 동기화하는 걸 잊지 않는다.
 
 **Pi와 GUI를 실행하는 PC 양쪽 모두 `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`로 통일**해서 쓴다 (각 머신의 `~/.bashrc`에 추가 권장). 서로 다른 DDS 벤더를 섞어 쓰면 노드 디스커버리가 꼬이거나, Fast-DDS 기본 설정에서는 Cartographer의 내부 상태 토픽이 커질 때 메시지가 드롭되는 문제가 있다.
+
 
 ### GUI (Qt 대시보드 단독 실행)
 

@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: aurix_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aurix_medirun_db}
+      POSTGRES_USER: ${POSTGRES_USER:-aurix}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-1234}
+      TZ: Asia/Seoul
+      PGTZ: Asia/Seoul
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - aurix_postgres_data:/var/lib/postgresql/data
+      - ./db/schema/postgresql_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aurix} -d ${POSTGRES_DB:-aurix_medirun_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  aurix_postgres_data:
+    name: aurix_postgres_data
