@@ -5,6 +5,7 @@
 #include <QImage>
 #include <QPixmap>
 #include <QPointF>
+#include <QSize>
 #include <QVector>
 
 class QLabel;
@@ -44,6 +45,7 @@ public:
     // 지금까지처럼 점선 테두리만 있는 빈 캔버스로 그려진다.
     void setBackgroundImage(const QImage &image);
     void clearBackgroundImage();
+    void setRobotVisible(bool visible);
 
     void setRobotPose(const QPointF &normalizedPos, qreal headingDegrees);
     void setRobotState(RobotMarkerState state);
@@ -81,8 +83,8 @@ private:
     QPointF toCanvas(const QPointF &normalized, const QRectF &area) const;
     QPointF canvasToNormalized(const QPointF &canvasPos, const QRectF &area) const;
     void layoutOverlay();
+    void updateScaledBackgroundPixmap();
 
-    QPixmap m_backgroundPixmap;
     bool m_poseSettingEnabled;
     bool m_dragging;
     QPointF m_dragStartPos;
@@ -94,11 +96,17 @@ private:
     QVector<QPointF> m_solidPath;
     QVector<QPointF> m_dashedPath;
     QColor m_dashedPathColor;
+
+    QImage m_originalBackgroundImage;
+    QPixmap m_backgroundPixmap;
+    QSize m_backgroundPixmapTargetSize;
+
     QVector<QPointF> m_waypoints;
     QPointF m_destination;
     bool m_hasDestination;
     QPointF m_home;
     bool m_hasHome;
+    bool m_robotVisible;
     bool m_recording;
     bool m_overlayChipsVisible;
 

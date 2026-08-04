@@ -18,6 +18,7 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Sql)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(nav2_msgs REQUIRED)
+find_package(lifecycle_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -136,6 +137,7 @@ ament_target_dependencies(medirun_gui
         rclcpp
         rclcpp_action
         nav2_msgs
+        lifecycle_msgs
         geometry_msgs
         nav_msgs
         sensor_msgs

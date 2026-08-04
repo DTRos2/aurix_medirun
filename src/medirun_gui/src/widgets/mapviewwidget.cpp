@@ -342,6 +342,7 @@ MapViewWidget::MapViewWidget(QWidget *parent)
     , m_dashedPathColor(DashboardPalette::Cyan)
     , m_hasDestination(false)
     , m_hasHome(false)
+    , m_robotVisible(true)
     , m_recording(false)
     , m_overlayChipsVisible(true)
 {
@@ -358,7 +359,7 @@ MapViewWidget::MapViewWidget(QWidget *parent)
     m_followChip = new QPushButton(QStringLiteral("로봇 따라가기"), this);
     m_followChip->setObjectName(QStringLiteral("mapToggleChip"));
     m_followChip->setCheckable(true);
-    m_followChip->setChecked(true);
+    m_followChip->setChecked(false);
     m_followChip->hide();
 
     m_hidePathChip = new QPushButton(QStringLiteral("경로 숨기기"), this);
@@ -380,22 +381,14 @@ void MapViewWidget::setMode(MapViewMode mode)
 
 void MapViewWidget::setCaption(const QString &text)
 {
+    if (m_captionLabel->text() == text) {
+        return;
+    }
     m_captionLabel->setText(text);
     m_captionLabel->setVisible(!text.isEmpty());
     layoutOverlay();
 }
 
-void MapViewWidget::setBackgroundImage(const QImage &image)
-{
-    m_backgroundPixmap = QPixmap::fromImage(image);
-    update();
-}
-
-void MapViewWidget::clearBackgroundImage()
-{
-    m_backgroundPixmap = QPixmap();
-    update();
-}
 
 void MapViewWidget::setPoseSettingEnabled(bool enabled)
 {
@@ -420,15 +413,53 @@ void MapViewWidget::setOverlayChipsVisible(bool visible)
     layoutOverlay();
 }
 
+void MapViewWidget::setBackgroundImage(const QImage &image)
+{
+    if (image.isNull()) {
+        clearBackgroundImage();
+        return;
+    }
+
+    m_originalBackgroundImage = image;
+    m_backgroundPixmap = QPixmap();
+    m_backgroundPixmapTargetSize = QSize();
+    updateScaledBackgroundPixmap();
+    update();
+}
+
+void MapViewWidget::clearBackgroundImage()
+{
+    m_originalBackgroundImage = QImage();
+    m_backgroundPixmap = QPixmap();
+    m_backgroundPixmapTargetSize = QSize();
+    update();
+}
 void MapViewWidget::setRobotPose(const QPointF &normalizedPos, qreal headingDegrees)
 {
+    if (qFuzzyCompare(m_robotPos.x(), normalizedPos.x())
+        && qFuzzyCompare(m_robotPos.y(), normalizedPos.y())
+        && qFuzzyCompare(m_robotHeadingDeg, headingDegrees)) {
+        return;
+    }
     m_robotPos = normalizedPos;
     m_robotHeadingDeg = headingDegrees;
     update();
 }
 
+void MapViewWidget::setRobotVisible(bool visible)
+{
+    if (m_robotVisible == visible) {
+        return;
+    }
+    m_robotVisible = visible;
+    update();
+}
+
 void MapViewWidget::setRobotState(RobotMarkerState state)
 {
+    if (m_robotState == state) {
+        return;
+    }
     m_robotState = state;
     update();
 }
@@ -478,14 +509,17 @@ QRectF MapViewWidget::drawableArea() const
 QRectF MapViewWidget::imageRect() const
 {
     const QRectF area = drawableArea();
-    if (m_backgroundPixmap.isNull()) {
+
+    if (m_originalBackgroundImage.isNull()) {
         return area;
     }
 
-    const QSizeF scaled = m_backgroundPixmap.size().scaled(area.size().toSize(), Qt::KeepAspectRatio);
-    const QPointF topLeft(area.left() + (area.width() - scaled.width()) / 2.0,
-                           area.top() + (area.height() - scaled.height()) / 2.0);
-    return QRectF(topLeft, scaled);
+    const QSize scaledSize = m_originalBackgroundImage.size().scaled(
+        area.size().toSize(), Qt::KeepAspectRatio);
+    const QPointF topLeft(
+        area.left() + (area.width() - scaledSize.width()) / 2.0,
+        area.top() + (area.height() - scaledSize.height()) / 2.0);
+    return QRectF(topLeft, QSizeF(scaledSize));
 }
 
 QPointF MapViewWidget::toCanvas(const QPointF &normalized, const QRectF &area) const
@@ -519,10 +553,42 @@ void MapViewWidget::layoutOverlay()
     m_hidePathChip->move(9 + m_followChip->width() + 5, chipY);
 }
 
+void MapViewWidget::updateScaledBackgroundPixmap()
+{
+    if (m_originalBackgroundImage.isNull()) {
+        m_backgroundPixmap = QPixmap();
+        m_backgroundPixmapTargetSize = QSize();
+        return;
+    }
+
+    const QSize targetSize = imageRect().size().toSize();
+    if (!targetSize.isValid()) {
+        m_backgroundPixmap = QPixmap();
+        m_backgroundPixmapTargetSize = QSize();
+        return;
+    }
+    if (!m_backgroundPixmap.isNull() && m_backgroundPixmapTargetSize == targetSize) {
+        return;
+    }
+
+    const qreal dpr = devicePixelRatioF();
+    const QSize scaledTarget(
+        std::max(1, qRound(targetSize.width() * dpr)),
+        std::max(1, qRound(targetSize.height() * dpr)));
+    const QImage scaledImage = m_originalBackgroundImage.scaled(
+        scaledTarget,
+        Qt::KeepAspectRatio,
+        Qt::SmoothTransformation);
+    m_backgroundPixmap = QPixmap::fromImage(scaledImage);
+    m_backgroundPixmap.setDevicePixelRatio(dpr);
+    m_backgroundPixmapTargetSize = targetSize;
+}
+
 void MapViewWidget::resizeEvent(QResizeEvent *event)
 {
     QFrame::resizeEvent(event);
     layoutOverlay();
+    updateScaledBackgroundPixmap();
 }
 
 void MapViewWidget::mousePressEvent(QMouseEvent *event)
@@ -574,13 +640,14 @@ void MapViewWidget::paintEvent(QPaintEvent *event)
 
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
     const QRectF area = drawableArea();
     const QRectF imgRect = imageRect();
+    updateScaledBackgroundPixmap();
 
     if (!m_backgroundPixmap.isNull()) {
-        const QPixmap scaled = m_backgroundPixmap.scaled(imgRect.size().toSize(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        painter.drawPixmap(imgRect.topLeft(), scaled);
+        painter.drawPixmap(imgRect.topLeft(), m_backgroundPixmap);
     }
 
     painter.setPen(QPen(DashboardPalette::BorderGuide, 1, Qt::DashLine));
@@ -629,5 +696,7 @@ void MapViewWidget::paintEvent(QPaintEvent *event)
         paintHomeMarker(painter, toCanvas(m_home, imgRect));
     }
 
-    paintRobotMarker(painter, toCanvas(m_robotPos, imgRect), m_robotState, m_robotHeadingDeg);
+    if (m_robotVisible) {
+        paintRobotMarker(painter, toCanvas(m_robotPos, imgRect), m_robotState, m_robotHeadingDeg);
+    }
 }
