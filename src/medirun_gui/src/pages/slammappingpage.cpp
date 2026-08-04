@@ -46,6 +46,7 @@
 #include <sys/types.h>
 
 #include <geometry_msgs/msg/twist.hpp>
+#include <nav2_msgs/srv/manage_lifecycle_nodes.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -195,6 +196,61 @@ void terminateProcessTree(QProcess *process, int termTimeoutMs, int killTimeoutM
         }
         process->waitForFinished(killTimeoutMs);
     }
+}
+
+enum class LifecycleCallResult {
+    Success,
+    ServiceUnavailable,
+    CallFailed,
+};
+
+// PAUSE/RESUME 요청을 보낸다(blocking). m_node는 SlamMapBridge 소유 executor가
+// 별도 스레드에서 계속 spin 중이므로, 이 함수를 호출한 스레드(Qt 메인 스레드)에서
+// future를 blocking wait해도 응답 콜백은 그 spin 스레드에서 처리되어 데드락 없이
+// 완료된다. GUI 종료(소멸자)처럼 "이 다음엔 재시도 기회가 없는" 경로에서만 쓴다 —
+// 인터랙티브 경로(초기화 버튼 등)는 UI를 막지 않는 callNav2LifecycleManagerAsync를 쓴다.
+LifecycleCallResult callNav2LifecycleManagerBlocking(
+    const rclcpp::Client<nav2_msgs::srv::ManageLifecycleNodes>::SharedPtr &client,
+    uint8_t command,
+    int timeoutMs)
+{
+    if (!client || !client->wait_for_service(std::chrono::milliseconds(timeoutMs))) {
+        return LifecycleCallResult::ServiceUnavailable;
+    }
+
+    auto request = std::make_shared<nav2_msgs::srv::ManageLifecycleNodes::Request>();
+    request->command = command;
+    auto future = client->async_send_request(request);
+    if (future.wait_for(std::chrono::milliseconds(timeoutMs)) != std::future_status::ready) {
+        client->remove_pending_request(future);
+        return LifecycleCallResult::CallFailed;
+    }
+    return future.get()->success ? LifecycleCallResult::Success : LifecycleCallResult::CallFailed;
+}
+
+// 비blocking 버전. 서비스가 지금 당장 그래프에 없으면(service_is_ready()==false)
+// 바로 실패로 응답하고, 그렇지 않으면 요청을 보내고 즉시 반환한다 — 응답이 오면
+// (SlamMapBridge의 executor spin 스레드에서) onDone이 호출된다. Nav2 lifecycle
+// RESUME은 관리 노드 수에 따라 걸리는 시간이 크게 달라(costmap+controller+
+// bt_navigator 등은 amcl+map_server보다 훨씬 오래 걸림) 고정 타임아웃으로 끊지
+// 않고 실제로 끝날 때까지 기다린다.
+void callNav2LifecycleManagerAsync(
+    const rclcpp::Client<nav2_msgs::srv::ManageLifecycleNodes>::SharedPtr &client,
+    uint8_t command,
+    std::function<void(LifecycleCallResult)> onDone)
+{
+    if (!client || !client->service_is_ready()) {
+        onDone(LifecycleCallResult::ServiceUnavailable);
+        return;
+    }
+
+    auto request = std::make_shared<nav2_msgs::srv::ManageLifecycleNodes::Request>();
+    request->command = command;
+    client->async_send_request(
+        request,
+        [onDone](rclcpp::Client<nav2_msgs::srv::ManageLifecycleNodes>::SharedFuture future) {
+            onDone(future.get()->success ? LifecycleCallResult::Success : LifecycleCallResult::CallFailed);
+        });
 }
 
 bool isSlamFatalLogLine(const QString &line)
@@ -445,6 +501,13 @@ public:
         , m_mapReceived(false)
     {
         m_cmdVelPublisher = m_node->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", rclcpp::QoS(10));
+        // nav2_bringup의 localization_launch.py/navigation_launch.py가 기본으로 띄우는
+        // lifecycle manager 이름(namespace 없음). ./scripts/run.sh -> bringup.launch.py가
+        // 이 기본값 그대로 Nav2를 띄운다.
+        m_localizationLifecycleClient = m_node->create_client<nav2_msgs::srv::ManageLifecycleNodes>(
+            "/lifecycle_manager_localization/manage_nodes");
+        m_navigationLifecycleClient = m_node->create_client<nav2_msgs::srv::ManageLifecycleNodes>(
+            "/lifecycle_manager_navigation/manage_nodes");
         m_tfBuffer = std::make_unique<tf2_ros::Buffer>(m_node->get_clock());
         m_tfListener = std::make_shared<tf2_ros::TransformListener>(*m_tfBuffer);
 
@@ -731,17 +794,8 @@ private:
 
         logMapPublishersOnce();
 
-        const size_t publisherCount = m_node->count_publishers("/map");
-        if (publisherCount > 1) {
-            const auto publishers = m_node->get_publishers_info_by_topic("/map");
-            QStringList publisherNames;
-            publisherNames.reserve(static_cast<int>(publishers.size()));
-            for (const auto &info : publishers) {
-                publisherNames.append(
-                    QStringLiteral("%1%2")
-                        .arg(QString::fromStdString(info.node_namespace()))
-                        .arg(QString::fromStdString(info.node_name())));
-            }
+        const QStringList publisherNames = effectiveMapPublisherNames();
+        if (publisherNames.size() > 1) {
             RCLCPP_ERROR(
                 m_node->get_logger(),
                 "[MAP] multiple /map publishers detected: %s",
@@ -751,6 +805,7 @@ private:
             }
             return;
         }
+        const size_t publisherCount = static_cast<size_t>(publisherNames.size());
 
         const TopicStateSnapshot topicSnapshot = topicStateSnapshot();
         if (!m_mapReceived && !topicSnapshot.readyForMapping) {
@@ -1000,6 +1055,12 @@ private:
 
     rclcpp::Node::SharedPtr m_node;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr m_cmdVelPublisher;
+    rclcpp::Client<nav2_msgs::srv::ManageLifecycleNodes>::SharedPtr m_localizationLifecycleClient;
+    rclcpp::Client<nav2_msgs::srv::ManageLifecycleNodes>::SharedPtr m_navigationLifecycleClient;
+    // Qt 스레드(pauseNav2ForMapping/resumeNav2IfPaused)와 executor spin 스레드
+    // (handleMap의 중복 publisher 판정)에서 동시에 읽고 쓰므로 atomic이어야 한다.
+    std::atomic<bool> m_localizationPausedByMapping {false};
+    std::atomic<bool> m_navigationPausedByMapping {false};
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr m_mapSubscription;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr m_odomSubscription;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr m_scanSubscription;
@@ -1063,15 +1124,8 @@ public:
     MapTopicSnapshot mapTopicSnapshot()
     {
         MapTopicSnapshot snapshot;
-        const auto publishers = m_node->get_publishers_info_by_topic("/map");
-        snapshot.publisherCount = publishers.size();
-        snapshot.publisherNames.reserve(static_cast<int>(publishers.size()));
-        for (const auto &info : publishers) {
-            snapshot.publisherNames.append(
-                QStringLiteral("%1%2")
-                    .arg(QString::fromStdString(info.node_namespace()))
-                    .arg(QString::fromStdString(info.node_name())));
-        }
+        snapshot.publisherNames = effectiveMapPublisherNames();
+        snapshot.publisherCount = static_cast<size_t>(snapshot.publisherNames.size());
 
         std::lock_guard<std::mutex> lock(m_dataMutex);
         if (!m_latestMap || !m_mapReceived) {
@@ -1096,6 +1150,137 @@ public:
         snapshot.originY = m_latestMap->info.origin.position.y;
         snapshot.dataSize = m_latestMap->data.size();
         return snapshot;
+    }
+
+    // /amcl 노드 존재 여부로 Nav2 로컬라이제이션 스택(run.sh -> bringup.launch.py로
+    // 뜬 AMCL)이 살아있는지 판단한다. AMCL과 Cartographer가 동시에 map->odom tf를
+    // 발행하면 tf 충돌로 odom이 중복되므로, 매핑 시작 전에 이 상태를 감지해야 한다.
+    bool isNav2LocalizationActive() const
+    {
+        for (const auto &name : m_node->get_node_names()) {
+            if (name == "/amcl" || name == "amcl") {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // AMCL(map_server 포함)과 Nav2 내비게이션 스택을 PAUSE시킨다(비blocking).
+    // 로컬라이제이션 매니저(AMCL) PAUSE가 성공해야 map->odom tf 충돌이 실제로
+    // 해소되므로 이것만 필수로 보고, 내비게이션 매니저는 best-effort로 같이
+    // 멈춘다(실패해도 매핑은 진행). 실패 시 아무 것도 PAUSE된 채로 남기지
+    // 않도록 부분 성공 상태를 플래그로 정확히 기록해서 resume 쪽이 그것만
+    // 되돌리게 한다. onDone(false)면 로컬라이제이션 PAUSE 자체가 실패해 아무
+    // 것도 PAUSE되지 않은 상태 — 호출자는 매핑을 시작하면 안 된다.
+    void pauseNav2ForMappingAsync(std::function<void(bool)> onDone)
+    {
+        callNav2LifecycleManagerAsync(
+            m_localizationLifecycleClient,
+            nav2_msgs::srv::ManageLifecycleNodes::Request::PAUSE,
+            [this, onDone](LifecycleCallResult localizationResult) {
+                if (localizationResult != LifecycleCallResult::Success) {
+                    m_localizationPausedByMapping = false;
+                    onDone(false);
+                    return;
+                }
+                m_localizationPausedByMapping = true;
+
+                callNav2LifecycleManagerAsync(
+                    m_navigationLifecycleClient,
+                    nav2_msgs::srv::ManageLifecycleNodes::Request::PAUSE,
+                    [this, onDone](LifecycleCallResult navigationResult) {
+                        m_navigationPausedByMapping = (navigationResult == LifecycleCallResult::Success);
+                        onDone(true);
+                    });
+            });
+    }
+
+    // pauseNav2ForMappingAsync()가 실제로 PAUSE시킨 매니저만 RESUME한다(비blocking,
+    // 둘 다 필요하면 동시에 요청). 매핑을 시작한 적이 없거나 PAUSE가 애초에
+    // 실패했던 경우엔 아무 요청도 보내지 않고 즉시 onDone(빈 목록)을 호출한다.
+    // onDone은 RESUME에 실패한 매니저 이름 목록을 받는다(비어 있으면 전부
+    // 성공했거나 애초에 PAUSE된 게 없었다는 뜻). 성공한 매니저만 플래그를
+    // 지워서 실패한 쪽은 다음 호출 때 재시도되게 한다.
+    // UI를 막지 않으므로 인터랙티브 경로(초기화 버튼 등)에서 쓴다 — GUI 종료
+    // 직전처럼 "완료를 보장해야 하는" 경로는 resumeNav2IfPausedBlocking을 쓴다.
+    void resumeNav2IfPausedAsync(std::function<void(QStringList)> onDone)
+    {
+        const bool needNavigation = m_navigationPausedByMapping.load();
+        const bool needLocalization = m_localizationPausedByMapping.load();
+        if (!needNavigation && !needLocalization) {
+            onDone(QStringList());
+            return;
+        }
+
+        auto failedManagers = std::make_shared<QStringList>();
+        auto pending = std::make_shared<int>((needNavigation ? 1 : 0) + (needLocalization ? 1 : 0));
+        auto finishOne = [pending, failedManagers, onDone]() {
+            if (--(*pending) == 0) {
+                onDone(*failedManagers);
+            }
+        };
+
+        if (needNavigation) {
+            callNav2LifecycleManagerAsync(
+                m_navigationLifecycleClient,
+                nav2_msgs::srv::ManageLifecycleNodes::Request::RESUME,
+                [this, failedManagers, finishOne](LifecycleCallResult result) {
+                    if (result == LifecycleCallResult::Success) {
+                        m_navigationPausedByMapping = false;
+                    } else {
+                        failedManagers->append(QStringLiteral("navigation"));
+                    }
+                    finishOne();
+                });
+        }
+        if (needLocalization) {
+            callNav2LifecycleManagerAsync(
+                m_localizationLifecycleClient,
+                nav2_msgs::srv::ManageLifecycleNodes::Request::RESUME,
+                [this, failedManagers, finishOne](LifecycleCallResult result) {
+                    if (result == LifecycleCallResult::Success) {
+                        m_localizationPausedByMapping = false;
+                    } else {
+                        failedManagers->append(QStringLiteral("localization"));
+                    }
+                    finishOne();
+                });
+        }
+    }
+
+    // resumeNav2IfPausedAsync()의 blocking 버전. GUI 종료(소멸자)에서만 쓴다 —
+    // 이 시점 이후로는 노드/executor가 곧 파괴되어 재시도 기회가 없으므로,
+    // 비동기로 던지고 끝내면 응답이 오기 전에 spin 스레드가 먼저 죽어 RESUME
+    // 요청이 유실될 수 있다. navigation은 관리 노드가 7개(bt_navigator/
+    // controller_server/planner_server/smoother_server/behavior_server/
+    // waypoint_follower/velocity_smoother)라 localization(map_server+amcl
+    // 2개)보다 오래 걸려 타임아웃을 더 넉넉히 준다.
+    QStringList resumeNav2IfPausedBlocking(int navigationTimeoutMs = 20000, int localizationTimeoutMs = 8000)
+    {
+        QStringList failedManagers;
+        if (m_navigationPausedByMapping) {
+            const auto navigationResult =
+                callNav2LifecycleManagerBlocking(m_navigationLifecycleClient,
+                                                  nav2_msgs::srv::ManageLifecycleNodes::Request::RESUME,
+                                                  navigationTimeoutMs);
+            if (navigationResult == LifecycleCallResult::Success) {
+                m_navigationPausedByMapping = false;
+            } else {
+                failedManagers.append(QStringLiteral("navigation"));
+            }
+        }
+        if (m_localizationPausedByMapping) {
+            const auto localizationResult =
+                callNav2LifecycleManagerBlocking(m_localizationLifecycleClient,
+                                                  nav2_msgs::srv::ManageLifecycleNodes::Request::RESUME,
+                                                  localizationTimeoutMs);
+            if (localizationResult == LifecycleCallResult::Success) {
+                m_localizationPausedByMapping = false;
+            } else {
+                failedManagers.append(QStringLiteral("localization"));
+            }
+        }
+        return failedManagers;
     }
 
 private:
@@ -1124,6 +1309,28 @@ private:
         if (publishers.size() > 1) {
             RCLCPP_WARN(m_node->get_logger(), "[MapSource] multiple /map publishers detected: %zu", publishers.size());
         }
+    }
+
+    // PAUSE(deactivate)된 lifecycle 노드는 rclcpp 퍼블리셔 핸들이 여전히 살아있어
+    // count_publishers()/get_publishers_info_by_topic()에 계속 잡힌다 — 실제로
+    // 새 메시지를 발행하는지와 무관하게 DDS 그래프상 publisher로 카운트된다.
+    // 우리가 매핑을 위해 직접 PAUSE시킨 /map_server는 이미 알고 있는 상태이므로
+    // "중복 SLAM 실행" 판정에서 제외한다. 그 외 이름은 그대로 실제 충돌로 취급한다.
+    QStringList effectiveMapPublisherNames() const
+    {
+        const auto publishers = m_node->get_publishers_info_by_topic("/map");
+        QStringList names;
+        names.reserve(static_cast<int>(publishers.size()));
+        for (const auto &info : publishers) {
+            names.append(
+                QStringLiteral("%1%2")
+                    .arg(QString::fromStdString(info.node_namespace()))
+                    .arg(QString::fromStdString(info.node_name())));
+        }
+        if (m_localizationPausedByMapping.load()) {
+            names.removeAll(QStringLiteral("/map_server"));
+        }
+        return names;
     }
 };
 
@@ -1222,8 +1429,11 @@ SlamMappingPage::SlamMappingPage(QWidget *parent)
     // "대시보드 종료" 버튼은 MainWindow::close()만 부르고 WA_DeleteOnClose가
     // 없어서 위젯이 삭제되지 않는다 — 즉 이 페이지의 소멸자가 아예 안 불릴 수
     // 있다(cartographer가 계속 살아남던 버그의 원인). 앱 종료 시점엔 항상
-    // aboutToQuit이 뜨므로 여기서 직접 정리한다.
-    connect(qApp, &QCoreApplication::aboutToQuit, this, &SlamMappingPage::stopMappingProcess);
+    // aboutToQuit이 뜨므로 여기서 직접 정리한다. stopMappingProcess()가 아니라
+    // 전용 핸들러를 쓰는 이유: nav2 RESUME까지 반드시 끝내야 하는데(소멸자가 안
+    // 불릴 수 있으니 이번이 마지막 기회), 이 시점 이후 spin 스레드가 곧 죽으므로
+    // 비동기로 던지면 응답이 오기 전에 유실될 수 있어 blocking으로 기다린다.
+    connect(qApp, &QCoreApplication::aboutToQuit, this, &SlamMappingPage::handleAboutToQuit);
     m_manualDriveTimer->setInterval(100);
     connect(m_manualDriveTimer, &QTimer::timeout, this, &SlamMappingPage::handleManualDriveTick);
     m_mapRefreshTimer->setInterval(kMapRefreshIntervalMs);
@@ -1247,7 +1457,27 @@ SlamMappingPage::~SlamMappingPage()
     m_mapTimeoutTimer->stop();
     m_mapRefreshTimer->stop();
     terminateProcessTree(m_slamProcess, 2000, 1000);
+    // blocking으로 기다린다: 이 다음 줄에서 m_mapBridge->stop()이 spin 스레드를
+    // 종료시키므로, 비동기로 던지기만 하면 응답이 오기 전에 요청이 유실된다.
+    const auto failedManagers = m_mapBridge->resumeNav2IfPausedBlocking();
+    if (!failedManagers.isEmpty()) {
+        qWarning() << "[SLAM] Nav2 재개 실패, PAUSE 상태로 남아있을 수 있음:" << failedManagers;
+    }
     m_mapBridge->stop();
+}
+
+// aboutToQuit 전용 정리 경로. 이 페이지의 소멸자는 "대시보드 종료" 버튼으로는
+// 안 불릴 수 있어(위 커넥트 지점 주석 참고) 앱 종료 시 nav2를 재개할 마지막
+// 기회일 수 있다 — blocking으로 응답을 기다려 확실히 반영한다.
+void SlamMappingPage::handleAboutToQuit()
+{
+    stopMappingProcess();
+    if (m_mapBridge != nullptr) {
+        const auto failedManagers = m_mapBridge->resumeNav2IfPausedBlocking();
+        if (!failedManagers.isEmpty()) {
+            qWarning() << "[SLAM] Nav2 재개 실패, PAUSE 상태로 남아있을 수 있음:" << failedManagers;
+        }
+    }
 }
 
 void SlamMappingPage::showEvent(QShowEvent *event)
@@ -1760,6 +1990,10 @@ bool SlamMappingPage::startMappingProcess()
     return true;
 }
 
+// Cartographer 프로세스만 정리한다 — nav2 PAUSE/RESUME은 호출자가 상황에 맞는
+// 방식(인터랙티브면 비동기, 앱 종료 직전이면 blocking)으로 별도로 처리한다.
+// aboutToQuit(handleAboutToQuit) / 초기화 버튼(handleResetMapping) 양쪽에서
+// 공유하기 때문에 이 함수 자체에 특정 방식을 강제하지 않는다.
 void SlamMappingPage::stopMappingProcess()
 {
     stopManualDrive();
@@ -1774,6 +2008,20 @@ void SlamMappingPage::stopMappingProcess()
     terminateProcessTree(m_slamProcess, 4000, 2000);
 }
 
+// 성공/실패와 무관하게 UI 로그·상태 메시지로 남긴다. 초기화 버튼 경로와
+// 매핑 시작 실패 시 롤백 경로 양쪽에서 공유한다.
+void SlamMappingPage::logNav2ResumeResult(const QStringList &failedManagers)
+{
+    if (failedManagers.isEmpty()) {
+        appendUiLog(QStringLiteral("[SLAM] Nav2 재개 완료"));
+        return;
+    }
+    appendUiLog(QStringLiteral("[SLAM][ERROR] Nav2 재개 실패: %1 (여전히 PAUSE 상태일 수 있습니다)")
+                    .arg(failedManagers.join(QStringLiteral(", "))));
+    setStatusMessage(QStringLiteral(
+        "Nav2 재개 실패 · 웨이포인트 주행이 동작하지 않을 수 있습니다. 다시 초기화를 눌러 재시도하거나 run.sh를 재시작하세요."));
+}
+
 void SlamMappingPage::handleStartMapping()
 {
     if (m_slamProcess->state() != QProcess::NotRunning) {
@@ -1781,8 +2029,69 @@ void SlamMappingPage::handleStartMapping()
         return;
     }
 
+    if (m_mapBridge == nullptr || !m_mapBridge->isNav2LocalizationActive()) {
+        beginCartographerLaunch();
+        return;
+    }
+
+    const auto answer = QMessageBox::question(
+        this,
+        QStringLiteral("Nav2/AMCL 감지됨"),
+        QStringLiteral("이 로봇에서 Nav2(AMCL)가 실행 중입니다. 같이 켜져 있으면 map→odom 변환이 "
+                        "충돌해 지도 생성이 정상 동작하지 않습니다.\n\n"
+                        "지도 생성을 위해 Nav2를 일시정지(PAUSE)하고 진행할까요?\n"
+                        "(매핑을 초기화하거나 종료하면 자동으로 Nav2를 재개합니다)"),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::Yes);
+    if (answer != QMessageBox::Yes) {
+        appendUiLog(QStringLiteral("[SLAM] Nav2/AMCL이 실행 중이라 매핑을 시작하지 않았습니다."));
+        setStatusMessage(QStringLiteral("Nav2가 실행 중이라 매핑을 시작하지 않았습니다."));
+        return;
+    }
+
+    setMappingUiState(MappingUiState::CheckingBringup, QStringLiteral("Nav2 일시정지 중"));
+    if (m_startButton != nullptr) {
+        // 비동기 응답을 기다리는 동안 중복 클릭으로 PAUSE 요청이 겹치지 않게 막는다.
+        m_startButton->setEnabled(false);
+    }
+    appendUiLog(QStringLiteral("[SLAM] Nav2/AMCL 감지됨 · lifecycle PAUSE 요청"));
+    m_mapBridge->pauseNav2ForMappingAsync([this](bool localizationPaused) {
+        QMetaObject::invokeMethod(this, [this, localizationPaused]() {
+            handleNav2PauseCompleted(localizationPaused);
+        }, Qt::QueuedConnection);
+    });
+}
+
+void SlamMappingPage::handleNav2PauseCompleted(bool localizationPaused)
+{
+    if (m_startButton != nullptr) {
+        m_startButton->setEnabled(true);
+    }
+    if (!localizationPaused) {
+        appendUiLog(QStringLiteral("[SLAM][ERROR] Nav2 일시정지 실패"));
+        setMappingUiState(MappingUiState::Error, QStringLiteral("Nav2 일시정지 실패"));
+        QMessageBox::warning(
+            this,
+            QStringLiteral("Nav2 일시정지 실패"),
+            QStringLiteral("Nav2(AMCL) lifecycle 서비스 호출에 실패했습니다.\n"
+                            "다른 PC에서 run.sh로 띄운 대시보드를 직접 종료한 뒤 다시 시도하세요."));
+        return;
+    }
+    appendUiLog(QStringLiteral("[SLAM] Nav2 일시정지 완료"));
+    beginCartographerLaunch();
+}
+
+void SlamMappingPage::beginCartographerLaunch()
+{
     setMappingUiState(MappingUiState::CheckingBringup, QStringLiteral("Bringup 연결 확인 중"));
     if (!startMappingProcess()) {
+        if (m_mapBridge != nullptr) {
+            m_mapBridge->resumeNav2IfPausedAsync([this](const QStringList &failedManagers) {
+                QMetaObject::invokeMethod(this, [this, failedManagers]() {
+                    logNav2ResumeResult(failedManagers);
+                }, Qt::QueuedConnection);
+            });
+        }
         return;
     }
     setStatusMessage(QStringLiteral("새 Cartographer 세션을 시작했습니다. 기존 맵은 가져오지 않고 새 매핑만 표시합니다."));
@@ -1794,6 +2103,15 @@ void SlamMappingPage::handleResetMapping()
     m_lastSavedBasePath.clear();
     if (m_mapBridge != nullptr) {
         m_mapBridge->beginFreshSession();
+        // 비동기 요청 — 여기서 기다리지 않고 바로 UI를 "초기화 완료"로 되돌린다.
+        // 응답은 나중에 콜백으로 도착해 로그/상태 메시지만 갱신한다. 그 사이
+        // (아직 nav2가 재개되지 않은 동안) 웨이포인트 페이지의 "Nav2 미연결"
+        // 배지·버튼 비활성화가 실제 재개 완료 시점까지 사용자를 보호해 준다.
+        m_mapBridge->resumeNav2IfPausedAsync([this](const QStringList &failedManagers) {
+            QMetaObject::invokeMethod(this, [this, failedManagers]() {
+                logNav2ResumeResult(failedManagers);
+            }, Qt::QueuedConnection);
+        });
     }
     setMappingUiState(MappingUiState::Idle, QStringLiteral("매핑이 초기화되었습니다. 다시 시작하려면 매핑 재생을 누르세요."));
     resetMappingView(QStringLiteral("초기화 완료 · 새 매핑을 시작하려면 매핑 재생을 누르세요."), false);

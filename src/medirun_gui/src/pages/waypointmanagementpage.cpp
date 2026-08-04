@@ -23,6 +23,7 @@
 #include <QSlider>
 #include <QStackedWidget>
 #include <QStyle>
+#include <QThread>
 #include <QVBoxLayout>
 #include <QtMath>
 
@@ -127,10 +128,12 @@ void WaypointManagementPage::setNavigationService(NavigationService *service)
 {
     m_navigationService = service;
     if (m_navigationService == nullptr) {
+        handleNav2ConnectionChanged(false);
         updateNavButtonsEnabled();
         return;
     }
 
+    connect(m_navigationService, &NavigationService::nav2ConnectionChanged, this, &WaypointManagementPage::handleNav2ConnectionChanged);
     connect(m_navigationService, &NavigationService::statusChanged, this, &WaypointManagementPage::handleNavStatusChanged);
     connect(m_navigationService, &NavigationService::feedbackDistanceRemaining, this, &WaypointManagementPage::handleNavFeedback);
     connect(m_navigationService, &NavigationService::waypointProgress, this, &WaypointManagementPage::handleNavWaypointProgress);
@@ -163,7 +166,10 @@ QWidget *WaypointManagementPage::buildHeader()
     layout->addLayout(titleCol);
     layout->addStretch();
 
-    m_navStatusLabel = makeLabel(QStringLiteral("Nav2 미연결"), QStringLiteral("metricCaption"));
+    m_nav2ConnectionBadge = makeBadgeLabel(QStringLiteral("Nav2 미연결"), QStringLiteral("red"), row);
+    layout->addWidget(m_nav2ConnectionBadge);
+
+    m_navStatusLabel = makeLabel(QString(), QStringLiteral("metricCaption"));
     m_navStatusLabel->setWordWrap(false);
     layout->addWidget(m_navStatusLabel);
 
@@ -1220,14 +1226,22 @@ void WaypointManagementPage::handleSaveWaypointFile()
 void WaypointManagementPage::updateNavButtonsEnabled()
 {
     const bool hasService = (m_navigationService != nullptr);
+    // 실제 주행에는 navigate_to_pose/follow_waypoints 액션 서버가 떠 있어야
+    // 한다(m_nav2Connected) — SLAM 매핑 중 PAUSE된 동안이나 콜드부트 직후에는
+    // hasService(rclcpp 노드 연결)는 true여도 nav2 자체는 아직 준비 안 됐을 수
+    // 있다. 초기 위치 설정은 AMCL(localization)만 있으면 되므로 nav2Ready와
+    // 무관하게 hasService만으로 활성화한다.
+    const bool nav2Ready = hasService && m_nav2Connected;
     if (m_navigateButton != nullptr) {
-        m_navigateButton->setEnabled(hasService && !m_creatingNew && !m_selectedWaypointId.isEmpty());
+        m_navigateButton->setEnabled(nav2Ready && !m_creatingNew && !m_selectedWaypointId.isEmpty());
+        m_navigateButton->setText(nav2Ready ? QStringLiteral("이 웨이포인트로 주행") : QStringLiteral("Nav2 미연결"));
     }
     if (m_cancelNavButton != nullptr) {
         m_cancelNavButton->setEnabled(hasService);
     }
     if (m_navigateRouteButton != nullptr) {
-        m_navigateRouteButton->setEnabled(hasService && !m_selectedSavedRoute.isEmpty());
+        m_navigateRouteButton->setEnabled(nav2Ready && !m_selectedSavedRoute.isEmpty());
+        m_navigateRouteButton->setText(nav2Ready ? QStringLiteral("선택 경로 주행") : QStringLiteral("Nav2 미연결"));
     }
     if (m_setInitialPoseButton != nullptr) {
         m_setInitialPoseButton->setEnabled(hasService);
@@ -1243,6 +1257,12 @@ void WaypointManagementPage::handleNavigateToSelectedWaypoint()
         m_waypointStatusLabel->setText(QStringLiteral("Nav2 연동이 준비되지 않았습니다."));
         return;
     }
+    // 버튼이 비활성화돼 있어야 정상이지만(updateNavButtonsEnabled), 클릭과
+    // 연결 끊김이 겹치는 race를 대비해 여기서도 한 번 더 막는다.
+    if (!m_nav2Connected) {
+        m_waypointStatusLabel->setText(QStringLiteral("Nav2가 아직 연결되지 않았습니다."));
+        return;
+    }
     if (m_creatingNew || !m_waypoints.contains(m_selectedWaypointId)) {
         m_waypointStatusLabel->setText(QStringLiteral("먼저 저장된 웨이포인트를 선택하세요."));
         return;
@@ -1256,6 +1276,10 @@ void WaypointManagementPage::handleNavigateSelectedRoute()
 {
     if (m_navigationService == nullptr) {
         m_trajectoryStatusLabel->setText(QStringLiteral("Nav2 연동이 준비되지 않았습니다."));
+        return;
+    }
+    if (!m_nav2Connected) {
+        m_trajectoryStatusLabel->setText(QStringLiteral("Nav2가 아직 연결되지 않았습니다."));
         return;
     }
     if (m_selectedSavedRoute.isEmpty() || !m_trajectories.contains(m_selectedSavedRoute)) {
@@ -1289,6 +1313,18 @@ void WaypointManagementPage::handleCancelNavigation()
 void WaypointManagementPage::handleNavStatusChanged(const QString &text)
 {
     m_navStatusLabel->setText(text);
+}
+
+void WaypointManagementPage::handleNav2ConnectionChanged(bool connected)
+{
+    m_nav2Connected = connected;
+    if (m_nav2ConnectionBadge != nullptr) {
+        m_nav2ConnectionBadge->setText(connected ? QStringLiteral("Nav2 연결") : QStringLiteral("Nav2 미연결"));
+        m_nav2ConnectionBadge->setProperty("badgeKind", connected ? QStringLiteral("green") : QStringLiteral("red"));
+        m_nav2ConnectionBadge->style()->unpolish(m_nav2ConnectionBadge);
+        m_nav2ConnectionBadge->style()->polish(m_nav2ConnectionBadge);
+    }
+    updateNavButtonsEnabled();
 }
 
 void WaypointManagementPage::handleNavFeedback(double metersRemaining)

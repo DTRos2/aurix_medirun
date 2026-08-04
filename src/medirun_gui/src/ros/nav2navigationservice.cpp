@@ -5,6 +5,8 @@
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+#include <lifecycle_msgs/msg/state.hpp>
+#include <lifecycle_msgs/srv/get_state.hpp>
 #include <nav2_msgs/action/follow_waypoints.hpp>
 #include <nav2_msgs/action/navigate_to_pose.hpp>
 #include <nav2_msgs/msg/speed_limit.hpp>
@@ -16,6 +18,7 @@
 #include <cmath>
 #include <mutex>
 #include <thread>
+#include <utility>
 
 namespace {
 
@@ -94,6 +97,20 @@ public:
         m_scanSub = create_subscription<sensor_msgs::msg::LaserScan>(
             "scan", rclcpp::SensorDataQoS(),
             [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { handleScan(msg); });
+
+        // bt_navigator/waypoint_follower의 실제 lifecycle 상태(active인지)를 직접
+        // 물어본다. action_server_is_ready()는 액션 서버 "존재 여부"만 보는데,
+        // nav2 lifecycle 노드는 on_configure() 단계에서 이미 액션 서버를 만들어
+        // 두기 때문에 activate되기 훨씬 전(예: 아직 costmap이 map 프레임을
+        // 기다리는 중)부터 true가 나와 버린다 — 실측: bt_navigator가 inactive인
+        // 상태에서도 action_server_is_ready()==true였음. GetState 서비스로
+        // PRIMARY_STATE_ACTIVE를 직접 확인해야 "goal을 실제로 받아줄 수 있는
+        // 상태"를 정확히 판정할 수 있다.
+        m_btNavigatorStateClient = create_client<lifecycle_msgs::srv::GetState>("/bt_navigator/get_state");
+        m_waypointFollowerStateClient = create_client<lifecycle_msgs::srv::GetState>("/waypoint_follower/get_state");
+        m_connectionCheckTimer = create_wall_timer(
+            std::chrono::milliseconds(1000), [this]() { checkNav2Connection(); });
+        checkNav2Connection();
     }
 
     void handleScan(const sensor_msgs::msg::LaserScan::SharedPtr &msg)
@@ -272,6 +289,52 @@ public:
         m_bridge->logEvent(QStringLiteral("INFO"), QStringLiteral("주행 속도를 %1%로 설정했습니다.").arg(percent));
     }
 
+    // bt_navigator/waypoint_follower 둘 다 GetState 서비스가 응답 가능하고
+    // active여야 "연결됨"으로 본다. 두 서비스 응답이 비동기로 따로 도착하므로
+    // 라운드마다(m_connectionCheckRound) 결과를 모아서 마지막에 한 번만 판정한다
+    // — 서로 다른 라운드의 응답이 섞이면 오판정할 수 있어 라운드 번호로 구분한다.
+    void checkNav2Connection()
+    {
+        if (!m_btNavigatorStateClient->service_is_ready() || !m_waypointFollowerStateClient->service_is_ready()) {
+            updateNav2Connected(false);
+            return;
+        }
+
+        const uint64_t round = ++m_connectionCheckRound;
+        auto request = std::make_shared<lifecycle_msgs::srv::GetState::Request>();
+
+        m_btNavigatorStateClient->async_send_request(
+            request,
+            [this, round](rclcpp::Client<lifecycle_msgs::srv::GetState>::SharedFuture future) {
+                handleLifecycleStateResult(round, m_btNavigatorActiveForRound,
+                                            future.get()->current_state.id);
+            });
+        m_waypointFollowerStateClient->async_send_request(
+            request,
+            [this, round](rclcpp::Client<lifecycle_msgs::srv::GetState>::SharedFuture future) {
+                handleLifecycleStateResult(round, m_waypointFollowerActiveForRound,
+                                            future.get()->current_state.id);
+            });
+    }
+
+    void handleLifecycleStateResult(uint64_t round, std::pair<uint64_t, bool> &slot, uint8_t stateId)
+    {
+        slot = {round, stateId == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE};
+        if (m_btNavigatorActiveForRound.first != round || m_waypointFollowerActiveForRound.first != round) {
+            return;
+        }
+        updateNav2Connected(m_btNavigatorActiveForRound.second && m_waypointFollowerActiveForRound.second);
+    }
+
+    void updateNav2Connected(bool connected)
+    {
+        if (connected == m_nav2Connected) {
+            return;
+        }
+        m_nav2Connected = connected;
+        m_bridge->nav2ConnectionChanged(connected);
+    }
+
 private:
     Nav2NavigationService *m_bridge;
     NavClient::SharedPtr m_navClient;
@@ -285,6 +348,15 @@ private:
     NavClient::GoalHandle::SharedPtr m_navGoalHandle;
     FollowClient::GoalHandle::SharedPtr m_followGoalHandle;
     int m_followTotal {0};
+    rclcpp::TimerBase::SharedPtr m_connectionCheckTimer;
+    rclcpp::Client<lifecycle_msgs::srv::GetState>::SharedPtr m_btNavigatorStateClient;
+    rclcpp::Client<lifecycle_msgs::srv::GetState>::SharedPtr m_waypointFollowerStateClient;
+    uint64_t m_connectionCheckRound {0};
+    // {round, active} — 그 라운드에서 마지막으로 받은 응답. round가 현재
+    // m_connectionCheckRound와 다르면 아직 이번 라운드 응답이 안 온 것.
+    std::pair<uint64_t, bool> m_btNavigatorActiveForRound {0, false};
+    std::pair<uint64_t, bool> m_waypointFollowerActiveForRound {0, false};
+    bool m_nav2Connected {false};
 };
 
 struct Nav2NavigationService::Impl
