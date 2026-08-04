@@ -15,14 +15,35 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
+    # turtlebot3_bringup reads this directly with os.environ[].  Avoid a launch
+    # generation failure when the shell did not export LDS_MODEL.
+    os.environ.setdefault("LDS_MODEL", "LDS-01")
+
     arduino_port = LaunchConfiguration("arduino_port")
     opencr_port = LaunchConfiguration("opencr_port")
     baud = LaunchConfiguration("baud")
+    camera_format = LaunchConfiguration("camera_format")
     audio_sink = LaunchConfiguration("audio_sink")
-    enable_bringup_monitor = LaunchConfiguration("enable_bringup_monitor")
-    enable_audio_output = LaunchConfiguration("enable_audio_output")
-    enable_startup_audio = LaunchConfiguration("enable_startup_audio")
+    start_cartographer = LaunchConfiguration("start_cartographer")
+    use_sim_time = LaunchConfiguration("use_sim_time")
+
     turtlebot3_bringup = get_package_share_directory("turtlebot3_bringup")
+    turtlebot3_cartographer = get_package_share_directory("turtlebot3_cartographer")
+    cartographer_config_dir = os.path.join(turtlebot3_cartographer, "config")
+
+    # An overlay that has not been rebuilt may contain the package index but not
+    # its data files yet.  Keep this launch usable in that state as well.
+    if not os.path.isdir(cartographer_config_dir):
+        workspace_dir = turtlebot3_cartographer
+        for _ in range(4):
+            workspace_dir = os.path.dirname(workspace_dir)
+        cartographer_config_dir = os.path.join(
+            workspace_dir,
+            "src",
+            "turtlebot3",
+            "turtlebot3_cartographer",
+            "config",
+        )
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -42,20 +63,16 @@ def generate_launch_description():
             description="TurtleBot3 OpenCR serial port",
         ),
         DeclareLaunchArgument("baud", default_value="9600"),
+        DeclareLaunchArgument("use_sim_time", default_value="false"),
         DeclareLaunchArgument(
-            "enable_bringup_monitor",
-            default_value="true",
-            description="핵심 토픽(/scan, /odom, /tf, /map, /cmd_vel) 모니터 노드 실행 여부",
+            "start_cartographer",
+            default_value="false",
+            description="통합 launch에서 Cartographer도 함께 실행",
         ),
         DeclareLaunchArgument(
-            "enable_audio_output",
-            default_value="false",
-            description="외부 robot_audio_output 패키지의 audio_output_node 실행 여부",
-        ),
-        DeclareLaunchArgument(
-            "enable_startup_audio",
-            default_value="false",
-            description="브링업 직후 '주행을 시작합니다' 음성을 자동 재생할지 여부",
+            "camera_format",
+            default_value="BGR888",
+            description="turtlebot3_bringup camera.launch.py에 전달할 픽셀 포맷",
         ),
         DeclareLaunchArgument(
             "audio_sink",
@@ -65,12 +82,52 @@ def generate_launch_description():
             ),
             description="gTTS 음성을 출력할 PulseAudio sink",
         ),
+
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(turtlebot3_bringup, "launch", "robot.launch.py")
             ),
-            launch_arguments={"usb_port": opencr_port}.items(),
+            launch_arguments={
+                "usb_port": opencr_port,
+                "use_sim_time": use_sim_time,
+            }.items(),
         ),
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(turtlebot3_bringup, "launch", "camera.launch.py")
+            ),
+            launch_arguments={"format": camera_format}.items(),
+        ),
+
+        Node(
+            package="cartographer_ros",
+            executable="cartographer_node",
+            name="cartographer_node",
+            arguments=[
+                "-configuration_directory",
+                cartographer_config_dir,
+                "-configuration_basename",
+                "turtlebot3_lds_2d.lua",
+            ],
+            parameters=[{"use_sim_time": use_sim_time}],
+            remappings=[
+                ("scan", "/scan"),
+                ("tf", "/tf"),
+                ("tf_static", "/tf_static"),
+            ],
+            condition=IfCondition(start_cartographer),
+            output="screen",
+        ),
+        Node(
+            package="cartographer_ros",
+            executable="cartographer_occupancy_grid_node",
+            name="cartographer_occupancy_grid_node",
+            arguments=["-resolution", "0.05", "-publish_period_sec", "1.0"],
+            parameters=[{"use_sim_time": use_sim_time}],
+            condition=IfCondition(start_cartographer),
+            output="screen",
+        ),
+
         Node(
             package="arduino_bridge",
             executable="serial_bridge",
@@ -96,28 +153,21 @@ def generate_launch_description():
             output="screen",
         ),
         Node(
-            package="arduino_bridge",
-            executable="bringup_monitor_node",
-            name="bringup_monitor_node",
-            output="screen",
-            condition=IfCondition(enable_bringup_monitor),
-        ),
-        Node(
             package="robot_audio_output",
             executable="audio_output_node",
             name="audio_output_node",
             additional_env={"PULSE_SINK": audio_sink},
             output="screen",
-            condition=IfCondition(enable_audio_output),
         ),
+
+        # bringup과 동시에 시작한다. 각 `--once` 발행은 해당 구독자가
+        # 연결될 때까지 기다리므로 별도의 고정 지연 시간이 필요하지 않다.
         ExecuteProcess(
             cmd=[
                 "ros2",
                 "topic",
                 "pub",
                 "--once",
-                "-w",
-                "0",
                 "/arduino/led",
                 "std_msgs/msg/String",
                 "{data: IDLE}",
@@ -126,20 +176,17 @@ def generate_launch_description():
         ),
         ExecuteProcess(
             cmd=[
-                "bash",
-                "-lc",
+                "ros2",
+                "topic",
+                "pub",
+                "--once",
+                "/audio/command",
+                "robot_audio_interfaces/msg/AudioCommand",
                 (
-                    "for i in $(seq 1 10); do "
-                    "ros2 topic pub --once -w 1 /audio/command "
-                    "robot_audio_interfaces/msg/AudioCommand "
-                    "\"{type: 0, text: '주행을 시작합니다', sound_id: '', volume: 1.0, repeat: 1}\" "
-                    "&& exit 0; "
-                    "sleep 1; "
-                    "done; "
-                    "exit 0"
+                    "{type: 0, text: '주행을 시작합니다', sound_id: '', "
+                    "volume: 1.0, repeat: 1}"
                 ),
             ],
             output="screen",
-            condition=IfCondition([enable_audio_output, " and ", enable_startup_audio]),
         ),
     ])

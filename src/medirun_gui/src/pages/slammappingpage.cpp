@@ -35,12 +35,15 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstring>
 #include <functional>
 #include <mutex>
 #include <memory>
 #include <string>
 #include <thread>
+
+#include <sys/types.h>
 
 #include <geometry_msgs/msg/twist.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -162,6 +165,36 @@ QString normalizeMapBaseName(QString fileName)
         fileName = fileName.left(dotIndex).trimmed();
     }
     return fileName;
+}
+
+// m_slamProcess는 setsid로 자기 자신을 새 프로세스 그룹의 리더로 띄운다
+// (startMappingProcess 참고). ros2 launch는 cartographer_node /
+// cartographer_occupancy_grid_node를 자식으로 fork하는데, QProcess::terminate()
+// /kill()은 직접 자식(ros2 launch)에만 신호를 보내므로, SIGTERM 처리 시간 안에
+// ros2 launch가 죽지 않고 SIGKILL로 넘어가면 그 자식들이 부모 잃은 채 살아남는다
+// (실측: 대시보드를 꺼도 cartographer_node가 계속 떠 있던 버그). 음수 PID로
+// kill()해서 프로세스 그룹 전체(ros2 launch + 그 자식들)에 신호를 보낸다.
+void terminateProcessTree(QProcess *process, int termTimeoutMs, int killTimeoutMs)
+{
+    if (process->state() == QProcess::NotRunning) {
+        return;
+    }
+
+    const qint64 pid = process->processId();
+    if (pid > 0) {
+        ::kill(-static_cast<pid_t>(pid), SIGTERM);
+    } else {
+        process->terminate();
+    }
+
+    if (!process->waitForFinished(termTimeoutMs)) {
+        if (pid > 0) {
+            ::kill(-static_cast<pid_t>(pid), SIGKILL);
+        } else {
+            process->kill();
+        }
+        process->waitForFinished(killTimeoutMs);
+    }
 }
 
 bool isSlamFatalLogLine(const QString &line)
@@ -856,7 +889,7 @@ private:
 
         const double exploredRatio = static_cast<double>(exploredCells) / static_cast<double>(width * height);
         if (onStatusUpdated) {
-            onStatusUpdated(QStringLiteral("실시간 Cartographer 맵 수신 중 (%1 x %2, 탐색 %.1f%)")
+            onStatusUpdated(QStringLiteral("실시간 Cartographer 맵 수신 중 (%1 x %2, 탐색 %3%)")
                                 .arg(width)
                                 .arg(height)
                                 .arg(exploredRatio * 100.0, 0, 'f', 1));
@@ -1186,6 +1219,11 @@ SlamMappingPage::SlamMappingPage(QWidget *parent)
     connect(m_saveProcess, &QProcess::errorOccurred, this, &SlamMappingPage::handleSaveProcessErrorOccurred);
     connect(m_saveProcess, &QProcess::readyReadStandardOutput, this, &SlamMappingPage::handleSaveProcessStdout);
     connect(m_saveProcess, &QProcess::readyReadStandardError, this, &SlamMappingPage::handleSaveProcessStderr);
+    // "대시보드 종료" 버튼은 MainWindow::close()만 부르고 WA_DeleteOnClose가
+    // 없어서 위젯이 삭제되지 않는다 — 즉 이 페이지의 소멸자가 아예 안 불릴 수
+    // 있다(cartographer가 계속 살아남던 버그의 원인). 앱 종료 시점엔 항상
+    // aboutToQuit이 뜨므로 여기서 직접 정리한다.
+    connect(qApp, &QCoreApplication::aboutToQuit, this, &SlamMappingPage::stopMappingProcess);
     m_manualDriveTimer->setInterval(100);
     connect(m_manualDriveTimer, &QTimer::timeout, this, &SlamMappingPage::handleManualDriveTick);
     m_mapRefreshTimer->setInterval(kMapRefreshIntervalMs);
@@ -1208,13 +1246,7 @@ SlamMappingPage::~SlamMappingPage()
     }
     m_mapTimeoutTimer->stop();
     m_mapRefreshTimer->stop();
-    if (m_slamProcess->state() != QProcess::NotRunning) {
-        m_slamProcess->terminate();
-        if (!m_slamProcess->waitForFinished(2000)) {
-            m_slamProcess->kill();
-            m_slamProcess->waitForFinished(1000);
-        }
-    }
+    terminateProcessTree(m_slamProcess, 2000, 1000);
     m_mapBridge->stop();
 }
 
@@ -1701,13 +1733,14 @@ bool SlamMappingPage::startMappingProcess()
         ? QStringLiteral("burger")
         : QString::fromLocal8Bit(qgetenv("TURTLEBOT3_MODEL"));
     const QString slamCommand = shellCommandPrefix()
-        + QStringLiteral("export TURTLEBOT3_MODEL=\"%1\" && exec ros2 launch turtlebot3_cartographer cartographer.launch.py use_sim_time:=false use_rviz:=false")
+        + QStringLiteral("export TURTLEBOT3_MODEL=\"%1\" && export RMW_IMPLEMENTATION=\"${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}\" && exec ros2 launch turtlebot3_cartographer cartographer.launch.py use_sim_time:=false use_rviz:=false")
               .arg(turtlebotModel);
     qInfo() << "[SLAM] starting Cartographer process:" << slamCommand;
     appendUiLog(QStringLiteral("[SLAM] Cartographer 실행 시작"));
     appendUiLog(QStringLiteral("[SLAM] Cartographer 실행 명령 준비 완료"));
-    m_slamProcess->setProgram(QStringLiteral("bash"));
+    m_slamProcess->setProgram(QStringLiteral("setsid"));
     m_slamProcess->setArguments({
+        QStringLiteral("bash"),
         QStringLiteral("-lc"),
         slamCommand
     });
@@ -1738,11 +1771,7 @@ void SlamMappingPage::stopMappingProcess()
     }
 
     m_stoppingSlamProcess = true;
-    m_slamProcess->terminate();
-    if (!m_slamProcess->waitForFinished(4000)) {
-        m_slamProcess->kill();
-        m_slamProcess->waitForFinished(2000);
-    }
+    terminateProcessTree(m_slamProcess, 4000, 2000);
 }
 
 void SlamMappingPage::handleStartMapping()

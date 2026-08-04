@@ -85,7 +85,6 @@ private:
     void layoutOverlay();
     void updateScaledBackgroundPixmap();
 
-    QPixmap m_backgroundPixmap;
     bool m_poseSettingEnabled;
     bool m_dragging;
     QPointF m_dragStartPos;
