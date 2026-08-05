@@ -17,13 +17,21 @@ class WaypointManagementPage;
 class RemoteControlPage;
 class CameraFeedProvider;
 class SlamMappingPage;
+class OperationsOverviewPage;
+class OperationsOverviewService;
+class RobotService;
 
 class DashboardCentralWidget : public QWidget
 {
     Q_OBJECT
 
 public:
-    explicit DashboardCentralWidget(const AppSession &session, AuthService &authService, QWidget *parent = nullptr);
+    explicit DashboardCentralWidget(
+        const AppSession &session,
+        AuthService &authService,
+        OperationsOverviewService &operationsOverviewService,
+        RobotService &robotService,
+        QWidget *parent = nullptr);
 
     void applySnapshot(const TelemetrySnapshot &snapshot);
     void setNavigationService(NavigationService *service);
@@ -49,6 +57,7 @@ private:
     SideNav *m_sideNav;
     QStackedWidget *m_stack;
     QHash<PageId, int> m_pageIndex;
+    OperationsOverviewPage *m_operationsOverviewPage {nullptr};
     WaypointManagementPage *m_waypointPage {nullptr};
     RemoteControlPage *m_remoteControlPage {nullptr};
     SlamMappingPage *m_slamMappingPage {nullptr};

@@ -14,6 +14,9 @@ class SplashScreenWidget;
 class TelemetryProvider;
 class NavigationService;
 class CameraFeedProvider;
+class OperationsOverviewService;
+class RobotService;
+class TelemetryLogRecorder;
 
 class GuiApplicationController : public QObject
 {
@@ -38,8 +41,11 @@ private:
 
     QApplication &m_application;
     std::unique_ptr<AuthService> m_authService;
+    std::unique_ptr<OperationsOverviewService> m_operationsOverviewService;
+    std::unique_ptr<RobotService> m_robotService;
     std::unique_ptr<NavigationService> m_navigationService;
     TelemetryProvider *m_telemetryProvider;
+    TelemetryLogRecorder *m_telemetryLogRecorder;
     CameraFeedProvider *m_cameraFeedProvider;
     SplashScreenWidget *m_splashScreen;
     LoginDialog *m_loginDialog;

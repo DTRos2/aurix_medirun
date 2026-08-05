@@ -1,0 +1,332 @@
+#include "dboperationsoverviewservice.h"
+#include "dbconnection.h"
+
+#include <QSqlError>
+#include <QSqlQuery>
+#include <QVariant>
+
+namespace {
+
+int percentFromCounts(int connected, int total)
+{
+    if (total <= 0) {
+        return 0;
+    }
+    return qRound(100.0 * connected / total);
+}
+
+QString healthKindForPercent(int percent)
+{
+    if (percent >= 95) {
+        return QStringLiteral("green");
+    }
+    if (percent >= 80) {
+        return QStringLiteral("amber");
+    }
+    return QStringLiteral("red");
+}
+
+// 진행 중인 미션이 있으면 미션 상태를, 없으면 최근 robot_session 상태를 표시한다.
+void statusLabelAndKind(const QString &missionStatus, const QString &sessionStatus, QString &label, QString &kind)
+{
+    if (!missionStatus.isEmpty()) {
+        if (missionStatus == QStringLiteral("queued")) {
+            label = QStringLiteral("● 대기열");
+            kind = QStringLiteral("muted");
+        } else if (missionStatus == QStringLiteral("replanning")) {
+            label = QStringLiteral("● 재계획");
+            kind = QStringLiteral("amber");
+        } else if (missionStatus == QStringLiteral("dispensing")) {
+            label = QStringLiteral("● 반출 중");
+            kind = QStringLiteral("cyan");
+        } else if (missionStatus == QStringLiteral("arrived")) {
+            label = QStringLiteral("● 도착");
+            kind = QStringLiteral("cyan");
+        } else {
+            // dispatched, navigating
+            label = QStringLiteral("● 출동 중");
+            kind = QStringLiteral("cyan");
+        }
+        return;
+    }
+
+    if (sessionStatus == QStringLiteral("running")) {
+        label = QStringLiteral("● 운행 중");
+        kind = QStringLiteral("cyan");
+    } else if (sessionStatus == QStringLiteral("paused")) {
+        label = QStringLiteral("● 일시정지");
+        kind = QStringLiteral("amber");
+    } else if (sessionStatus == QStringLiteral("failed") || sessionStatus == QStringLiteral("aborted")) {
+        label = QStringLiteral("● 오류");
+        kind = QStringLiteral("red");
+    } else {
+        label = QStringLiteral("● 대기");
+        kind = QStringLiteral("muted");
+    }
+}
+
+void severityLabelAndKind(const QString &severity, QString &label, QString &kind)
+{
+    if (severity == QStringLiteral("critical")) {
+        label = QStringLiteral("CRITICAL");
+        kind = QStringLiteral("red");
+    } else if (severity == QStringLiteral("error")) {
+        label = QStringLiteral("ERROR");
+        kind = QStringLiteral("red");
+    } else if (severity == QStringLiteral("warn")) {
+        label = QStringLiteral("WARN");
+        kind = QStringLiteral("amber");
+    } else {
+        label = QStringLiteral("INFO");
+        kind = QStringLiteral("muted");
+    }
+}
+
+} // namespace
+
+bool DbOperationsOverviewService::fetchSummary(OperationsSummaryMetrics &metrics, QString &errorMessage)
+{
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery robotQuery(QStringLiteral(
+        "SELECT "
+        "  (SELECT COUNT(*) FROM robot WHERE deregistered_at IS NULL) AS registered_robots, "
+        "  (SELECT COUNT(*) FROM ( "
+        "     SELECT DISTINCT ON (robot_id) robot_id, status "
+        "     FROM connection_status_log "
+        "     WHERE target = 'ros_bridge' "
+        "     ORDER BY robot_id, changed_at DESC, id DESC "
+        "   ) latest "
+        "   JOIN robot r ON r.id = latest.robot_id AND r.deregistered_at IS NULL "
+        "   WHERE latest.status = 'connected' "
+        "  ) AS connected_robots"));
+    if (!robotQuery.isActive() || !robotQuery.next()) {
+        errorMessage = QStringLiteral("DB 조회 실패: %1").arg(robotQuery.lastError().text());
+        return false;
+    }
+    metrics.registeredRobots = robotQuery.value(QStringLiteral("registered_robots")).toInt();
+    metrics.connectedRobots = robotQuery.value(QStringLiteral("connected_robots")).toInt();
+
+    QSqlQuery missionQuery(QStringLiteral(
+        "SELECT "
+        "  COUNT(*) FILTER (WHERE status NOT IN ('completed', 'cancelled', 'failed')) AS active_missions, "
+        "  COUNT(*) FILTER (WHERE status NOT IN ('completed', 'cancelled', 'failed') AND is_emergency) AS active_emergency_missions, "
+        "  COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE) AS today_calls, "
+        "  COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE AND is_emergency) AS today_emergency_calls "
+        "FROM mission"));
+    if (!missionQuery.isActive() || !missionQuery.next()) {
+        errorMessage = QStringLiteral("DB 조회 실패: %1").arg(missionQuery.lastError().text());
+        return false;
+    }
+    metrics.activeMissions = missionQuery.value(QStringLiteral("active_missions")).toInt();
+    metrics.activeEmergencyMissions = missionQuery.value(QStringLiteral("active_emergency_missions")).toInt();
+    metrics.todayCalls = missionQuery.value(QStringLiteral("today_calls")).toInt();
+    metrics.todayEmergencyCalls = missionQuery.value(QStringLiteral("today_emergency_calls")).toInt();
+
+    QSqlQuery eventQuery(QStringLiteral(
+        "SELECT COUNT(*) FROM system_event "
+        "WHERE severity IN ('warn', 'error', 'critical') AND created_at >= NOW() - INTERVAL '24 hours'"));
+    if (!eventQuery.isActive() || !eventQuery.next()) {
+        errorMessage = QStringLiteral("DB 조회 실패: %1").arg(eventQuery.lastError().text());
+        return false;
+    }
+    metrics.safetyEventsLast24h = eventQuery.value(0).toInt();
+
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::fetchRobotStatus(QVector<RobotStatusRow> &rows, QString &errorMessage)
+{
+    rows.clear();
+
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery query(QStringLiteral(
+        "SELECT "
+        "  r.name AS robot_name, "
+        "  sess.status AS session_status, "
+        "  dr.battery_percent AS battery_percent, "
+        "  cb.zone_name AS zone_name, "
+        "  m.status AS mission_status "
+        "FROM robot r "
+        "LEFT JOIN LATERAL ( "
+        "  SELECT status FROM robot_session "
+        "  WHERE robot_session.robot_id = r.id "
+        "  ORDER BY started_at DESC LIMIT 1 "
+        ") sess ON true "
+        "LEFT JOIN LATERAL ( "
+        "  SELECT id FROM driving_session ds "
+        "  WHERE ds.robot_id = r.id "
+        "  ORDER BY ds.started_at DESC LIMIT 1 "
+        ") latest_ds ON true "
+        "LEFT JOIN LATERAL ( "
+        "  SELECT battery_percent FROM driving_record "
+        "  WHERE driving_record.driving_session_id = latest_ds.id "
+        "  ORDER BY recorded_at DESC LIMIT 1 "
+        ") dr ON true "
+        "LEFT JOIN LATERAL ( "
+        "  SELECT status, call_button_id FROM mission "
+        "  WHERE mission.robot_id = r.id AND mission.status NOT IN ('completed', 'cancelled', 'failed') "
+        "  ORDER BY created_at DESC LIMIT 1 "
+        ") m ON true "
+        "LEFT JOIN call_button cb ON cb.id = m.call_button_id "
+        "WHERE r.deregistered_at IS NULL "
+        "ORDER BY r.name"));
+    if (!query.isActive()) {
+        errorMessage = QStringLiteral("DB 조회 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    while (query.next()) {
+        RobotStatusRow row;
+        row.robotName = query.value(QStringLiteral("robot_name")).toString();
+
+        const QString missionStatus = query.value(QStringLiteral("mission_status")).toString();
+        const QString sessionStatus = query.value(QStringLiteral("session_status")).toString();
+        statusLabelAndKind(missionStatus, sessionStatus, row.statusLabel, row.statusKind);
+
+        const QVariant battery = query.value(QStringLiteral("battery_percent"));
+        row.batteryText = battery.isNull() ? QStringLiteral("-") : QStringLiteral("%1%").arg(qRound(battery.toDouble()));
+
+        const QString zoneName = query.value(QStringLiteral("zone_name")).toString();
+        row.routeText = zoneName.isEmpty() ? QStringLiteral("-") : QStringLiteral("목적지: %1").arg(zoneName);
+
+        rows.push_back(row);
+    }
+
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::fetchSystemHealth(QVector<SystemHealthRow> &rows, QString &errorMessage)
+{
+    rows.clear();
+
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    // Nav2 연결/카메라 연결은 여기서 다루지 않는다 — connection_status_log의
+    // target enum(ros_bridge/database/serial/camera/unity)에 "nav2"가 없고,
+    // 아무 코드도 target='database'/'camera' 로그를 쓰지 않아 DB로는 항상
+    // 0%가 나온다. 그 둘은 페이지가 NavigationService/CameraFeedProvider의
+    // 실시간 시그널로 직접 채운다 (OperationsOverviewPage::applyNav2Connection
+    // /applyCameraConnection).
+    // 등록해제된 로봇의 예전 connection_status_log 행은 robot_id가 남아있어도
+    // 더 이상 "현재 연결 상태"로 셀 이유가 없으므로, 지금 등록돼 있는(활성)
+    // 로봇으로만 분모를 제한한다 (fetchSummary의 connected_robots 계산과 동일 조건).
+    QSqlQuery connQuery(QStringLiteral(
+        "SELECT "
+        "  COUNT(*) FILTER (WHERE latest.status = 'connected') AS ros_connected, "
+        "  COUNT(*) AS ros_total "
+        "FROM ( "
+        "  SELECT DISTINCT ON (robot_id) robot_id, status "
+        "  FROM connection_status_log "
+        "  WHERE target = 'ros_bridge' "
+        "  ORDER BY robot_id, changed_at DESC, id DESC "
+        ") latest "
+        "JOIN robot r ON r.id = latest.robot_id AND r.deregistered_at IS NULL"));
+    if (!connQuery.isActive() || !connQuery.next()) {
+        errorMessage = QStringLiteral("DB 조회 실패: %1").arg(connQuery.lastError().text());
+        return false;
+    }
+
+    const int rosPercent = percentFromCounts(
+        connQuery.value(QStringLiteral("ros_connected")).toInt(), connQuery.value(QStringLiteral("ros_total")).toInt());
+
+    rows.push_back({QStringLiteral("ROS2 통신"), rosPercent, healthKindForPercent(rosPercent)});
+    // 이 지점까지 왔다는 것 자체가 방금 DB 쿼리가 성공했다는 뜻이라 100으로 둔다.
+    rows.push_back({QStringLiteral("DB 동기화"), 100, QStringLiteral("green")});
+
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::fetchRecentEvents(int limit, QVector<OperationsEventRow> &rows, QString &errorMessage)
+{
+    rows.clear();
+
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "SELECT se.created_at, se.severity, se.message, r.name AS robot_name "
+        "FROM system_event se "
+        "LEFT JOIN robot_session rs ON rs.id = se.session_id "
+        "LEFT JOIN robot r ON r.id = rs.robot_id "
+        "ORDER BY se.created_at DESC "
+        "LIMIT :limit"));
+    query.bindValue(QStringLiteral(":limit"), limit);
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("DB 조회 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    while (query.next()) {
+        OperationsEventRow row;
+        row.occurredAt = query.value(QStringLiteral("created_at")).toDateTime();
+        severityLabelAndKind(query.value(QStringLiteral("severity")).toString(), row.severityLabel, row.kind);
+
+        const QString robotName = query.value(QStringLiteral("robot_name")).toString();
+        const QString message = query.value(QStringLiteral("message")).toString();
+        row.message = robotName.isEmpty() ? message : QStringLiteral("%1 · %2").arg(message, robotName);
+
+        rows.push_back(row);
+    }
+
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::recordConnectionStatus(
+    int robotId, const QString &target, const QString &status, const QString &detail, QString &errorMessage)
+{
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "INSERT INTO connection_status_log (robot_id, target, status, detail) "
+        "VALUES (:robotId, :target, :status, :detail)"));
+    query.bindValue(QStringLiteral(":robotId"), robotId);
+    query.bindValue(QStringLiteral(":target"), target);
+    query.bindValue(QStringLiteral(":status"), status);
+    query.bindValue(QStringLiteral(":detail"), detail.isEmpty() ? QVariant() : QVariant(detail));
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("연결 상태 기록 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::recordSystemEvent(
+    const QString &eventType, const QString &severity, const QString &message, QString &errorMessage)
+{
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "INSERT INTO system_event (event_type, severity, message) VALUES (:eventType, :severity, :message)"));
+    query.bindValue(QStringLiteral(":eventType"), eventType);
+    query.bindValue(QStringLiteral(":severity"), severity);
+    query.bindValue(QStringLiteral(":message"), message);
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("이벤트 기록 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    errorMessage.clear();
+    return true;
+}

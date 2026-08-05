@@ -17,13 +17,20 @@ class DashboardCentralWidget;
 class TelemetryProvider;
 class NavigationService;
 class CameraFeedProvider;
+class OperationsOverviewService;
+class RobotService;
 
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
 
 public:
-    explicit MainWindow(const AppSession &session, AuthService &authService, QWidget *parent = nullptr);
+    explicit MainWindow(
+        const AppSession &session,
+        AuthService &authService,
+        OperationsOverviewService &operationsOverviewService,
+        RobotService &robotService,
+        QWidget *parent = nullptr);
     ~MainWindow() override;
 
     void setTelemetryProvider(TelemetryProvider *provider);
@@ -49,6 +56,8 @@ private:
     Ui::MainWindow *ui;
     DashboardCentralWidget *m_dashboardWidget;
     AuthService &m_authService;
+    OperationsOverviewService &m_operationsOverviewService;
+    RobotService &m_robotService;
     AppSession m_session;
 };
 #endif // MAINWINDOW_H

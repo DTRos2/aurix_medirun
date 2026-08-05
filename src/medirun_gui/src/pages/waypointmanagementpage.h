@@ -48,6 +48,7 @@ private:
     void refreshSavedRoutesBar();
     void renumberRouteOrderItems();
     void updateNavButtonsEnabled();
+    void refreshNav2Badge();
 
     void selectWaypoint(const QString &id);
     void loadWaypointIntoForm(const WaypointDef &record);
@@ -121,6 +122,12 @@ private:
     // 있는지(nav2ConnectionChanged로 갱신). SLAM 매핑 중 nav2가 PAUSE되면
     // false가 되어 주행 버튼이 잠긴다.
     bool m_nav2Connected {false};
+    // amclPoseUpdated를 한 번이라도 받았는지 — AMCL은 초기 위치를 받기 전엔
+    // /amcl_pose를 아예 발행하지 않으므로 "초기 위치 설정됨"의 대리 신호로
+    // 쓴다. nav2Connected만으로는 실제 주행 가능 여부를 보장하지 못한다
+    // (bt_navigator/waypoint_follower가 ACTIVE여도 로컬라이제이션이 없으면
+    // 주행이 실패하거나 엉뚱하게 움직일 수 있다).
+    bool m_hasAmclPose {false};
 
     // shell
     QPushButton *m_waypointTabButton;

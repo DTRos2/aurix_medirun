@@ -9,16 +9,24 @@
 #include "../pages/operationsoverviewpage.h"
 #include "../pages/recordsplaybackpage.h"
 #include "../pages/remotecontrolpage.h"
+#include "../pages/robotmanagementpage.h"
 #include "../pages/slammappingpage.h"
 #include "../pages/systemsettingspage.h"
 #include "../pages/usermanagementpage.h"
 #include "../pages/waypointmanagementpage.h"
+#include "../ros/navigationservice.h"
+#include "../services/camerafeedprovider.h"
 
 #include <QHBoxLayout>
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
-DashboardCentralWidget::DashboardCentralWidget(const AppSession &session, AuthService &authService, QWidget *parent)
+DashboardCentralWidget::DashboardCentralWidget(
+    const AppSession &session,
+    AuthService &authService,
+    OperationsOverviewService &operationsOverviewService,
+    RobotService &robotService,
+    QWidget *parent)
     : QWidget(parent)
     , m_authService(authService)
     , m_session(session)
@@ -68,7 +76,8 @@ DashboardCentralWidget::DashboardCentralWidget(const AppSession &session, AuthSe
     connect(callHistory, &CallHistoryPage::replayRequested, this, [this]() { navigateTo(PageId::RecordsPlayback); });
     addPage(PageId::CallHistory, callHistory);
 
-    addPage(PageId::OperationsOverview, new OperationsOverviewPage(m_stack));
+    m_operationsOverviewPage = new OperationsOverviewPage(operationsOverviewService, m_stack);
+    addPage(PageId::OperationsOverview, m_operationsOverviewPage);
     m_remoteControlPage = new RemoteControlPage(m_stack);
     addPage(PageId::RemoteControl, m_remoteControlPage);
 
@@ -78,6 +87,7 @@ DashboardCentralWidget::DashboardCentralWidget(const AppSession &session, AuthSe
         m_waypointPage = new WaypointManagementPage(m_stack);
         addPage(PageId::WaypointManagement, m_waypointPage);
         addPage(PageId::UserManagement, new UserManagementPage(m_authService, m_stack));
+        addPage(PageId::RobotManagement, new RobotManagementPage(robotService, m_stack));
         addPage(PageId::SystemSettings, new SystemSettingsPage(m_stack));
     }
 
@@ -87,6 +97,9 @@ DashboardCentralWidget::DashboardCentralWidget(const AppSession &session, AuthSe
 void DashboardCentralWidget::applySnapshot(const TelemetrySnapshot &snapshot)
 {
     m_headerBar->applySnapshot(snapshot);
+    if (m_operationsOverviewPage != nullptr) {
+        m_operationsOverviewPage->applyTelemetrySnapshot(snapshot);
+    }
 }
 
 void DashboardCentralWidget::setNavigationService(NavigationService *service)
@@ -97,12 +110,20 @@ void DashboardCentralWidget::setNavigationService(NavigationService *service)
     if (m_remoteControlPage != nullptr) {
         m_remoteControlPage->setNavigationService(service);
     }
+    if (service != nullptr && m_operationsOverviewPage != nullptr) {
+        connect(service, &NavigationService::nav2ConnectionChanged, m_operationsOverviewPage, &OperationsOverviewPage::applyNav2Connection);
+        connect(service, &NavigationService::amclPoseUpdated, m_operationsOverviewPage, &OperationsOverviewPage::applyAmclPose);
+        connect(service, &NavigationService::statusChanged, m_operationsOverviewPage, &OperationsOverviewPage::applyNavStatus);
+    }
 }
 
 void DashboardCentralWidget::setCameraFeedProvider(CameraFeedProvider *provider)
 {
     if (m_remoteControlPage != nullptr) {
         m_remoteControlPage->setCameraFeedProvider(provider);
+    }
+    if (provider != nullptr && m_operationsOverviewPage != nullptr) {
+        connect(provider, &CameraFeedProvider::connectionStateChanged, m_operationsOverviewPage, &OperationsOverviewPage::applyCameraConnection);
     }
 }
 
@@ -160,6 +181,8 @@ QString DashboardCentralWidget::titleForPage(PageId page) const
         return QStringLiteral("호출 이력");
     case PageId::UserManagement:
         return QStringLiteral("사용자 관리");
+    case PageId::RobotManagement:
+        return QStringLiteral("로봇 관리");
     case PageId::SystemSettings:
         return QStringLiteral("시스템 설정");
     }

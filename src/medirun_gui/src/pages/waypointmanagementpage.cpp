@@ -166,7 +166,7 @@ QWidget *WaypointManagementPage::buildHeader()
     layout->addLayout(titleCol);
     layout->addStretch();
 
-    m_nav2ConnectionBadge = makeBadgeLabel(QStringLiteral("Nav2 미연결"), QStringLiteral("red"), row);
+    m_nav2ConnectionBadge = makeBadgeLabel(QStringLiteral("Nav2 부팅 중"), QStringLiteral("amber"), row);
     layout->addWidget(m_nav2ConnectionBadge);
 
     m_navStatusLabel = makeLabel(QString(), QStringLiteral("metricCaption"));
@@ -1226,22 +1226,26 @@ void WaypointManagementPage::handleSaveWaypointFile()
 void WaypointManagementPage::updateNavButtonsEnabled()
 {
     const bool hasService = (m_navigationService != nullptr);
-    // 실제 주행에는 navigate_to_pose/follow_waypoints 액션 서버가 떠 있어야
-    // 한다(m_nav2Connected) — SLAM 매핑 중 PAUSE된 동안이나 콜드부트 직후에는
-    // hasService(rclcpp 노드 연결)는 true여도 nav2 자체는 아직 준비 안 됐을 수
-    // 있다. 초기 위치 설정은 AMCL(localization)만 있으면 되므로 nav2Ready와
+    // 실제 주행 가능하려면 (1) navigate_to_pose/follow_waypoints 액션 서버가
+    // ACTIVE여야(m_nav2Connected) 하고 (2) AMCL이 초기 위치를 받아 로컬라이즈
+    // 돼 있어야(m_hasAmclPose) 한다 — nav2Connected만으로는 goal을 받아줄 수는
+    // 있어도 위치를 모르는 채로 주행하면 실패하거나 엉뚱하게 움직인다.
+    // 초기 위치 설정 자체는 AMCL(localization)만 있으면 되므로 이 조건과
     // 무관하게 hasService만으로 활성화한다.
-    const bool nav2Ready = hasService && m_nav2Connected;
+    const bool nav2Ready = hasService && m_nav2Connected && m_hasAmclPose;
+    const QString blockedText = !hasService || !m_nav2Connected
+        ? QStringLiteral("Nav2 부팅 중")
+        : QStringLiteral("위치 설정 필요");
     if (m_navigateButton != nullptr) {
         m_navigateButton->setEnabled(nav2Ready && !m_creatingNew && !m_selectedWaypointId.isEmpty());
-        m_navigateButton->setText(nav2Ready ? QStringLiteral("이 웨이포인트로 주행") : QStringLiteral("Nav2 미연결"));
+        m_navigateButton->setText(nav2Ready ? QStringLiteral("이 웨이포인트로 주행") : blockedText);
     }
     if (m_cancelNavButton != nullptr) {
         m_cancelNavButton->setEnabled(hasService);
     }
     if (m_navigateRouteButton != nullptr) {
         m_navigateRouteButton->setEnabled(nav2Ready && !m_selectedSavedRoute.isEmpty());
-        m_navigateRouteButton->setText(nav2Ready ? QStringLiteral("선택 경로 주행") : QStringLiteral("Nav2 미연결"));
+        m_navigateRouteButton->setText(nav2Ready ? QStringLiteral("선택 경로 주행") : blockedText);
     }
     if (m_setInitialPoseButton != nullptr) {
         m_setInitialPoseButton->setEnabled(hasService);
@@ -1249,6 +1253,29 @@ void WaypointManagementPage::updateNavButtonsEnabled()
             m_setInitialPoseButton->setChecked(false);
         }
     }
+}
+
+void WaypointManagementPage::refreshNav2Badge()
+{
+    if (m_nav2ConnectionBadge != nullptr) {
+        QString text;
+        QString kind;
+        if (!m_nav2Connected) {
+            text = QStringLiteral("Nav2 부팅 중");
+            kind = QStringLiteral("amber");
+        } else if (!m_hasAmclPose) {
+            text = QStringLiteral("위치 설정 필요");
+            kind = QStringLiteral("amber");
+        } else {
+            text = QStringLiteral("주행 가능");
+            kind = QStringLiteral("green");
+        }
+        m_nav2ConnectionBadge->setText(text);
+        m_nav2ConnectionBadge->setProperty("badgeKind", kind);
+        m_nav2ConnectionBadge->style()->unpolish(m_nav2ConnectionBadge);
+        m_nav2ConnectionBadge->style()->polish(m_nav2ConnectionBadge);
+    }
+    updateNavButtonsEnabled();
 }
 
 void WaypointManagementPage::handleNavigateToSelectedWaypoint()
@@ -1260,7 +1287,11 @@ void WaypointManagementPage::handleNavigateToSelectedWaypoint()
     // 버튼이 비활성화돼 있어야 정상이지만(updateNavButtonsEnabled), 클릭과
     // 연결 끊김이 겹치는 race를 대비해 여기서도 한 번 더 막는다.
     if (!m_nav2Connected) {
-        m_waypointStatusLabel->setText(QStringLiteral("Nav2가 아직 연결되지 않았습니다."));
+        m_waypointStatusLabel->setText(QStringLiteral("Nav2가 아직 부팅 중입니다. 잠시 후 다시 시도하세요."));
+        return;
+    }
+    if (!m_hasAmclPose) {
+        m_waypointStatusLabel->setText(QStringLiteral("먼저 초기 위치를 설정하세요."));
         return;
     }
     if (m_creatingNew || !m_waypoints.contains(m_selectedWaypointId)) {
@@ -1279,7 +1310,11 @@ void WaypointManagementPage::handleNavigateSelectedRoute()
         return;
     }
     if (!m_nav2Connected) {
-        m_trajectoryStatusLabel->setText(QStringLiteral("Nav2가 아직 연결되지 않았습니다."));
+        m_trajectoryStatusLabel->setText(QStringLiteral("Nav2가 아직 부팅 중입니다. 잠시 후 다시 시도하세요."));
+        return;
+    }
+    if (!m_hasAmclPose) {
+        m_trajectoryStatusLabel->setText(QStringLiteral("먼저 초기 위치를 설정하세요."));
         return;
     }
     if (m_selectedSavedRoute.isEmpty() || !m_trajectories.contains(m_selectedSavedRoute)) {
@@ -1318,13 +1353,13 @@ void WaypointManagementPage::handleNavStatusChanged(const QString &text)
 void WaypointManagementPage::handleNav2ConnectionChanged(bool connected)
 {
     m_nav2Connected = connected;
-    if (m_nav2ConnectionBadge != nullptr) {
-        m_nav2ConnectionBadge->setText(connected ? QStringLiteral("Nav2 연결") : QStringLiteral("Nav2 미연결"));
-        m_nav2ConnectionBadge->setProperty("badgeKind", connected ? QStringLiteral("green") : QStringLiteral("red"));
-        m_nav2ConnectionBadge->style()->unpolish(m_nav2ConnectionBadge);
-        m_nav2ConnectionBadge->style()->polish(m_nav2ConnectionBadge);
+    if (!connected) {
+        // nav2가 다시 내려가면(SLAM 매핑 PAUSE 등) 이전에 알던 위치는 더 이상
+        // 유효하다고 볼 수 없으니 같이 초기화한다 — 재연결 후 새 amclPoseUpdated를
+        // 받기 전까지는 "위치 설정 필요" 단계로 되돌아간다.
+        m_hasAmclPose = false;
     }
-    updateNavButtonsEnabled();
+    refreshNav2Badge();
 }
 
 void WaypointManagementPage::handleNavFeedback(double metersRemaining)
@@ -1339,6 +1374,11 @@ void WaypointManagementPage::handleNavWaypointProgress(int currentIndex, int tot
 
 void WaypointManagementPage::handleAmclPoseUpdated(double x, double y, double yawRad)
 {
+    if (!m_hasAmclPose) {
+        m_hasAmclPose = true;
+        refreshNav2Badge();
+    }
+
     if (!m_currentMapMeta.valid) {
         return;
     }
