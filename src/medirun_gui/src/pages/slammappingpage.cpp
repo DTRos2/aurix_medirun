@@ -46,6 +46,8 @@
 #include <sys/types.h>
 
 #include <geometry_msgs/msg/twist.hpp>
+#include <lifecycle_msgs/msg/state.hpp>
+#include <lifecycle_msgs/srv/get_state.hpp>
 #include <nav2_msgs/srv/manage_lifecycle_nodes.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/odometry.hpp>
@@ -508,6 +510,7 @@ public:
             "/lifecycle_manager_localization/manage_nodes");
         m_navigationLifecycleClient = m_node->create_client<nav2_msgs::srv::ManageLifecycleNodes>(
             "/lifecycle_manager_navigation/manage_nodes");
+        m_amclStateClient = m_node->create_client<lifecycle_msgs::srv::GetState>("/amcl/get_state");
         m_tfBuffer = std::make_unique<tf2_ros::Buffer>(m_node->get_clock());
         m_tfListener = std::make_shared<tf2_ros::TransformListener>(*m_tfBuffer);
 
@@ -1057,6 +1060,7 @@ private:
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr m_cmdVelPublisher;
     rclcpp::Client<nav2_msgs::srv::ManageLifecycleNodes>::SharedPtr m_localizationLifecycleClient;
     rclcpp::Client<nav2_msgs::srv::ManageLifecycleNodes>::SharedPtr m_navigationLifecycleClient;
+    rclcpp::Client<lifecycle_msgs::srv::GetState>::SharedPtr m_amclStateClient;
     // Qt 스레드(pauseNav2ForMapping/resumeNav2IfPaused)와 executor spin 스레드
     // (handleMap의 중복 publisher 판정)에서 동시에 읽고 쓰므로 atomic이어야 한다.
     std::atomic<bool> m_localizationPausedByMapping {false};
@@ -1155,14 +1159,26 @@ public:
     // /amcl 노드 존재 여부로 Nav2 로컬라이제이션 스택(run.sh -> bringup.launch.py로
     // 뜬 AMCL)이 살아있는지 판단한다. AMCL과 Cartographer가 동시에 map->odom tf를
     // 발행하면 tf 충돌로 odom이 중복되므로, 매핑 시작 전에 이 상태를 감지해야 한다.
+    // /amcl 노드는 PAUSE되어도(inactive) 그래프에서 사라지지 않으므로 단순
+    // get_node_names() 존재 여부로는 "지금 실제로 map->odom을 publish 중인지"를
+    // 판정할 수 없다(이전엔 그렇게 했다가, 매핑을 시작했다 GUI를 강제 종료해
+    // amcl이 inactive로 멈춰 있는 상태에서도 계속 "Nav2 감지됨"으로 오판해
+    // PAUSE를 재요청 -> lifecycle_manager가 이미 paused라 요청을 거부해
+    // "Nav2 일시정지 실패"로 매핑이 막히는 문제가 있었다). GetState로 실제
+    // PRIMARY_STATE_ACTIVE인지 직접 확인한다.
     bool isNav2LocalizationActive() const
     {
-        for (const auto &name : m_node->get_node_names()) {
-            if (name == "/amcl" || name == "amcl") {
-                return true;
-            }
+        if (!m_amclStateClient || !m_amclStateClient->service_is_ready()) {
+            return false;
         }
-        return false;
+
+        auto request = std::make_shared<lifecycle_msgs::srv::GetState::Request>();
+        auto future = m_amclStateClient->async_send_request(request);
+        if (future.wait_for(std::chrono::milliseconds(300)) != std::future_status::ready) {
+            m_amclStateClient->remove_pending_request(future);
+            return false;
+        }
+        return future.get()->current_state.id == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE;
     }
 
     // AMCL(map_server 포함)과 Nav2 내비게이션 스택을 PAUSE시킨다(비blocking).
