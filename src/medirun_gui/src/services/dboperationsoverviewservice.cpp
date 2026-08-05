@@ -330,3 +330,152 @@ bool DbOperationsOverviewService::recordSystemEvent(
     errorMessage.clear();
     return true;
 }
+
+bool DbOperationsOverviewService::startRobotSession(
+    int robotId,
+    const QString &mode,
+    const QString &sessionName,
+    const QVector<NavGoalPoint> &goals,
+    bool hasStartPose,
+    const NavGoalPoint &startPose,
+    int &sessionId,
+    QString &errorMessage)
+{
+    sessionId = -1;
+
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery sessionQuery;
+    sessionQuery.prepare(QStringLiteral(
+        "INSERT INTO robot_session (robot_id, session_name, mode, status) "
+        "VALUES (:robotId, :sessionName, :mode, 'running') RETURNING id"));
+    sessionQuery.bindValue(QStringLiteral(":robotId"), robotId);
+    sessionQuery.bindValue(QStringLiteral(":sessionName"), sessionName);
+    sessionQuery.bindValue(QStringLiteral(":mode"), mode);
+    if (!sessionQuery.exec() || !sessionQuery.next()) {
+        errorMessage = QStringLiteral("주행 세션 생성 실패: %1").arg(sessionQuery.lastError().text());
+        return false;
+    }
+    const int newSessionId = sessionQuery.value(0).toInt();
+
+    for (int i = 0; i < goals.size(); ++i) {
+        const NavGoalPoint &goal = goals.at(i);
+        // 첫 웨이포인트의 시작 위치는 마지막으로 알려진 AMCL 위치, 두 번째부터는
+        // 직전 웨이포인트의 목적지를 시작 위치로 근사한다.
+        const bool hasStart = i == 0 ? hasStartPose : true;
+        const NavGoalPoint &start = i == 0 ? startPose : goals.at(i - 1);
+
+        QSqlQuery goalQuery;
+        goalQuery.prepare(QStringLiteral(
+            "INSERT INTO nav_goal_log "
+            "(robot_id, session_id, waypoint_seq_no, start_x, start_y, start_yaw, goal_x, goal_y, goal_yaw, status) "
+            "VALUES (:robotId, :sessionId, :seqNo, :startX, :startY, :startYaw, :goalX, :goalY, :goalYaw, 'navigating')"));
+        goalQuery.bindValue(QStringLiteral(":robotId"), robotId);
+        goalQuery.bindValue(QStringLiteral(":sessionId"), newSessionId);
+        goalQuery.bindValue(QStringLiteral(":seqNo"), i);
+        goalQuery.bindValue(QStringLiteral(":startX"), hasStart ? QVariant(start.x) : QVariant());
+        goalQuery.bindValue(QStringLiteral(":startY"), hasStart ? QVariant(start.y) : QVariant());
+        goalQuery.bindValue(QStringLiteral(":startYaw"), hasStart ? QVariant(start.yaw) : QVariant());
+        goalQuery.bindValue(QStringLiteral(":goalX"), goal.x);
+        goalQuery.bindValue(QStringLiteral(":goalY"), goal.y);
+        goalQuery.bindValue(QStringLiteral(":goalYaw"), goal.yaw);
+        if (!goalQuery.exec()) {
+            errorMessage = QStringLiteral("주행 목표 기록 실패: %1").arg(goalQuery.lastError().text());
+            return false;
+        }
+    }
+
+    sessionId = newSessionId;
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::markGoalReached(int sessionId, int reachedIndex, QString &errorMessage)
+{
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "UPDATE nav_goal_log SET status = 'arrived', finished_at = NOW() "
+        "WHERE session_id = :sessionId AND waypoint_seq_no = :seqNo AND status = 'navigating'"));
+    query.bindValue(QStringLiteral(":sessionId"), sessionId);
+    query.bindValue(QStringLiteral(":seqNo"), reachedIndex);
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("웨이포인트 도달 기록 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::finishRobotSession(int sessionId, bool success, bool cancelled, QString &errorMessage)
+{
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    // success/cancelled 어느 쪽도 아니면 실패(failed)로 본다.
+    const QString goalStatus = success ? QStringLiteral("arrived") : cancelled ? QStringLiteral("cancelled") : QStringLiteral("failed");
+    const QString sessionStatus = success ? QStringLiteral("completed") : cancelled ? QStringLiteral("aborted") : QStringLiteral("failed");
+
+    QSqlQuery goalQuery;
+    goalQuery.prepare(QStringLiteral(
+        "UPDATE nav_goal_log SET status = :status, finished_at = NOW() "
+        "WHERE session_id = :sessionId AND status NOT IN ('arrived', 'failed', 'cancelled')"));
+    goalQuery.bindValue(QStringLiteral(":status"), goalStatus);
+    goalQuery.bindValue(QStringLiteral(":sessionId"), sessionId);
+    if (!goalQuery.exec()) {
+        errorMessage = QStringLiteral("주행 목표 마감 실패: %1").arg(goalQuery.lastError().text());
+        return false;
+    }
+
+    QSqlQuery sessionQuery;
+    sessionQuery.prepare(QStringLiteral(
+        "UPDATE robot_session SET status = :status, ended_at = NOW() WHERE id = :sessionId"));
+    sessionQuery.bindValue(QStringLiteral(":status"), sessionStatus);
+    sessionQuery.bindValue(QStringLiteral(":sessionId"), sessionId);
+    if (!sessionQuery.exec()) {
+        errorMessage = QStringLiteral("주행 세션 마감 실패: %1").arg(sessionQuery.lastError().text());
+        return false;
+    }
+
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::recordUserAction(
+    int robotId,
+    int sessionId,
+    int userId,
+    const QString &actionType,
+    const QString &payloadJson,
+    const QString &issuedBy,
+    QString &errorMessage)
+{
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "INSERT INTO user_action_log (robot_id, session_id, user_id, action_type, payload, issued_by, occurred_at) "
+        "VALUES (:robotId, :sessionId, :userId, :actionType, :payload::jsonb, :issuedBy, NOW())"));
+    query.bindValue(QStringLiteral(":robotId"), robotId);
+    query.bindValue(QStringLiteral(":sessionId"), sessionId > 0 ? QVariant(sessionId) : QVariant());
+    query.bindValue(QStringLiteral(":userId"), userId > 0 ? QVariant(userId) : QVariant());
+    query.bindValue(QStringLiteral(":actionType"), actionType);
+    query.bindValue(QStringLiteral(":payload"), payloadJson.isEmpty() ? QVariant() : QVariant(payloadJson));
+    query.bindValue(QStringLiteral(":issuedBy"), issuedBy.isEmpty() ? QVariant() : QVariant(issuedBy));
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("사용자 조작 기록 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    errorMessage.clear();
+    return true;
+}

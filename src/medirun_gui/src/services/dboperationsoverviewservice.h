@@ -18,6 +18,27 @@ public:
         int robotId, const QString &target, const QString &status, const QString &detail, QString &errorMessage) override;
     bool recordSystemEvent(
         const QString &eventType, const QString &severity, const QString &message, QString &errorMessage) override;
+
+    bool startRobotSession(
+        int robotId,
+        const QString &mode,
+        const QString &sessionName,
+        const QVector<NavGoalPoint> &goals,
+        bool hasStartPose,
+        const NavGoalPoint &startPose,
+        int &sessionId,
+        QString &errorMessage) override;
+    bool markGoalReached(int sessionId, int reachedIndex, QString &errorMessage) override;
+    bool finishRobotSession(int sessionId, bool success, bool cancelled, QString &errorMessage) override;
+
+    bool recordUserAction(
+        int robotId,
+        int sessionId,
+        int userId,
+        const QString &actionType,
+        const QString &payloadJson,
+        const QString &issuedBy,
+        QString &errorMessage) override;
 };
 
 #endif // DBOPERATIONSOVERVIEWSERVICE_H

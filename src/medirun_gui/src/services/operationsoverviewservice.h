@@ -44,6 +44,15 @@ struct OperationsEventRow
     QString kind; // "muted" | "amber" | "red"
 };
 
+// ros/navigationservice.h의 NavPose를 그대로 쓰지 않고 여기 별도로 두는 이유:
+// services/ 계층이 ros/ 계층을 몰라야 한다 (NavGoalLogRecorder가 변환해서 넘김).
+struct NavGoalPoint
+{
+    double x {0.0};
+    double y {0.0};
+    double yaw {0.0};
+};
+
 class OperationsOverviewService
 {
 public:
@@ -62,6 +71,42 @@ public:
     // severity: "info" | "warn" | "error" | "critical"
     virtual bool recordSystemEvent(
         const QString &eventType, const QString &severity, const QString &message, QString &errorMessage) = 0;
+
+    // robot_session 1행 + goals 각각에 대한 nav_goal_log 행(waypoint_seq_no로
+    // 순번 구분)을 만든다. mode: "auto" | "manual" | "unity" | "playback" | "mapping".
+    // 성공하면 sessionId에 새 robot_session.id를 채운다.
+    // 각 행의 start_x/y/yaw: 첫 웨이포인트는 hasStartPose가 true일 때 startPose를
+    // 쓰고(false면 NULL — 아직 AMCL 위치를 한 번도 못 받은 경우), 두 번째부터는
+    // 직전 웨이포인트의 goal을 시작 위치로 근사한다.
+    virtual bool startRobotSession(
+        int robotId,
+        const QString &mode,
+        const QString &sessionName,
+        const QVector<NavGoalPoint> &goals,
+        bool hasStartPose,
+        const NavGoalPoint &startPose,
+        int &sessionId,
+        QString &errorMessage) = 0;
+
+    // 경로 주행 중 waypoint 하나에 도달했을 때 그 nav_goal_log 행만 'arrived'로 마감.
+    virtual bool markGoalReached(int sessionId, int reachedIndex, QString &errorMessage) = 0;
+
+    // 세션 종료: 아직 안 끝난 nav_goal_log 행 전부와 robot_session을 한 번에 마감.
+    virtual bool finishRobotSession(int sessionId, bool success, bool cancelled, QString &errorMessage) = 0;
+
+    // Qt GUI 사용자 조작 로그(user_action_log). action_type은 스키마 CHECK
+    // 목록 중 하나(예: "waypoint_set_run"). payloadJson은 JSONB로 저장할
+    // compact JSON 문자열(비어있으면 NULL). issuedBy는 표시용 로그인 아이디.
+    // sessionId/userId는 0 이하면 NULL로 저장(연관 세션 없음 / 로그인 계정
+    // 식별 불가 — mock 인증 등).
+    virtual bool recordUserAction(
+        int robotId,
+        int sessionId,
+        int userId,
+        const QString &actionType,
+        const QString &payloadJson,
+        const QString &issuedBy,
+        QString &errorMessage) = 0;
 };
 
 #endif // OPERATIONSOVERVIEWSERVICE_H

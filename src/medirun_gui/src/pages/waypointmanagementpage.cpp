@@ -1300,7 +1300,8 @@ void WaypointManagementPage::handleNavigateToSelectedWaypoint()
     }
 
     const WaypointDef &wp = m_waypoints.value(m_selectedWaypointId);
-    m_navigationService->navigateToPose(wp.x, wp.y, wp.yaw, m_frameId);
+    const QString label = wp.label.isEmpty() ? wp.name : wp.label;
+    m_navigationService->navigateToPose(wp.x, wp.y, wp.yaw, m_frameId, label);
 }
 
 void WaypointManagementPage::handleNavigateSelectedRoute()
@@ -1334,7 +1335,8 @@ void WaypointManagementPage::handleNavigateSelectedRoute()
         m_trajectoryStatusLabel->setText(QStringLiteral("경로에 유효한 웨이포인트가 없습니다."));
         return;
     }
-    m_navigationService->followWaypoints(poses, m_frameId);
+
+    m_navigationService->followWaypoints(poses, m_frameId, m_selectedSavedRoute);
 }
 
 void WaypointManagementPage::handleCancelNavigation()

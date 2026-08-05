@@ -63,6 +63,8 @@ qt_add_executable(medirun_gui
     src/services/robotservice.h
     src/services/telemetrylogrecorder.cpp
     src/services/telemetrylogrecorder.h
+    src/services/navgoallogrecorder.cpp
+    src/services/navgoallogrecorder.h
     src/services/localauthservice.cpp
     src/services/localauthservice.h
     src/services/camerafeedprovider.h
