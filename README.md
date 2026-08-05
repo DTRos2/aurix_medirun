@@ -43,7 +43,9 @@ cp config/device.yaml.example config/device.yaml
 │   ├── medirun_gui/            # Qt(C++) 대시보드 (구현 중)
 │   ├── medirun_db/             # PostgreSQL 연동 (구현 예정)
 │   ├── medirun_msgs/           # 커스텀 메시지·서비스·액션
-│   └── arduino_bridge/         # 로봇(Pi) 실행 코드 팀 공유용 — 아래 "아두이노 브리지" 참고
+│   ├── arduino_bridge/         # 로봇(Pi) 실행 코드 팀 공유용 — 아래 "아두이노 브리지" 참고
+│   ├── turtlebot3/             # ROBOTIS 공식 패키지 벤더링(humble) — bringup·cartographer·navigation2 등
+│   └── turtlebot3_msgs/        # ROBOTIS 공식 메시지 벤더링(humble)
 ├── firmware/                # Arduino/ESP32 펌웨어
 ├── maps/                    # 지도(.pgm/.yaml), 웨이포인트 정의
 ├── config/                  # DB·장비 설정 (`.example`만 커밋)
@@ -61,8 +63,13 @@ cp config/device.yaml.example config/device.yaml
 
 ## 빌드
 
+`src/turtlebot3`, `src/turtlebot3_msgs`가 이 저장소에 벤더링되어 있어 별도로
+`~/turtlebot3_ws` 같은 개인 워크스페이스를 미리 만들어둘 필요가 없다. `rosdep`으로
+시스템 의존성(cartographer_ros, nav2 등)만 한 번 설치하면 된다.
+
 ```bash
 source /opt/ros/humble/setup.bash
+rosdep install --from-paths src --ignore-src -r -y   # 처음 한 번만
 # 현재 인터페이스가 빠져있기 때문에 (--packages-skip medirun_msgs) 추가해주어야 함
 colcon build --symlink-install --packages-skip medirun_msgs
 source install/setup.bash
