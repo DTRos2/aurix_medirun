@@ -74,7 +74,7 @@ COMMENT ON COLUMN aurix_user.deleted_at IS '계정 삭제 시간. NULL이면 사
 
 CREATE TABLE robot (
     id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    name            VARCHAR(64) NOT NULL UNIQUE,
+    name            VARCHAR(64) NOT NULL,
     model           VARCHAR(64) NOT NULL DEFAULT 'turtlebot3_burger',
     created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
     deregistered_at TIMESTAMP,
