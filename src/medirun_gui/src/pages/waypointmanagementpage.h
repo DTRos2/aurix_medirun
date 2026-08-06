@@ -4,6 +4,8 @@
 #include "../models/waypointtypes.h"
 #include "../ros/navigationservice.h"
 #include "../services/mapfile.h"
+#include "../services/operationsoverviewservice.h"
+#include "../services/robotservice.h"
 #include "../widgets/waypointmapwidget.h"
 
 #include <QVector>
@@ -22,7 +24,7 @@ class WaypointManagementPage : public QWidget
     Q_OBJECT
 
 public:
-    explicit WaypointManagementPage(QWidget *parent = nullptr);
+    explicit WaypointManagementPage(RobotService &robotService, OperationsOverviewService &overviewService, QWidget *parent = nullptr);
 
     // Injected by GuiApplicationController (nullable — nav buttons stay
     // disabled and just report an error if no service is attached).
@@ -48,6 +50,7 @@ private:
     void refreshSavedRoutesBar();
     void renumberRouteOrderItems();
     void updateNavButtonsEnabled();
+    void refreshNav2Badge();
 
     void selectWaypoint(const QString &id);
     void loadWaypointIntoForm(const WaypointDef &record);
@@ -78,11 +81,24 @@ private:
     // user having to click "지도 불러오기" manually. Silently does nothing
     // if the file isn't found (e.g. running outside the install layout).
     void autoLoadDefaultMap();
+    // 시작 시 DB(waypoint_set)에 저장된 웨이포인트 라이브러리를 불러온다 —
+    // 파일을 한 번도 저장/불러오기 하지 않았어도 이전에 "파일로 저장" 시점에
+    // DB에 같이 기록됐던 웨이포인트가 있으면 그걸로 채운다. 등록된 로봇이
+    // 정확히 1대가 아니면 조용히 건너뛴다(다른 자동기록과 동일한 제약).
+    void autoLoadWaypointLibraryFromDb();
     // <workspace>/install/.../lib/medirun_gui에서 4단계 위로 올라간 경로.
     // 계산 불가 시(설치 레이아웃 밖에서 실행 등) 빈 문자열.
     QString workspaceRootPath() const;
     void handleLoadWaypointFile();
+    // 파일 없이도(다른 PC 등) 이 로봇으로 DB(waypoint_set)에 저장된 이름
+    // 목록을 보여주고 고른 걸 불러온다.
+    void handleLoadWaypointFromDb();
     void handleSaveWaypointFile();
+    // handleLoadWaypointFile/handleLoadWaypointFromDb/autoLoadWaypointLibraryFromDb가
+    // 공유 — 불러온 frame_id+waypoints+trajectories를 페이지 상태에 반영하고
+    // 화면을 갱신한다.
+    void applyLoadedWaypointLibrary(
+        const QString &frameId, const WaypointMap &waypoints, const TrajectoryMap &trajectories, const QString &statusMessage);
 
     void handleNavigateToSelectedWaypoint();
     void handleNavigateSelectedRoute();
@@ -97,6 +113,13 @@ private:
     void handleNavWaypointProgress(int currentIndex, int total);
     void handleAmclPoseUpdated(double x, double y, double yawRad);
     void handleScanPointsUpdated(const QVector<QPointF> &mapPoints);
+    void handleNavSessionStarted();
+    void handleNavSessionFinished();
+
+    // 참조 멤버라 생성자 초기화 목록에서 가장 먼저 바인딩돼야 하므로(-Wreorder
+    // 방지) 선언 순서상 다른 멤버보다 위에 둔다.
+    RobotService &m_robotService;
+    OperationsOverviewService &m_overviewService;
 
     WaypointMap m_waypoints;
     TrajectoryMap m_trajectories;
@@ -121,6 +144,19 @@ private:
     // 있는지(nav2ConnectionChanged로 갱신). SLAM 매핑 중 nav2가 PAUSE되면
     // false가 되어 주행 버튼이 잠긴다.
     bool m_nav2Connected {false};
+    // amclPoseUpdated를 한 번이라도 받았는지 — AMCL은 초기 위치를 받기 전엔
+    // /amcl_pose를 아예 발행하지 않으므로 "초기 위치 설정됨"의 대리 신호로
+    // 쓴다. nav2Connected만으로는 실제 주행 가능 여부를 보장하지 못한다
+    // (bt_navigator/waypoint_follower가 ACTIVE여도 로컬라이제이션이 없으면
+    // 주행이 실패하거나 엉뚱하게 움직일 수 있다).
+    bool m_hasAmclPose {false};
+    // navSessionStarted~navSessionFinished 사이 true — 다른 웨이포인트/경로로
+    // 이미 주행 중인데 또 새 목표를 보내면 이전 goal이 취소되지 않은 채
+    // 두 번째 목표가 그대로 액션 서버로 전송돼(nav2navigationservice가
+    // 자체적으로 선점 처리를 하지 않음) 로봇이 이전 목표를 향해 계속
+    // 움직이고 DB 세션 기록도 꼬이는 문제가 있어, 주행 중엔 새 주행 시작
+    // 버튼을 잠근다.
+    bool m_navigating {false};
 
     // shell
     QPushButton *m_waypointTabButton;

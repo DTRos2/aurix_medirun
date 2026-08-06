@@ -55,6 +55,16 @@ qt_add_executable(medirun_gui
     src/services/dbauthservice.h
     src/services/dbconnection.cpp
     src/services/dbconnection.h
+    src/services/dboperationsoverviewservice.cpp
+    src/services/dboperationsoverviewservice.h
+    src/services/operationsoverviewservice.h
+    src/services/dbrobotservice.cpp
+    src/services/dbrobotservice.h
+    src/services/robotservice.h
+    src/services/telemetrylogrecorder.cpp
+    src/services/telemetrylogrecorder.h
+    src/services/navgoallogrecorder.cpp
+    src/services/navgoallogrecorder.h
     src/services/localauthservice.cpp
     src/services/localauthservice.h
     src/services/camerafeedprovider.h
@@ -96,6 +106,8 @@ qt_add_executable(medirun_gui
     src/pages/operationsoverviewpage.h
     src/pages/recordsplaybackpage.cpp
     src/pages/recordsplaybackpage.h
+    src/pages/robotmanagementpage.cpp
+    src/pages/robotmanagementpage.h
     src/pages/remotecontrolpage.cpp
     src/pages/remotecontrolpage.h
     src/pages/slammappingpage.cpp

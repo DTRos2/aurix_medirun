@@ -33,8 +33,11 @@ public:
     ~NavigationService() override = default;
 
 public slots:
-    virtual void navigateToPose(double x, double y, double yawRad, const QString &frameId) = 0;
-    virtual void followWaypoints(const QVector<NavPose> &poses, const QString &frameId) = 0;
+    // label: 사람이 읽을 수 있는 목적지/경로 식별자(예: 웨이포인트 이름,
+    // 저장된 경로 이름) — DB 기록(robot_session.session_name,
+    // user_action_log.payload)에만 쓰인다. 몰라도(빈 문자열) 동작에는 지장 없음.
+    virtual void navigateToPose(double x, double y, double yawRad, const QString &frameId, const QString &label = QString()) = 0;
+    virtual void followWaypoints(const QVector<NavPose> &poses, const QString &frameId, const QString &label = QString()) = 0;
     virtual void cancelGoal() = 0;
     virtual void publishInitialPose(double x, double y, double yawRad, const QString &frameId) = 0;
     // percent: 1-100, as a percentage of the controller's configured max
@@ -49,6 +52,15 @@ signals:
     // 활성화 여부를 결정해야 한다 (statusChanged는 최근 주행 결과/에러 텍스트라
     // 연결 여부를 신뢰성 있게 반영하지 않는다).
     void nav2ConnectionChanged(bool connected);
+    // 웨이포인트 주행(navigateToPose/followWaypoints)이 실제로 액션 서버에
+    // 접수됐을 때 1회 발행 — DB 기록(robot_session/nav_goal_log)의 시작점.
+    // goals.size()==1이면 단일 목적지, N개면 경로 주행. label은 호출자가 넘긴
+    // 그대로(비어있을 수 있음). 진행 상황은 기존 waypointProgress로, 종료는
+    // navSessionFinished로 알린다.
+    void navSessionStarted(const QVector<NavPose> &goals, const QString &label);
+    // success=true면 도착, false면 실패 — cancelled는 사용자가 명시적으로
+    // 취소한 경우만 true(실패와 구분해서 기록하기 위함).
+    void navSessionFinished(bool success, bool cancelled);
     void statusChanged(const QString &text);
     void feedbackDistanceRemaining(double metersRemaining);
     void waypointProgress(int currentIndex, int total);

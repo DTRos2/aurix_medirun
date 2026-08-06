@@ -23,8 +23,8 @@ public:
     ~Nav2NavigationService() override;
 
 public slots:
-    void navigateToPose(double x, double y, double yawRad, const QString &frameId) override;
-    void followWaypoints(const QVector<NavPose> &poses, const QString &frameId) override;
+    void navigateToPose(double x, double y, double yawRad, const QString &frameId, const QString &label = QString()) override;
+    void followWaypoints(const QVector<NavPose> &poses, const QString &frameId, const QString &label = QString()) override;
     void cancelGoal() override;
     void publishInitialPose(double x, double y, double yawRad, const QString &frameId) override;
     void setSpeedLimit(int percent) override;

@@ -5,10 +5,14 @@
 #include "../ros/nav2navigationservice.h"
 #include "../services/authservice.h"
 #include "../services/dbauthservice.h"
+#include "../services/dboperationsoverviewservice.h"
+#include "../services/dbrobotservice.h"
 #include "../services/mockcamerafeedprovider.h"
 #include "../services/mocktelemetryprovider.h"
+#include "../services/navgoallogrecorder.h"
 #include "../services/roscamerafeedprovider.h"
 #include "../services/rosbatterytelemetryprovider.h"
+#include "../services/telemetrylogrecorder.h"
 #include "../widgets/splashscreenwidget.h"
 
 #include <QApplication>
@@ -19,8 +23,12 @@ GuiApplicationController::GuiApplicationController(QApplication &application, QO
     : QObject(parent)
     , m_application(application)
     , m_authService(std::make_unique<DbAuthService>())
+    , m_operationsOverviewService(std::make_unique<DbOperationsOverviewService>())
+    , m_robotService(std::make_unique<DbRobotService>())
     , m_navigationService(std::make_unique<Nav2NavigationService>())
     , m_telemetryProvider(nullptr)
+    , m_telemetryLogRecorder(nullptr)
+    , m_navGoalLogRecorder(nullptr)
     , m_cameraFeedProvider(nullptr)
     , m_splashScreen(nullptr)
     , m_loginDialog(nullptr)
@@ -70,7 +78,7 @@ void GuiApplicationController::showLoginPage()
 
 void GuiApplicationController::createMainWindow()
 {
-    m_mainWindow = new MainWindow(m_session, *m_authService);
+    m_mainWindow = new MainWindow(m_session, *m_authService, *m_operationsOverviewService, *m_robotService);
     if (mockModeEnabled()) {
         m_telemetryProvider = new MockTelemetryProvider(m_mainWindow);
     } else {
@@ -78,6 +86,27 @@ void GuiApplicationController::createMainWindow()
     }
     m_mainWindow->setTelemetryProvider(m_telemetryProvider);
     m_mainWindow->setNavigationService(m_navigationService.get());
+
+    m_telemetryLogRecorder = new TelemetryLogRecorder(*m_robotService, *m_operationsOverviewService, m_mainWindow);
+    QObject::connect(
+        m_telemetryProvider, &TelemetryProvider::snapshotUpdated,
+        m_telemetryLogRecorder, &TelemetryLogRecorder::handleSnapshot,
+        Qt::QueuedConnection);
+
+    m_navGoalLogRecorder = new NavGoalLogRecorder(
+        *m_robotService, *m_operationsOverviewService, m_session.username, m_session.userId, m_mainWindow);
+    QObject::connect(
+        m_navigationService.get(), &NavigationService::navSessionStarted,
+        m_navGoalLogRecorder, &NavGoalLogRecorder::handleSessionStarted);
+    QObject::connect(
+        m_navigationService.get(), &NavigationService::waypointProgress,
+        m_navGoalLogRecorder, &NavGoalLogRecorder::handleWaypointProgress);
+    QObject::connect(
+        m_navigationService.get(), &NavigationService::navSessionFinished,
+        m_navGoalLogRecorder, &NavGoalLogRecorder::handleSessionFinished);
+    QObject::connect(
+        m_navigationService.get(), &NavigationService::amclPoseUpdated,
+        m_navGoalLogRecorder, &NavGoalLogRecorder::handleAmclPose);
 
     if (mockModeEnabled()) {
         m_cameraFeedProvider = new MockCameraFeedProvider(m_mainWindow);
@@ -131,6 +160,8 @@ void GuiApplicationController::handleLogout()
     }
 
     m_telemetryProvider = nullptr;
+    m_telemetryLogRecorder = nullptr;
+    m_navGoalLogRecorder = nullptr;
     m_cameraFeedProvider = nullptr;
     showLoginPage();
 }
