@@ -23,6 +23,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(action_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(tf2 REQUIRED)
@@ -46,6 +47,7 @@ qt_add_executable(medirun_gui
     src/dialogs/logindialog.cpp
     src/dialogs/logindialog.h
     src/models/telemetrymodel.h
+    src/models/missiontypes.h
     src/models/waypointtypes.h
     src/ros/navigationservice.h
     src/ros/nav2navigationservice.cpp
@@ -65,6 +67,12 @@ qt_add_executable(medirun_gui
     src/services/telemetrylogrecorder.h
     src/services/navgoallogrecorder.cpp
     src/services/navgoallogrecorder.h
+    src/services/missioncontroller.cpp
+    src/services/missioncontroller.h
+    src/services/missionrosinterface.cpp
+    src/services/missionrosinterface.h
+    src/services/missionstorageservice.cpp
+    src/services/missionstorageservice.h
     src/services/localauthservice.cpp
     src/services/localauthservice.h
     src/services/camerafeedprovider.h
@@ -82,6 +90,8 @@ qt_add_executable(medirun_gui
     src/services/telemetryprovider.h
     src/services/waypointfile.cpp
     src/services/waypointfile.h
+    src/services/waypointrepository.cpp
+    src/services/waypointrepository.h
     src/theme/dashboardpalette.h
     src/widgets/badgelabel.h
     src/widgets/dashboardcentralwidget.cpp
@@ -154,6 +164,7 @@ ament_target_dependencies(medirun_gui
         nav_msgs
         sensor_msgs
         action_msgs
+        std_msgs
         cv_bridge
         image_transport
         tf2

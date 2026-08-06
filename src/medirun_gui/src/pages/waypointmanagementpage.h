@@ -18,6 +18,7 @@ class QListWidget;
 class QListWidgetItem;
 class QPushButton;
 class QStackedWidget;
+class WaypointRepository;
 
 class WaypointManagementPage : public QWidget
 {
@@ -29,6 +30,7 @@ public:
     // Injected by GuiApplicationController (nullable — nav buttons stay
     // disabled and just report an error if no service is attached).
     void setNavigationService(NavigationService *service);
+    void setWaypointRepository(WaypointRepository *repository);
 
 private:
     QWidget *buildHeader();
@@ -115,6 +117,8 @@ private:
     void handleScanPointsUpdated(const QVector<QPointF> &mapPoints);
     void handleNavSessionStarted();
     void handleNavSessionFinished();
+    void syncFromRepository();
+    void pushToRepository();
 
     // 참조 멤버라 생성자 초기화 목록에서 가장 먼저 바인딩돼야 하므로(-Wreorder
     // 방지) 선언 순서상 다른 멤버보다 위에 둔다.
@@ -140,6 +144,7 @@ private:
     QString m_selectedSavedRoute;
 
     NavigationService *m_navigationService {nullptr};
+    WaypointRepository *m_waypointRepository {nullptr};
     // navigate_to_pose/follow_waypoints 액션 서버가 실제로 goal을 받을 수
     // 있는지(nav2ConnectionChanged로 갱신). SLAM 매핑 중 nav2가 PAUSE되면
     // false가 되어 주행 버튼이 잠긴다.

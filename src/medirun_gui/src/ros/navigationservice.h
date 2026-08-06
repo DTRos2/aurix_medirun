@@ -39,6 +39,7 @@ public slots:
     virtual void navigateToPose(double x, double y, double yawRad, const QString &frameId, const QString &label = QString()) = 0;
     virtual void followWaypoints(const QVector<NavPose> &poses, const QString &frameId, const QString &label = QString()) = 0;
     virtual void cancelGoal() = 0;
+    virtual void retryConnections() = 0;
     virtual void publishInitialPose(double x, double y, double yawRad, const QString &frameId) = 0;
     // percent: 1-100, as a percentage of the controller's configured max
     // speed (Nav2's dynamic speed-limit mechanism — nav2_msgs/SpeedLimit on
@@ -66,6 +67,10 @@ signals:
     void waypointProgress(int currentIndex, int total);
     void logEvent(const QString &level, const QString &message);
     void amclPoseUpdated(double x, double y, double yawRad);
+    void navigationGoalAccepted();
+    void navigationGoalRejected(const QString &reason);
+    void navigationResult(const QString &resultCode, const QString &detail);
+    void connectionRetryFinished(bool success, const QString &detail);
     // LaserScan (/scan) transformed into the "map" frame — lets the
     // dashboard show obstacle points against the loaded map, same as
     // RViz's LaserScan display, so the user can visually verify the

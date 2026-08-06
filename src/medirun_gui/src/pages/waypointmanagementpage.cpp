@@ -1,5 +1,6 @@
 #include "waypointmanagementpage.h"
 
+#include "../services/waypointrepository.h"
 #include "../services/waypointfile.h"
 #include "../theme/dashboardpalette.h"
 #include "../widgets/badgelabel.h"
@@ -152,6 +153,54 @@ void WaypointManagementPage::setNavigationService(NavigationService *service)
     });
 
     updateNavButtonsEnabled();
+}
+
+void WaypointManagementPage::setWaypointRepository(WaypointRepository *repository)
+{
+    if (m_waypointRepository == repository) {
+        return;
+    }
+    m_waypointRepository = repository;
+    if (m_waypointRepository == nullptr) {
+        return;
+    }
+
+    connect(m_waypointRepository, &WaypointRepository::repositoryChanged, this, &WaypointManagementPage::syncFromRepository);
+    syncFromRepository();
+}
+
+void WaypointManagementPage::syncFromRepository()
+{
+    if (m_waypointRepository == nullptr) {
+        return;
+    }
+
+    m_frameId = m_waypointRepository->frameId();
+    m_waypoints = m_waypointRepository->waypoints();
+    m_trajectories = m_waypointRepository->trajectories();
+    m_waypointFilePath = m_waypointRepository->filePath();
+
+    refreshWaypointList();
+    refreshMapMarkers();
+    refreshRouteCombo();
+    renumberRouteOrderItems();
+    refreshSavedRoutesBar();
+
+    if (!m_selectedWaypointId.isEmpty() && m_waypoints.contains(m_selectedWaypointId)) {
+        selectWaypoint(m_selectedWaypointId);
+    } else if (!m_waypoints.isEmpty()) {
+        selectWaypoint(m_waypoints.firstKey());
+    } else {
+        handleNewWaypointRequested();
+    }
+}
+
+void WaypointManagementPage::pushToRepository()
+{
+    if (m_waypointRepository == nullptr) {
+        return;
+    }
+    m_waypointRepository->replaceAll(m_frameId, m_waypoints, m_trajectories, m_waypointFilePath);
 }
 
 QWidget *WaypointManagementPage::buildHeader()
@@ -788,6 +837,7 @@ void WaypointManagementPage::handleSaveWaypoint()
     refreshMapMarkers();
     refreshRouteCombo();
     renumberRouteOrderItems();
+    pushToRepository();
     selectWaypoint(m_selectedWaypointId);
 }
 
@@ -822,6 +872,7 @@ void WaypointManagementPage::handleDeleteWaypoint()
     refreshMapMarkers();
     refreshRouteCombo();
     renumberRouteOrderItems();
+    pushToRepository();
 
     if (!m_waypoints.isEmpty()) {
         selectWaypoint(m_waypoints.firstKey());
@@ -1032,6 +1083,7 @@ void WaypointManagementPage::handleSaveTrajectory()
     refreshRouteCombo();
     renumberRouteOrderItems();
     refreshSavedRoutesBar();
+    pushToRepository();
 }
 
 void WaypointManagementPage::handleSavedRouteChipClicked(const QString &name)
@@ -1076,6 +1128,7 @@ void WaypointManagementPage::handleDeleteSelectedSavedRoute()
     m_routeOrderList->clear();
     refreshRouteCombo();
     renumberRouteOrderItems();
+    pushToRepository();
 }
 
 void WaypointManagementPage::handleLoadMap()
@@ -1272,10 +1325,18 @@ void WaypointManagementPage::handleLoadWaypointFile()
         return;
     }
 
+    QString errorMessage;
+    if (m_waypointRepository != nullptr) {
+        if (!m_waypointRepository->loadFromFile(path, errorMessage)) {
+            QMessageBox::warning(this, QStringLiteral("웨이포인트 불러오기 실패"), errorMessage);
+            return;
+        }
+        return;
+    }
+
     QString frameId;
     WaypointMap waypoints;
     TrajectoryMap trajectories;
-    QString errorMessage;
     if (!loadWaypointYaml(path, frameId, waypoints, trajectories, errorMessage)) {
         QMessageBox::warning(this, QStringLiteral("웨이포인트 불러오기 실패"), errorMessage);
         return;
@@ -1321,8 +1382,12 @@ void WaypointManagementPage::handleSaveWaypointFile()
 
     QString errorMessage;
     if (!saveWaypointYaml(path, m_frameId, m_waypoints, m_trajectories, errorMessage)) {
-        QMessageBox::warning(this, QStringLiteral("웨이포인트 저장 실패"), errorMessage);
-        return;
+        if (m_waypointRepository == nullptr || !m_waypointRepository->saveToFile(path, errorMessage)) {
+            QMessageBox::warning(this, QStringLiteral("웨이포인트 저장 실패"), errorMessage);
+            return;
+        }
+    } else if (m_waypointRepository != nullptr) {
+        m_waypointRepository->saveToFile(path, errorMessage);
     }
 
     m_waypointFilePath = path;
@@ -1345,6 +1410,7 @@ void WaypointManagementPage::handleSaveWaypointFile()
         m_waypointStatusLabel->setText(
             QStringLiteral("웨이포인트 파일을 저장했습니다: %1 (등록된 로봇이 1대가 아니어서 DB에는 저장하지 않음)").arg(path));
     }
+    pushToRepository();
 }
 
 void WaypointManagementPage::updateNavButtonsEnabled()
