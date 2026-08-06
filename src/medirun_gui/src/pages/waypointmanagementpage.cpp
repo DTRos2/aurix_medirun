@@ -1028,6 +1028,24 @@ void WaypointManagementPage::handleSavedRouteChipClicked(const QString &name)
 {
     m_selectedSavedRoute = (m_selectedSavedRoute == name) ? QString() : name;
     refreshSavedRoutesBar();
+
+    // 저장된 경로 칩을 고르면 지도(m_routeMap)에 순서대로 그려지도록, 그
+    // 시퀀스를 경로 순서 목록에 채운다 — renumberRouteOrderItems가 번호/
+    // 연결선을 실제로 그린다(그동안 이 목록은 "새 경로 만들기" 전용이라
+    // 저장된 경로를 선택해도 지도에 반영되지 않고 있었다).
+    m_routeOrderList->clear();
+    if (!m_selectedSavedRoute.isEmpty() && m_trajectories.contains(m_selectedSavedRoute)) {
+        for (const QString &id : m_trajectories.value(m_selectedSavedRoute)) {
+            if (!m_waypoints.contains(id)) {
+                continue;
+            }
+            auto *item = new QListWidgetItem;
+            item->setData(Qt::UserRole, id);
+            m_routeOrderList->addItem(item);
+        }
+    }
+    refreshRouteCombo();
+    renumberRouteOrderItems();
 }
 
 void WaypointManagementPage::handleDeleteSelectedSavedRoute()
@@ -1042,6 +1060,12 @@ void WaypointManagementPage::handleDeleteSelectedSavedRoute()
     m_selectedSavedRoute.clear();
     m_trajectoryStatusLabel->setText(QStringLiteral("%1 경로를 삭제했습니다.").arg(deletedName));
     refreshSavedRoutesBar();
+
+    // 삭제한 경로가 handleSavedRouteChipClicked로 경로 순서 목록에 채워져
+    // 지도에 그려져 있었을 수 있으므로 같이 지운다.
+    m_routeOrderList->clear();
+    refreshRouteCombo();
+    renumberRouteOrderItems();
 }
 
 void WaypointManagementPage::handleLoadMap()
