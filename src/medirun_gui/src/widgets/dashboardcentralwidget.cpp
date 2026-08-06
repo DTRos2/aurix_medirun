@@ -13,6 +13,8 @@
 #include "../pages/systemsettingspage.h"
 #include "../pages/usermanagementpage.h"
 #include "../pages/waypointmanagementpage.h"
+#include "../services/missioncontroller.h"
+#include "../services/waypointrepository.h"
 
 #include <QHBoxLayout>
 #include <QStackedWidget>
@@ -56,11 +58,11 @@ DashboardCentralWidget::DashboardCentralWidget(const AppSession &session, AuthSe
     connect(liveControl, &LiveControlPage::returnHomeRequested, this, &DashboardCentralWidget::returnHomeRequested);
     addPage(PageId::LiveControl, liveControl);
 
-    auto *missionOps = new MissionOpsPage(m_stack);
-    connect(missionOps, &MissionOpsPage::missionCancelRequested, this, &DashboardCentralWidget::missionCancelRequested);
-    connect(missionOps, &MissionOpsPage::returnHomeRequested, this, &DashboardCentralWidget::returnHomeRequested);
-    connect(missionOps, &MissionOpsPage::remoteControlRequested, this, [this]() { navigateTo(PageId::RemoteControl); });
-    addPage(PageId::MissionOps, missionOps);
+    m_missionOpsPage = new MissionOpsPage(m_stack);
+    connect(m_missionOpsPage, &MissionOpsPage::missionCancelRequested, this, &DashboardCentralWidget::missionCancelRequested);
+    connect(m_missionOpsPage, &MissionOpsPage::returnHomeRequested, this, &DashboardCentralWidget::returnHomeRequested);
+    connect(m_missionOpsPage, &MissionOpsPage::remoteControlRequested, this, [this]() { navigateTo(PageId::RemoteControl); });
+    addPage(PageId::MissionOps, m_missionOpsPage);
 
     addPage(PageId::RecordsPlayback, new RecordsPlaybackPage(m_stack));
 
@@ -96,6 +98,23 @@ void DashboardCentralWidget::setNavigationService(NavigationService *service)
     }
     if (m_remoteControlPage != nullptr) {
         m_remoteControlPage->setNavigationService(service);
+    }
+}
+
+void DashboardCentralWidget::setMissionController(MissionController *controller)
+{
+    if (m_missionOpsPage != nullptr) {
+        m_missionOpsPage->setMissionController(controller);
+        connect(m_missionOpsPage, &MissionOpsPage::retryRequested, controller, &MissionController::requestRetry);
+        connect(m_missionOpsPage, &MissionOpsPage::queueCancelRequested, controller, &MissionController::requestQueueCancel);
+        connect(m_missionOpsPage, &MissionOpsPage::queueDivertRequested, controller, &MissionController::requestQueueDivert);
+    }
+}
+
+void DashboardCentralWidget::setWaypointRepository(WaypointRepository *repository)
+{
+    if (m_waypointPage != nullptr) {
+        m_waypointPage->setWaypointRepository(repository);
     }
 }
 

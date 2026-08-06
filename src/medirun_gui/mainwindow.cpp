@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 #include "src/services/authservice.h"
+#include "src/services/missioncontroller.h"
+#include "src/services/waypointrepository.h"
 #include "src/services/telemetryprovider.h"
 #include "src/widgets/dashboardcentralwidget.h"
 #include "src/windows/mainwindowstyler.h"
@@ -37,6 +39,7 @@ MainWindow::MainWindow(const AppSession &session, AuthService &authService, QWid
     , m_dashboardWidget(nullptr)
     , m_authService(authService)
     , m_session(session)
+    , m_missionController(nullptr)
 {
     ui->setupUi(this);
     MainWindowStyler::apply(*this);
@@ -80,6 +83,17 @@ void MainWindow::setNavigationService(NavigationService *service)
 void MainWindow::setCameraFeedProvider(CameraFeedProvider *provider)
 {
     m_dashboardWidget->setCameraFeedProvider(provider);
+}
+
+void MainWindow::setMissionController(MissionController *controller)
+{
+    m_missionController = controller;
+    m_dashboardWidget->setMissionController(controller);
+}
+
+void MainWindow::setWaypointRepository(WaypointRepository *repository)
+{
+    m_dashboardWidget->setWaypointRepository(repository);
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
@@ -151,12 +165,16 @@ void MainWindow::handleEmergencyStop()
 
 void MainWindow::handleMissionCancel()
 {
-    QMessageBox::information(this, QStringLiteral("미션 취소"), QStringLiteral("미션 취소 요청을 전송합니다."));
+    if (m_missionController != nullptr) {
+        m_missionController->requestMissionCancel();
+    }
 }
 
 void MainWindow::handleReturnHome()
 {
-    QMessageBox::information(this, QStringLiteral("홈 복귀"), QStringLiteral("홈 복귀 요청을 전송합니다."));
+    if (m_missionController != nullptr) {
+        m_missionController->requestReturnHome();
+    }
 }
 
 void MainWindow::handleLogout()

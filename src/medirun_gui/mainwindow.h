@@ -17,6 +17,8 @@ class DashboardCentralWidget;
 class TelemetryProvider;
 class NavigationService;
 class CameraFeedProvider;
+class MissionController;
+class WaypointRepository;
 
 class MainWindow : public QMainWindow
 {
@@ -29,6 +31,8 @@ public:
     void setTelemetryProvider(TelemetryProvider *provider);
     void setNavigationService(NavigationService *service);
     void setCameraFeedProvider(CameraFeedProvider *provider);
+    void setMissionController(MissionController *controller);
+    void setWaypointRepository(WaypointRepository *repository);
 
 signals:
     void logoutRequested();
@@ -50,5 +54,6 @@ private:
     DashboardCentralWidget *m_dashboardWidget;
     AuthService &m_authService;
     AppSession m_session;
+    MissionController *m_missionController {nullptr};
 };
 #endif // MAINWINDOW_H

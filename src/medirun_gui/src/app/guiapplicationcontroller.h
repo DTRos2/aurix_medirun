@@ -14,6 +14,10 @@ class SplashScreenWidget;
 class TelemetryProvider;
 class NavigationService;
 class CameraFeedProvider;
+class WaypointRepository;
+class MissionStorageService;
+class MissionRosInterface;
+class MissionController;
 
 class GuiApplicationController : public QObject
 {
@@ -39,6 +43,10 @@ private:
     QApplication &m_application;
     std::unique_ptr<AuthService> m_authService;
     std::unique_ptr<NavigationService> m_navigationService;
+    std::unique_ptr<WaypointRepository> m_waypointRepository;
+    std::unique_ptr<MissionStorageService> m_missionStorageService;
+    std::unique_ptr<MissionRosInterface> m_missionRosInterface;
+    std::unique_ptr<MissionController> m_missionController;
     TelemetryProvider *m_telemetryProvider;
     CameraFeedProvider *m_cameraFeedProvider;
     SplashScreenWidget *m_splashScreen;

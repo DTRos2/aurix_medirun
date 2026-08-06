@@ -26,6 +26,7 @@ public slots:
     void navigateToPose(double x, double y, double yawRad, const QString &frameId) override;
     void followWaypoints(const QVector<NavPose> &poses, const QString &frameId) override;
     void cancelGoal() override;
+    void retryConnections() override;
     void publishInitialPose(double x, double y, double yawRad, const QString &frameId) override;
     void setSpeedLimit(int percent) override;
 
