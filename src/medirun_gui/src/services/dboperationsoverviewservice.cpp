@@ -347,6 +347,28 @@ bool DbOperationsOverviewService::startRobotSession(
         return false;
     }
 
+    // 이전 주행이 정상 종료(finishRobotSession)되지 못하고 남아있을 수 있으므로
+    // 같은 로봇의 미완료 세션/목표를 실패 처리해 정리한 뒤 새 세션을 시작한다.
+    QSqlQuery staleGoalQuery;
+    staleGoalQuery.prepare(QStringLiteral(
+        "UPDATE nav_goal_log SET status = 'failed', finished_at = NOW() "
+        "WHERE robot_id = :robotId AND status IN ('queued', 'accepted', 'navigating')"));
+    staleGoalQuery.bindValue(QStringLiteral(":robotId"), robotId);
+    if (!staleGoalQuery.exec()) {
+        errorMessage = QStringLiteral("이전 주행 목표 정리 실패: %1").arg(staleGoalQuery.lastError().text());
+        return false;
+    }
+
+    QSqlQuery staleSessionQuery;
+    staleSessionQuery.prepare(QStringLiteral(
+        "UPDATE robot_session SET status = 'failed', ended_at = NOW() "
+        "WHERE robot_id = :robotId AND status IN ('planned', 'running', 'paused')"));
+    staleSessionQuery.bindValue(QStringLiteral(":robotId"), robotId);
+    if (!staleSessionQuery.exec()) {
+        errorMessage = QStringLiteral("이전 주행 세션 정리 실패: %1").arg(staleSessionQuery.lastError().text());
+        return false;
+    }
+
     QSqlQuery sessionQuery;
     sessionQuery.prepare(QStringLiteral(
         "INSERT INTO robot_session (robot_id, session_name, mode, status) "
