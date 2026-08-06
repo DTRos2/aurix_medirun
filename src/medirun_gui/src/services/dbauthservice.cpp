@@ -102,6 +102,7 @@ bool DbAuthService::authenticate(
     session.username = storedLoginId;
     session.role = role;
     session.mockMode = false;
+    session.userId = userId;
     errorMessage.clear();
     return true;
 }

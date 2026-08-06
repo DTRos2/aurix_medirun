@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 #include "src/services/authservice.h"
+#include "src/services/operationsoverviewservice.h"
+#include "src/services/robotservice.h"
 #include "src/services/telemetryprovider.h"
 #include "src/widgets/dashboardcentralwidget.h"
 #include "src/windows/mainwindowstyler.h"
@@ -31,11 +33,18 @@ bool isManualControlKey(int key)
 }
 } // namespace
 
-MainWindow::MainWindow(const AppSession &session, AuthService &authService, QWidget *parent)
+MainWindow::MainWindow(
+    const AppSession &session,
+    AuthService &authService,
+    OperationsOverviewService &operationsOverviewService,
+    RobotService &robotService,
+    QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , m_dashboardWidget(nullptr)
     , m_authService(authService)
+    , m_operationsOverviewService(operationsOverviewService)
+    , m_robotService(robotService)
     , m_session(session)
 {
     ui->setupUi(this);
@@ -43,7 +52,8 @@ MainWindow::MainWindow(const AppSession &session, AuthService &authService, QWid
     setMinimumSize(1280, 720);
     resize(1440, 900);
 
-    m_dashboardWidget = new DashboardCentralWidget(m_session, m_authService, ui->centralwidget);
+    m_dashboardWidget = new DashboardCentralWidget(
+        m_session, m_authService, m_operationsOverviewService, m_robotService, ui->centralwidget);
     auto *layout = new QVBoxLayout(ui->centralwidget);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(m_dashboardWidget);

@@ -13,6 +13,7 @@
 #include <QFileInfo>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -62,8 +63,10 @@ QString kindLabel(WaypointMarkerKind kind)
 }
 } // namespace
 
-WaypointManagementPage::WaypointManagementPage(QWidget *parent)
+WaypointManagementPage::WaypointManagementPage(RobotService &robotService, OperationsOverviewService &overviewService, QWidget *parent)
     : QWidget(parent)
+    , m_robotService(robotService)
+    , m_overviewService(overviewService)
     , m_creatingNew(false)
     , m_settingInitialPose(false)
     , m_waypointTabButton(nullptr)
@@ -114,6 +117,7 @@ WaypointManagementPage::WaypointManagementPage(QWidget *parent)
     layout->addWidget(m_tabStack, 1);
 
     autoLoadDefaultMap();
+    autoLoadWaypointLibraryFromDb();
     refreshWaypointList();
     refreshMapMarkers();
     refreshRouteCombo();
@@ -139,6 +143,8 @@ void WaypointManagementPage::setNavigationService(NavigationService *service)
     connect(m_navigationService, &NavigationService::waypointProgress, this, &WaypointManagementPage::handleNavWaypointProgress);
     connect(m_navigationService, &NavigationService::amclPoseUpdated, this, &WaypointManagementPage::handleAmclPoseUpdated);
     connect(m_navigationService, &NavigationService::scanPointsUpdated, this, &WaypointManagementPage::handleScanPointsUpdated);
+    connect(m_navigationService, &NavigationService::navSessionStarted, this, &WaypointManagementPage::handleNavSessionStarted);
+    connect(m_navigationService, &NavigationService::navSessionFinished, this, &WaypointManagementPage::handleNavSessionFinished);
     connect(m_navigationService, &NavigationService::logEvent, this, [this](const QString &level, const QString &message) {
         if (level == QStringLiteral("ERROR") || level == QStringLiteral("WARN")) {
             m_navStatusLabel->setText(QStringLiteral("[%1] %2").arg(level, message));
@@ -166,7 +172,7 @@ QWidget *WaypointManagementPage::buildHeader()
     layout->addLayout(titleCol);
     layout->addStretch();
 
-    m_nav2ConnectionBadge = makeBadgeLabel(QStringLiteral("Nav2 미연결"), QStringLiteral("red"), row);
+    m_nav2ConnectionBadge = makeBadgeLabel(QStringLiteral("Nav2 부팅 중"), QStringLiteral("amber"), row);
     layout->addWidget(m_nav2ConnectionBadge);
 
     m_navStatusLabel = makeLabel(QString(), QStringLiteral("metricCaption"));
@@ -197,6 +203,12 @@ QWidget *WaypointManagementPage::buildHeader()
     loadWpButton->setObjectName(QStringLiteral("ghostChipButton"));
     connect(loadWpButton, &QPushButton::clicked, this, &WaypointManagementPage::handleLoadWaypointFile);
     layout->addWidget(loadWpButton);
+
+    auto *loadWpFromDbButton = new QPushButton(QStringLiteral("DB에서 불러오기"), row);
+    loadWpFromDbButton->setObjectName(QStringLiteral("ghostChipButton"));
+    loadWpFromDbButton->setToolTip(QStringLiteral("파일이 없는 PC에서도, 이 로봇으로 DB에 저장해둔 웨이포인트를 불러옵니다."));
+    connect(loadWpFromDbButton, &QPushButton::clicked, this, &WaypointManagementPage::handleLoadWaypointFromDb);
+    layout->addWidget(loadWpFromDbButton);
 
     auto *clearMapButton = new QPushButton(QStringLiteral("지도 초기화"), row);
     clearMapButton->setObjectName(QStringLiteral("ghostChipButton"));
@@ -1026,6 +1038,24 @@ void WaypointManagementPage::handleSavedRouteChipClicked(const QString &name)
 {
     m_selectedSavedRoute = (m_selectedSavedRoute == name) ? QString() : name;
     refreshSavedRoutesBar();
+
+    // 저장된 경로 칩을 고르면 지도(m_routeMap)에 순서대로 그려지도록, 그
+    // 시퀀스를 경로 순서 목록에 채운다 — renumberRouteOrderItems가 번호/
+    // 연결선을 실제로 그린다(그동안 이 목록은 "새 경로 만들기" 전용이라
+    // 저장된 경로를 선택해도 지도에 반영되지 않고 있었다).
+    m_routeOrderList->clear();
+    if (!m_selectedSavedRoute.isEmpty() && m_trajectories.contains(m_selectedSavedRoute)) {
+        for (const QString &id : m_trajectories.value(m_selectedSavedRoute)) {
+            if (!m_waypoints.contains(id)) {
+                continue;
+            }
+            auto *item = new QListWidgetItem;
+            item->setData(Qt::UserRole, id);
+            m_routeOrderList->addItem(item);
+        }
+    }
+    refreshRouteCombo();
+    renumberRouteOrderItems();
 }
 
 void WaypointManagementPage::handleDeleteSelectedSavedRoute()
@@ -1040,6 +1070,12 @@ void WaypointManagementPage::handleDeleteSelectedSavedRoute()
     m_selectedSavedRoute.clear();
     m_trajectoryStatusLabel->setText(QStringLiteral("%1 경로를 삭제했습니다.").arg(deletedName));
     refreshSavedRoutesBar();
+
+    // 삭제한 경로가 handleSavedRouteChipClicked로 경로 순서 목록에 채워져
+    // 지도에 그려져 있었을 수 있으므로 같이 지운다.
+    m_routeOrderList->clear();
+    refreshRouteCombo();
+    renumberRouteOrderItems();
 }
 
 void WaypointManagementPage::handleLoadMap()
@@ -1123,6 +1159,93 @@ void WaypointManagementPage::autoLoadDefaultMap()
     }
 }
 
+void WaypointManagementPage::autoLoadWaypointLibraryFromDb()
+{
+    const QVector<RobotRecord> robots = m_robotService.listRobots(false);
+    if (robots.size() != 1) {
+        return;
+    }
+
+    QString frameId;
+    WaypointMap waypoints;
+    TrajectoryMap trajectories;
+    bool found = false;
+    QString errorMessage;
+    if (!m_overviewService.loadWaypointLibrary(robots.first().id, frameId, waypoints, trajectories, found, errorMessage)) {
+        m_waypointStatusLabel->setText(errorMessage);
+        return;
+    }
+    if (!found) {
+        return;
+    }
+
+    applyLoadedWaypointLibrary(frameId, waypoints, trajectories, QStringLiteral("DB에 저장된 웨이포인트를 불러왔습니다."));
+}
+
+void WaypointManagementPage::applyLoadedWaypointLibrary(
+    const QString &frameId, const WaypointMap &waypoints, const TrajectoryMap &trajectories, const QString &statusMessage)
+{
+    m_frameId = frameId;
+    m_waypoints = waypoints;
+    m_trajectories = trajectories;
+    m_selectedSavedRoute.clear();
+    m_routeOrderList->clear();
+
+    refreshWaypointList();
+    refreshMapMarkers();
+    refreshRouteCombo();
+    renumberRouteOrderItems();
+    refreshSavedRoutesBar();
+
+    m_waypointStatusLabel->setText(statusMessage);
+
+    if (!m_waypoints.isEmpty()) {
+        selectWaypoint(m_waypoints.firstKey());
+    } else {
+        handleNewWaypointRequested();
+    }
+}
+
+void WaypointManagementPage::handleLoadWaypointFromDb()
+{
+    const QVector<RobotRecord> robots = m_robotService.listRobots(false);
+    if (robots.size() != 1) {
+        m_waypointStatusLabel->setText(QStringLiteral("등록된 로봇이 1대가 아니어서 DB 목록을 가져올 수 없습니다."));
+        return;
+    }
+    const int robotId = robots.first().id;
+
+    QStringList names;
+    QString errorMessage;
+    if (!m_overviewService.listWaypointLibraryNames(robotId, names, errorMessage)) {
+        QMessageBox::warning(this, QStringLiteral("DB 목록 조회 실패"), errorMessage);
+        return;
+    }
+    if (names.isEmpty()) {
+        m_waypointStatusLabel->setText(QStringLiteral("DB에 저장된 웨이포인트가 없습니다."));
+        return;
+    }
+
+    bool ok = false;
+    const QString name = QInputDialog::getItem(
+        this, QStringLiteral("DB에서 웨이포인트 불러오기"), QStringLiteral("저장된 이름 선택 (최근 저장 순):"), names, 0, false, &ok);
+    if (!ok || name.isEmpty()) {
+        return;
+    }
+
+    QString frameId;
+    WaypointMap waypoints;
+    TrajectoryMap trajectories;
+    if (!m_overviewService.loadWaypointLibraryByName(robotId, name, frameId, waypoints, trajectories, errorMessage)) {
+        QMessageBox::warning(this, QStringLiteral("웨이포인트 불러오기 실패"), errorMessage);
+        return;
+    }
+
+    applyLoadedWaypointLibrary(
+        frameId, waypoints, trajectories,
+        QStringLiteral("DB '%1'에서 웨이포인트 %2개, 경로 %3개를 불러왔습니다.").arg(name).arg(waypoints.size()).arg(trajectories.size()));
+}
+
 void WaypointManagementPage::handleClearMap()
 {
     m_waypointMap->clearBackgroundImage();
@@ -1158,30 +1281,13 @@ void WaypointManagementPage::handleLoadWaypointFile()
         return;
     }
 
-    m_frameId = frameId;
-    m_waypoints = waypoints;
-    m_trajectories = trajectories;
     m_waypointFilePath = path;
-    m_selectedSavedRoute.clear();
-    m_routeOrderList->clear();
-
-    refreshWaypointList();
-    refreshMapMarkers();
-    refreshRouteCombo();
-    renumberRouteOrderItems();
-    refreshSavedRoutesBar();
-
-    m_waypointStatusLabel->setText(
+    applyLoadedWaypointLibrary(
+        frameId, waypoints, trajectories,
         QStringLiteral("'%1'에서 웨이포인트 %2개, 경로 %3개를 불러왔습니다.")
             .arg(QFileInfo(path).fileName())
-            .arg(m_waypoints.size())
-            .arg(m_trajectories.size()));
-
-    if (!m_waypoints.isEmpty()) {
-        selectWaypoint(m_waypoints.firstKey());
-    } else {
-        handleNewWaypointRequested();
-    }
+            .arg(waypoints.size())
+            .arg(trajectories.size()));
 }
 
 void WaypointManagementPage::handleSaveWaypointFile()
@@ -1220,28 +1326,52 @@ void WaypointManagementPage::handleSaveWaypointFile()
     }
 
     m_waypointFilePath = path;
-    m_waypointStatusLabel->setText(QStringLiteral("웨이포인트 파일을 저장했습니다: %1").arg(path));
+
+    const QVector<RobotRecord> robots = m_robotService.listRobots(false);
+    if (robots.size() == 1) {
+        // 저장 파일의 basename을 waypoint_set.name으로 써서, 다른 파일명으로
+        // 저장하면 새 행이 생기고(YAML이 새 파일로 저장되는 것과 동일하게)
+        // 같은 파일명이면 그 행만 덮어쓰게 한다.
+        const QString setName = QFileInfo(path).completeBaseName();
+        QString dbErrorMessage;
+        if (m_overviewService.saveWaypointLibrary(
+                robots.first().id, setName, m_frameId, m_waypoints, m_trajectories, dbErrorMessage)) {
+            m_waypointStatusLabel->setText(QStringLiteral("웨이포인트 파일을 저장했습니다: %1 (DB에도 반영됨)").arg(path));
+        } else {
+            m_waypointStatusLabel->setText(
+                QStringLiteral("웨이포인트 파일을 저장했습니다: %1 (DB 반영 실패: %2)").arg(path, dbErrorMessage));
+        }
+    } else {
+        m_waypointStatusLabel->setText(
+            QStringLiteral("웨이포인트 파일을 저장했습니다: %1 (등록된 로봇이 1대가 아니어서 DB에는 저장하지 않음)").arg(path));
+    }
 }
 
 void WaypointManagementPage::updateNavButtonsEnabled()
 {
     const bool hasService = (m_navigationService != nullptr);
-    // 실제 주행에는 navigate_to_pose/follow_waypoints 액션 서버가 떠 있어야
-    // 한다(m_nav2Connected) — SLAM 매핑 중 PAUSE된 동안이나 콜드부트 직후에는
-    // hasService(rclcpp 노드 연결)는 true여도 nav2 자체는 아직 준비 안 됐을 수
-    // 있다. 초기 위치 설정은 AMCL(localization)만 있으면 되므로 nav2Ready와
+    // 실제 주행 가능하려면 (1) navigate_to_pose/follow_waypoints 액션 서버가
+    // ACTIVE여야(m_nav2Connected) 하고 (2) AMCL이 초기 위치를 받아 로컬라이즈
+    // 돼 있어야(m_hasAmclPose) 한다 — nav2Connected만으로는 goal을 받아줄 수는
+    // 있어도 위치를 모르는 채로 주행하면 실패하거나 엉뚱하게 움직인다.
+    // 초기 위치 설정 자체는 AMCL(localization)만 있으면 되므로 이 조건과
     // 무관하게 hasService만으로 활성화한다.
-    const bool nav2Ready = hasService && m_nav2Connected;
+    const bool nav2Ready = hasService && m_nav2Connected && m_hasAmclPose;
+    const QString blockedText = !hasService || !m_nav2Connected
+        ? QStringLiteral("Nav2 부팅 중")
+        : QStringLiteral("위치 설정 필요");
     if (m_navigateButton != nullptr) {
-        m_navigateButton->setEnabled(nav2Ready && !m_creatingNew && !m_selectedWaypointId.isEmpty());
-        m_navigateButton->setText(nav2Ready ? QStringLiteral("이 웨이포인트로 주행") : QStringLiteral("Nav2 미연결"));
+        m_navigateButton->setEnabled(nav2Ready && !m_navigating && !m_creatingNew && !m_selectedWaypointId.isEmpty());
+        m_navigateButton->setText(
+            m_navigating ? QStringLiteral("주행 중...") : (nav2Ready ? QStringLiteral("이 웨이포인트로 주행") : blockedText));
     }
     if (m_cancelNavButton != nullptr) {
-        m_cancelNavButton->setEnabled(hasService);
+        m_cancelNavButton->setEnabled(hasService && m_navigating);
     }
     if (m_navigateRouteButton != nullptr) {
-        m_navigateRouteButton->setEnabled(nav2Ready && !m_selectedSavedRoute.isEmpty());
-        m_navigateRouteButton->setText(nav2Ready ? QStringLiteral("선택 경로 주행") : QStringLiteral("Nav2 미연결"));
+        m_navigateRouteButton->setEnabled(nav2Ready && !m_navigating && !m_selectedSavedRoute.isEmpty());
+        m_navigateRouteButton->setText(
+            m_navigating ? QStringLiteral("주행 중...") : (nav2Ready ? QStringLiteral("선택 경로 주행") : blockedText));
     }
     if (m_setInitialPoseButton != nullptr) {
         m_setInitialPoseButton->setEnabled(hasService);
@@ -1249,6 +1379,29 @@ void WaypointManagementPage::updateNavButtonsEnabled()
             m_setInitialPoseButton->setChecked(false);
         }
     }
+}
+
+void WaypointManagementPage::refreshNav2Badge()
+{
+    if (m_nav2ConnectionBadge != nullptr) {
+        QString text;
+        QString kind;
+        if (!m_nav2Connected) {
+            text = QStringLiteral("Nav2 부팅 중");
+            kind = QStringLiteral("amber");
+        } else if (!m_hasAmclPose) {
+            text = QStringLiteral("위치 설정 필요");
+            kind = QStringLiteral("amber");
+        } else {
+            text = QStringLiteral("주행 가능");
+            kind = QStringLiteral("green");
+        }
+        m_nav2ConnectionBadge->setText(text);
+        m_nav2ConnectionBadge->setProperty("badgeKind", kind);
+        m_nav2ConnectionBadge->style()->unpolish(m_nav2ConnectionBadge);
+        m_nav2ConnectionBadge->style()->polish(m_nav2ConnectionBadge);
+    }
+    updateNavButtonsEnabled();
 }
 
 void WaypointManagementPage::handleNavigateToSelectedWaypoint()
@@ -1260,7 +1413,11 @@ void WaypointManagementPage::handleNavigateToSelectedWaypoint()
     // 버튼이 비활성화돼 있어야 정상이지만(updateNavButtonsEnabled), 클릭과
     // 연결 끊김이 겹치는 race를 대비해 여기서도 한 번 더 막는다.
     if (!m_nav2Connected) {
-        m_waypointStatusLabel->setText(QStringLiteral("Nav2가 아직 연결되지 않았습니다."));
+        m_waypointStatusLabel->setText(QStringLiteral("Nav2가 아직 부팅 중입니다. 잠시 후 다시 시도하세요."));
+        return;
+    }
+    if (!m_hasAmclPose) {
+        m_waypointStatusLabel->setText(QStringLiteral("먼저 초기 위치를 설정하세요."));
         return;
     }
     if (m_creatingNew || !m_waypoints.contains(m_selectedWaypointId)) {
@@ -1269,7 +1426,8 @@ void WaypointManagementPage::handleNavigateToSelectedWaypoint()
     }
 
     const WaypointDef &wp = m_waypoints.value(m_selectedWaypointId);
-    m_navigationService->navigateToPose(wp.x, wp.y, wp.yaw, m_frameId);
+    const QString label = wp.label.isEmpty() ? wp.name : wp.label;
+    m_navigationService->navigateToPose(wp.x, wp.y, wp.yaw, m_frameId, label);
 }
 
 void WaypointManagementPage::handleNavigateSelectedRoute()
@@ -1279,7 +1437,11 @@ void WaypointManagementPage::handleNavigateSelectedRoute()
         return;
     }
     if (!m_nav2Connected) {
-        m_trajectoryStatusLabel->setText(QStringLiteral("Nav2가 아직 연결되지 않았습니다."));
+        m_trajectoryStatusLabel->setText(QStringLiteral("Nav2가 아직 부팅 중입니다. 잠시 후 다시 시도하세요."));
+        return;
+    }
+    if (!m_hasAmclPose) {
+        m_trajectoryStatusLabel->setText(QStringLiteral("먼저 초기 위치를 설정하세요."));
         return;
     }
     if (m_selectedSavedRoute.isEmpty() || !m_trajectories.contains(m_selectedSavedRoute)) {
@@ -1299,7 +1461,8 @@ void WaypointManagementPage::handleNavigateSelectedRoute()
         m_trajectoryStatusLabel->setText(QStringLiteral("경로에 유효한 웨이포인트가 없습니다."));
         return;
     }
-    m_navigationService->followWaypoints(poses, m_frameId);
+
+    m_navigationService->followWaypoints(poses, m_frameId, m_selectedSavedRoute);
 }
 
 void WaypointManagementPage::handleCancelNavigation()
@@ -1315,16 +1478,28 @@ void WaypointManagementPage::handleNavStatusChanged(const QString &text)
     m_navStatusLabel->setText(text);
 }
 
+void WaypointManagementPage::handleNavSessionStarted()
+{
+    m_navigating = true;
+    updateNavButtonsEnabled();
+}
+
+void WaypointManagementPage::handleNavSessionFinished()
+{
+    m_navigating = false;
+    updateNavButtonsEnabled();
+}
+
 void WaypointManagementPage::handleNav2ConnectionChanged(bool connected)
 {
     m_nav2Connected = connected;
-    if (m_nav2ConnectionBadge != nullptr) {
-        m_nav2ConnectionBadge->setText(connected ? QStringLiteral("Nav2 연결") : QStringLiteral("Nav2 미연결"));
-        m_nav2ConnectionBadge->setProperty("badgeKind", connected ? QStringLiteral("green") : QStringLiteral("red"));
-        m_nav2ConnectionBadge->style()->unpolish(m_nav2ConnectionBadge);
-        m_nav2ConnectionBadge->style()->polish(m_nav2ConnectionBadge);
+    if (!connected) {
+        // nav2가 다시 내려가면(SLAM 매핑 PAUSE 등) 이전에 알던 위치는 더 이상
+        // 유효하다고 볼 수 없으니 같이 초기화한다 — 재연결 후 새 amclPoseUpdated를
+        // 받기 전까지는 "위치 설정 필요" 단계로 되돌아간다.
+        m_hasAmclPose = false;
     }
-    updateNavButtonsEnabled();
+    refreshNav2Badge();
 }
 
 void WaypointManagementPage::handleNavFeedback(double metersRemaining)
@@ -1339,6 +1514,11 @@ void WaypointManagementPage::handleNavWaypointProgress(int currentIndex, int tot
 
 void WaypointManagementPage::handleAmclPoseUpdated(double x, double y, double yawRad)
 {
+    if (!m_hasAmclPose) {
+        m_hasAmclPose = true;
+        refreshNav2Badge();
+    }
+
     if (!m_currentMapMeta.valid) {
         return;
     }

@@ -11,6 +11,7 @@ enum class PageId {
     RecordsPlayback,
     CallHistory,
     UserManagement,
+    RobotManagement,
     SystemSettings
 };
 
