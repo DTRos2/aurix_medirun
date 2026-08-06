@@ -13,6 +13,7 @@
 #include <QFileInfo>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -62,8 +63,10 @@ QString kindLabel(WaypointMarkerKind kind)
 }
 } // namespace
 
-WaypointManagementPage::WaypointManagementPage(QWidget *parent)
+WaypointManagementPage::WaypointManagementPage(RobotService &robotService, OperationsOverviewService &overviewService, QWidget *parent)
     : QWidget(parent)
+    , m_robotService(robotService)
+    , m_overviewService(overviewService)
     , m_creatingNew(false)
     , m_settingInitialPose(false)
     , m_waypointTabButton(nullptr)
@@ -114,6 +117,7 @@ WaypointManagementPage::WaypointManagementPage(QWidget *parent)
     layout->addWidget(m_tabStack, 1);
 
     autoLoadDefaultMap();
+    autoLoadWaypointLibraryFromDb();
     refreshWaypointList();
     refreshMapMarkers();
     refreshRouteCombo();
@@ -199,6 +203,12 @@ QWidget *WaypointManagementPage::buildHeader()
     loadWpButton->setObjectName(QStringLiteral("ghostChipButton"));
     connect(loadWpButton, &QPushButton::clicked, this, &WaypointManagementPage::handleLoadWaypointFile);
     layout->addWidget(loadWpButton);
+
+    auto *loadWpFromDbButton = new QPushButton(QStringLiteral("DB에서 불러오기"), row);
+    loadWpFromDbButton->setObjectName(QStringLiteral("ghostChipButton"));
+    loadWpFromDbButton->setToolTip(QStringLiteral("파일이 없는 PC에서도, 이 로봇으로 DB에 저장해둔 웨이포인트를 불러옵니다."));
+    connect(loadWpFromDbButton, &QPushButton::clicked, this, &WaypointManagementPage::handleLoadWaypointFromDb);
+    layout->addWidget(loadWpFromDbButton);
 
     auto *clearMapButton = new QPushButton(QStringLiteral("지도 초기화"), row);
     clearMapButton->setObjectName(QStringLiteral("ghostChipButton"));
@@ -1125,6 +1135,93 @@ void WaypointManagementPage::autoLoadDefaultMap()
     }
 }
 
+void WaypointManagementPage::autoLoadWaypointLibraryFromDb()
+{
+    const QVector<RobotRecord> robots = m_robotService.listRobots(false);
+    if (robots.size() != 1) {
+        return;
+    }
+
+    QString frameId;
+    WaypointMap waypoints;
+    TrajectoryMap trajectories;
+    bool found = false;
+    QString errorMessage;
+    if (!m_overviewService.loadWaypointLibrary(robots.first().id, frameId, waypoints, trajectories, found, errorMessage)) {
+        m_waypointStatusLabel->setText(errorMessage);
+        return;
+    }
+    if (!found) {
+        return;
+    }
+
+    applyLoadedWaypointLibrary(frameId, waypoints, trajectories, QStringLiteral("DB에 저장된 웨이포인트를 불러왔습니다."));
+}
+
+void WaypointManagementPage::applyLoadedWaypointLibrary(
+    const QString &frameId, const WaypointMap &waypoints, const TrajectoryMap &trajectories, const QString &statusMessage)
+{
+    m_frameId = frameId;
+    m_waypoints = waypoints;
+    m_trajectories = trajectories;
+    m_selectedSavedRoute.clear();
+    m_routeOrderList->clear();
+
+    refreshWaypointList();
+    refreshMapMarkers();
+    refreshRouteCombo();
+    renumberRouteOrderItems();
+    refreshSavedRoutesBar();
+
+    m_waypointStatusLabel->setText(statusMessage);
+
+    if (!m_waypoints.isEmpty()) {
+        selectWaypoint(m_waypoints.firstKey());
+    } else {
+        handleNewWaypointRequested();
+    }
+}
+
+void WaypointManagementPage::handleLoadWaypointFromDb()
+{
+    const QVector<RobotRecord> robots = m_robotService.listRobots(false);
+    if (robots.size() != 1) {
+        m_waypointStatusLabel->setText(QStringLiteral("등록된 로봇이 1대가 아니어서 DB 목록을 가져올 수 없습니다."));
+        return;
+    }
+    const int robotId = robots.first().id;
+
+    QStringList names;
+    QString errorMessage;
+    if (!m_overviewService.listWaypointLibraryNames(robotId, names, errorMessage)) {
+        QMessageBox::warning(this, QStringLiteral("DB 목록 조회 실패"), errorMessage);
+        return;
+    }
+    if (names.isEmpty()) {
+        m_waypointStatusLabel->setText(QStringLiteral("DB에 저장된 웨이포인트가 없습니다."));
+        return;
+    }
+
+    bool ok = false;
+    const QString name = QInputDialog::getItem(
+        this, QStringLiteral("DB에서 웨이포인트 불러오기"), QStringLiteral("저장된 이름 선택 (최근 저장 순):"), names, 0, false, &ok);
+    if (!ok || name.isEmpty()) {
+        return;
+    }
+
+    QString frameId;
+    WaypointMap waypoints;
+    TrajectoryMap trajectories;
+    if (!m_overviewService.loadWaypointLibraryByName(robotId, name, frameId, waypoints, trajectories, errorMessage)) {
+        QMessageBox::warning(this, QStringLiteral("웨이포인트 불러오기 실패"), errorMessage);
+        return;
+    }
+
+    applyLoadedWaypointLibrary(
+        frameId, waypoints, trajectories,
+        QStringLiteral("DB '%1'에서 웨이포인트 %2개, 경로 %3개를 불러왔습니다.").arg(name).arg(waypoints.size()).arg(trajectories.size()));
+}
+
 void WaypointManagementPage::handleClearMap()
 {
     m_waypointMap->clearBackgroundImage();
@@ -1160,30 +1257,13 @@ void WaypointManagementPage::handleLoadWaypointFile()
         return;
     }
 
-    m_frameId = frameId;
-    m_waypoints = waypoints;
-    m_trajectories = trajectories;
     m_waypointFilePath = path;
-    m_selectedSavedRoute.clear();
-    m_routeOrderList->clear();
-
-    refreshWaypointList();
-    refreshMapMarkers();
-    refreshRouteCombo();
-    renumberRouteOrderItems();
-    refreshSavedRoutesBar();
-
-    m_waypointStatusLabel->setText(
+    applyLoadedWaypointLibrary(
+        frameId, waypoints, trajectories,
         QStringLiteral("'%1'에서 웨이포인트 %2개, 경로 %3개를 불러왔습니다.")
             .arg(QFileInfo(path).fileName())
-            .arg(m_waypoints.size())
-            .arg(m_trajectories.size()));
-
-    if (!m_waypoints.isEmpty()) {
-        selectWaypoint(m_waypoints.firstKey());
-    } else {
-        handleNewWaypointRequested();
-    }
+            .arg(waypoints.size())
+            .arg(trajectories.size()));
 }
 
 void WaypointManagementPage::handleSaveWaypointFile()
@@ -1222,7 +1302,25 @@ void WaypointManagementPage::handleSaveWaypointFile()
     }
 
     m_waypointFilePath = path;
-    m_waypointStatusLabel->setText(QStringLiteral("웨이포인트 파일을 저장했습니다: %1").arg(path));
+
+    const QVector<RobotRecord> robots = m_robotService.listRobots(false);
+    if (robots.size() == 1) {
+        // 저장 파일의 basename을 waypoint_set.name으로 써서, 다른 파일명으로
+        // 저장하면 새 행이 생기고(YAML이 새 파일로 저장되는 것과 동일하게)
+        // 같은 파일명이면 그 행만 덮어쓰게 한다.
+        const QString setName = QFileInfo(path).completeBaseName();
+        QString dbErrorMessage;
+        if (m_overviewService.saveWaypointLibrary(
+                robots.first().id, setName, m_frameId, m_waypoints, m_trajectories, dbErrorMessage)) {
+            m_waypointStatusLabel->setText(QStringLiteral("웨이포인트 파일을 저장했습니다: %1 (DB에도 반영됨)").arg(path));
+        } else {
+            m_waypointStatusLabel->setText(
+                QStringLiteral("웨이포인트 파일을 저장했습니다: %1 (DB 반영 실패: %2)").arg(path, dbErrorMessage));
+        }
+    } else {
+        m_waypointStatusLabel->setText(
+            QStringLiteral("웨이포인트 파일을 저장했습니다: %1 (등록된 로봇이 1대가 아니어서 DB에는 저장하지 않음)").arg(path));
+    }
 }
 
 void WaypointManagementPage::updateNavButtonsEnabled()

@@ -4,6 +4,8 @@
 #include "../models/waypointtypes.h"
 #include "../ros/navigationservice.h"
 #include "../services/mapfile.h"
+#include "../services/operationsoverviewservice.h"
+#include "../services/robotservice.h"
 #include "../widgets/waypointmapwidget.h"
 
 #include <QVector>
@@ -22,7 +24,7 @@ class WaypointManagementPage : public QWidget
     Q_OBJECT
 
 public:
-    explicit WaypointManagementPage(QWidget *parent = nullptr);
+    explicit WaypointManagementPage(RobotService &robotService, OperationsOverviewService &overviewService, QWidget *parent = nullptr);
 
     // Injected by GuiApplicationController (nullable — nav buttons stay
     // disabled and just report an error if no service is attached).
@@ -79,11 +81,24 @@ private:
     // user having to click "지도 불러오기" manually. Silently does nothing
     // if the file isn't found (e.g. running outside the install layout).
     void autoLoadDefaultMap();
+    // 시작 시 DB(waypoint_set)에 저장된 웨이포인트 라이브러리를 불러온다 —
+    // 파일을 한 번도 저장/불러오기 하지 않았어도 이전에 "파일로 저장" 시점에
+    // DB에 같이 기록됐던 웨이포인트가 있으면 그걸로 채운다. 등록된 로봇이
+    // 정확히 1대가 아니면 조용히 건너뛴다(다른 자동기록과 동일한 제약).
+    void autoLoadWaypointLibraryFromDb();
     // <workspace>/install/.../lib/medirun_gui에서 4단계 위로 올라간 경로.
     // 계산 불가 시(설치 레이아웃 밖에서 실행 등) 빈 문자열.
     QString workspaceRootPath() const;
     void handleLoadWaypointFile();
+    // 파일 없이도(다른 PC 등) 이 로봇으로 DB(waypoint_set)에 저장된 이름
+    // 목록을 보여주고 고른 걸 불러온다.
+    void handleLoadWaypointFromDb();
     void handleSaveWaypointFile();
+    // handleLoadWaypointFile/handleLoadWaypointFromDb/autoLoadWaypointLibraryFromDb가
+    // 공유 — 불러온 frame_id+waypoints+trajectories를 페이지 상태에 반영하고
+    // 화면을 갱신한다.
+    void applyLoadedWaypointLibrary(
+        const QString &frameId, const WaypointMap &waypoints, const TrajectoryMap &trajectories, const QString &statusMessage);
 
     void handleNavigateToSelectedWaypoint();
     void handleNavigateSelectedRoute();
@@ -100,6 +115,11 @@ private:
     void handleScanPointsUpdated(const QVector<QPointF> &mapPoints);
     void handleNavSessionStarted();
     void handleNavSessionFinished();
+
+    // 참조 멤버라 생성자 초기화 목록에서 가장 먼저 바인딩돼야 하므로(-Wreorder
+    // 방지) 선언 순서상 다른 멤버보다 위에 둔다.
+    RobotService &m_robotService;
+    OperationsOverviewService &m_overviewService;
 
     WaypointMap m_waypoints;
     TrajectoryMap m_trajectories;

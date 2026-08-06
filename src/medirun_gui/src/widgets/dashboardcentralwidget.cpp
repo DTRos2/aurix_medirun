@@ -84,7 +84,7 @@ DashboardCentralWidget::DashboardCentralWidget(
     if (m_session.role == UserRole::Admin) {
         m_slamMappingPage = new SlamMappingPage(m_stack);
         addPage(PageId::SlamMapping, m_slamMappingPage);
-        m_waypointPage = new WaypointManagementPage(m_stack);
+        m_waypointPage = new WaypointManagementPage(robotService, operationsOverviewService, m_stack);
         addPage(PageId::WaypointManagement, m_waypointPage);
         addPage(PageId::UserManagement, new UserManagementPage(m_authService, m_stack));
         addPage(PageId::RobotManagement, new RobotManagementPage(robotService, m_stack));
