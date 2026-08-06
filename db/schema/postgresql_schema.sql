@@ -390,16 +390,16 @@ CREATE TABLE waypoint_set (
     waypoints   JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
     UNIQUE (robot_id, name),
-    CHECK (jsonb_typeof(waypoints) = 'array')
+    CHECK (jsonb_typeof(waypoints) IN ('array', 'object'))
 );
 
-COMMENT ON TABLE waypoint_set IS 'Waypoint 세트. 개별 waypoint는 JSONB 배열로 관리';
+COMMENT ON TABLE waypoint_set IS 'Waypoint 세트. 개별 waypoint는 JSONB로 관리(배열 또는 객체)';
 COMMENT ON COLUMN waypoint_set.id IS 'Waypoint 세트 PK, 자동 증가';
 COMMENT ON COLUMN waypoint_set.robot_id IS '대상 로봇 id';
 COMMENT ON COLUMN waypoint_set.map_id IS '기준 맵 id';
 COMMENT ON COLUMN waypoint_set.name IS 'Waypoint 세트 이름';
 COMMENT ON COLUMN waypoint_set.description IS 'Waypoint 세트 설명';
-COMMENT ON COLUMN waypoint_set.waypoints IS 'Waypoint 좌표 배열 JSONB';
+COMMENT ON COLUMN waypoint_set.waypoints IS 'Waypoint 좌표 배열(JSONB array) 또는 Qt GUI 웨이포인트 관리 페이지가 저장한 라이브러리 전체(JSONB object: frame_id/waypoints/trajectories, name=''default'')';
 COMMENT ON COLUMN waypoint_set.created_at IS '세트 생성 시간';
 
 CREATE INDEX idx_waypoint_set_robot_created_at

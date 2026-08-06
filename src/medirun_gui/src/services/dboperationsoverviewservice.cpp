@@ -1,11 +1,97 @@
 #include "dboperationsoverviewservice.h"
 #include "dbconnection.h"
 
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QVariant>
 
 namespace {
+
+// 웨이포인트 관리 페이지에서 쓰는 이름(YAML 저장 형식과 동일하게)
+QString waypointKindToJson(WaypointMarkerKind kind)
+{
+    switch (kind) {
+    case WaypointMarkerKind::CallZone:
+        return QStringLiteral("call_zone");
+    case WaypointMarkerKind::Home:
+        return QStringLiteral("home");
+    case WaypointMarkerKind::Waypoint:
+        break;
+    }
+    return QStringLiteral("waypoint");
+}
+
+WaypointMarkerKind waypointKindFromJson(const QString &text)
+{
+    if (text == QStringLiteral("call_zone")) {
+        return WaypointMarkerKind::CallZone;
+    }
+    if (text == QStringLiteral("home")) {
+        return WaypointMarkerKind::Home;
+    }
+    return WaypointMarkerKind::Waypoint;
+}
+
+QJsonObject waypointLibraryToJson(const QString &frameId, const WaypointMap &waypoints, const TrajectoryMap &trajectories)
+{
+    QJsonObject waypointsJson;
+    for (auto it = waypoints.cbegin(); it != waypoints.cend(); ++it) {
+        const WaypointDef &def = it.value();
+        QJsonObject entry;
+        entry.insert(QStringLiteral("x"), def.x);
+        entry.insert(QStringLiteral("y"), def.y);
+        entry.insert(QStringLiteral("yaw"), def.yaw);
+        entry.insert(QStringLiteral("kind"), waypointKindToJson(def.kind));
+        entry.insert(QStringLiteral("label"), def.label.isEmpty() ? it.key() : def.label);
+        waypointsJson.insert(it.key(), entry);
+    }
+
+    QJsonObject trajectoriesJson;
+    for (auto it = trajectories.cbegin(); it != trajectories.cend(); ++it) {
+        QJsonArray names;
+        for (const QString &name : it.value()) {
+            names.append(name);
+        }
+        trajectoriesJson.insert(it.key(), names);
+    }
+
+    QJsonObject root;
+    root.insert(QStringLiteral("frame_id"), frameId);
+    root.insert(QStringLiteral("waypoints"), waypointsJson);
+    root.insert(QStringLiteral("trajectories"), trajectoriesJson);
+    return root;
+}
+
+void waypointLibraryFromJson(
+    const QJsonObject &root, QString &frameId, WaypointMap &waypoints, TrajectoryMap &trajectories)
+{
+    frameId = root.value(QStringLiteral("frame_id")).toString(QStringLiteral("map"));
+
+    const QJsonObject waypointsJson = root.value(QStringLiteral("waypoints")).toObject();
+    for (auto it = waypointsJson.constBegin(); it != waypointsJson.constEnd(); ++it) {
+        const QJsonObject entry = it.value().toObject();
+        WaypointDef def;
+        def.name = it.key();
+        def.x = entry.value(QStringLiteral("x")).toDouble();
+        def.y = entry.value(QStringLiteral("y")).toDouble();
+        def.yaw = entry.value(QStringLiteral("yaw")).toDouble();
+        def.kind = waypointKindFromJson(entry.value(QStringLiteral("kind")).toString());
+        def.label = entry.value(QStringLiteral("label")).toString(it.key());
+        waypoints.insert(def.name, def);
+    }
+
+    const QJsonObject trajectoriesJson = root.value(QStringLiteral("trajectories")).toObject();
+    for (auto it = trajectoriesJson.constBegin(); it != trajectoriesJson.constEnd(); ++it) {
+        QStringList names;
+        for (const QJsonValue &value : it.value().toArray()) {
+            names.append(value.toString());
+        }
+        trajectories.insert(it.key(), names);
+    }
+}
 
 int percentFromCounts(int connected, int total)
 {
@@ -495,6 +581,134 @@ bool DbOperationsOverviewService::recordUserAction(
     query.bindValue(QStringLiteral(":issuedBy"), issuedBy.isEmpty() ? QVariant() : QVariant(issuedBy));
     if (!query.exec()) {
         errorMessage = QStringLiteral("사용자 조작 기록 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::loadWaypointLibrary(
+    int robotId, QString &frameId, WaypointMap &waypoints, TrajectoryMap &trajectories, bool &found, QString &errorMessage)
+{
+    found = false;
+    frameId = QStringLiteral("map");
+    waypoints.clear();
+    trajectories.clear();
+
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "SELECT waypoints FROM waypoint_set WHERE robot_id = :robotId "
+        "ORDER BY created_at DESC, id DESC LIMIT 1"));
+    query.bindValue(QStringLiteral(":robotId"), robotId);
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("웨이포인트 라이브러리 조회 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    if (!query.next()) {
+        errorMessage.clear();
+        return true;
+    }
+
+    const QJsonDocument doc = QJsonDocument::fromJson(query.value(0).toString().toUtf8());
+    if (!doc.isObject()) {
+        errorMessage = QStringLiteral("저장된 웨이포인트 라이브러리 형식이 올바르지 않습니다.");
+        return false;
+    }
+
+    waypointLibraryFromJson(doc.object(), frameId, waypoints, trajectories);
+    found = true;
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::listWaypointLibraryNames(int robotId, QStringList &names, QString &errorMessage)
+{
+    names.clear();
+
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "SELECT name FROM waypoint_set WHERE robot_id = :robotId ORDER BY created_at DESC, id DESC"));
+    query.bindValue(QStringLiteral(":robotId"), robotId);
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("웨이포인트 라이브러리 목록 조회 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    while (query.next()) {
+        names.append(query.value(0).toString());
+    }
+
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::loadWaypointLibraryByName(
+    int robotId, const QString &name, QString &frameId, WaypointMap &waypoints, TrajectoryMap &trajectories,
+    QString &errorMessage)
+{
+    frameId = QStringLiteral("map");
+    waypoints.clear();
+    trajectories.clear();
+
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral("SELECT waypoints FROM waypoint_set WHERE robot_id = :robotId AND name = :name"));
+    query.bindValue(QStringLiteral(":robotId"), robotId);
+    query.bindValue(QStringLiteral(":name"), name);
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("웨이포인트 라이브러리 조회 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    if (!query.next()) {
+        errorMessage = QStringLiteral("'%1' 웨이포인트 라이브러리를 찾을 수 없습니다.").arg(name);
+        return false;
+    }
+
+    const QJsonDocument doc = QJsonDocument::fromJson(query.value(0).toString().toUtf8());
+    if (!doc.isObject()) {
+        errorMessage = QStringLiteral("저장된 웨이포인트 라이브러리 형식이 올바르지 않습니다.");
+        return false;
+    }
+
+    waypointLibraryFromJson(doc.object(), frameId, waypoints, trajectories);
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::saveWaypointLibrary(
+    int robotId, const QString &name, const QString &frameId, const WaypointMap &waypoints,
+    const TrajectoryMap &trajectories, QString &errorMessage)
+{
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    const QJsonObject root = waypointLibraryToJson(frameId, waypoints, trajectories);
+    const QString json = QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "INSERT INTO waypoint_set (robot_id, name, waypoints) VALUES (:robotId, :name, :waypoints::jsonb) "
+        "ON CONFLICT (robot_id, name) DO UPDATE SET waypoints = EXCLUDED.waypoints"));
+    query.bindValue(QStringLiteral(":robotId"), robotId);
+    query.bindValue(QStringLiteral(":name"), name);
+    query.bindValue(QStringLiteral(":waypoints"), json);
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("웨이포인트 라이브러리 저장 실패: %1").arg(query.lastError().text());
         return false;
     }
 

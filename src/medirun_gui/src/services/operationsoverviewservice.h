@@ -1,8 +1,11 @@
 #ifndef OPERATIONSOVERVIEWSERVICE_H
 #define OPERATIONSOVERVIEWSERVICE_H
 
+#include "../models/waypointtypes.h"
+
 #include <QDateTime>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 // 운영 현황 페이지(OperationsOverviewPage)가 그리는 카드/테이블/헬스/이벤트
@@ -107,6 +110,33 @@ public:
         const QString &payloadJson,
         const QString &issuedBy,
         QString &errorMessage) = 0;
+
+    // Qt GUI 웨이포인트 관리 페이지가 쓰는 웨이포인트 라이브러리(이름있는
+    // waypoint + trajectory, waypoints/*.yaml과 동일 구조)를 waypoint_set
+    // 테이블에서 불러온다. 로봇의 여러 저장 세트(이름=저장 시 쓴 파일명) 중
+    // 가장 최근 것 하나를 고른다. 저장된 게 없으면 found=false를 채우고
+    // true를 반환한다(에러 아님).
+    virtual bool loadWaypointLibrary(
+        int robotId, QString &frameId, WaypointMap &waypoints, TrajectoryMap &trajectories, bool &found,
+        QString &errorMessage) = 0;
+
+    // 이 로봇으로 저장된 waypoint_set.name 목록(최근 저장 순). 파일이 없는
+    // 다른 PC에서 "DB에서 불러오기"로 고를 목록을 채우는 용도.
+    virtual bool listWaypointLibraryNames(int robotId, QStringList &names, QString &errorMessage) = 0;
+
+    // listWaypointLibraryNames로 고른 특정 이름의 세트를 불러온다.
+    virtual bool loadWaypointLibraryByName(
+        int robotId, const QString &name, QString &frameId, WaypointMap &waypoints, TrajectoryMap &trajectories,
+        QString &errorMessage) = 0;
+
+    // "파일로 저장" 버튼을 눌렀을 때, 같은 내용을 waypoint_set에도 upsert한다.
+    // name: waypoint_set.name — 같은 이름으로 다시 저장하면 그 행을 덮어쓰고,
+    // 다른 이름(예: 다른 파일명)으로 저장하면 새 행이 생긴다(robot_id+name UNIQUE).
+    // YAML 파일을 다른 이름으로 저장하면 새 파일이 생기는 것과 동일한 동작을
+    // 의도한 것 — 호출자(WaypointManagementPage)가 저장 파일의 basename을 넘긴다.
+    virtual bool saveWaypointLibrary(
+        int robotId, const QString &name, const QString &frameId, const WaypointMap &waypoints,
+        const TrajectoryMap &trajectories, QString &errorMessage) = 0;
 };
 
 #endif // OPERATIONSOVERVIEWSERVICE_H

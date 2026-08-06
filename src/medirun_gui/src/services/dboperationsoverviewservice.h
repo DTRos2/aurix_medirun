@@ -39,6 +39,17 @@ public:
         const QString &payloadJson,
         const QString &issuedBy,
         QString &errorMessage) override;
+
+    bool loadWaypointLibrary(
+        int robotId, QString &frameId, WaypointMap &waypoints, TrajectoryMap &trajectories, bool &found,
+        QString &errorMessage) override;
+    bool listWaypointLibraryNames(int robotId, QStringList &names, QString &errorMessage) override;
+    bool loadWaypointLibraryByName(
+        int robotId, const QString &name, QString &frameId, WaypointMap &waypoints, TrajectoryMap &trajectories,
+        QString &errorMessage) override;
+    bool saveWaypointLibrary(
+        int robotId, const QString &name, const QString &frameId, const WaypointMap &waypoints,
+        const TrajectoryMap &trajectories, QString &errorMessage) override;
 };
 
 #endif // DBOPERATIONSOVERVIEWSERVICE_H
