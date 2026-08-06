@@ -98,6 +98,8 @@ private:
     void handleNavWaypointProgress(int currentIndex, int total);
     void handleAmclPoseUpdated(double x, double y, double yawRad);
     void handleScanPointsUpdated(const QVector<QPointF> &mapPoints);
+    void handleNavSessionStarted();
+    void handleNavSessionFinished();
 
     WaypointMap m_waypoints;
     TrajectoryMap m_trajectories;
@@ -128,6 +130,13 @@ private:
     // (bt_navigator/waypoint_follower가 ACTIVE여도 로컬라이제이션이 없으면
     // 주행이 실패하거나 엉뚱하게 움직일 수 있다).
     bool m_hasAmclPose {false};
+    // navSessionStarted~navSessionFinished 사이 true — 다른 웨이포인트/경로로
+    // 이미 주행 중인데 또 새 목표를 보내면 이전 goal이 취소되지 않은 채
+    // 두 번째 목표가 그대로 액션 서버로 전송돼(nav2navigationservice가
+    // 자체적으로 선점 처리를 하지 않음) 로봇이 이전 목표를 향해 계속
+    // 움직이고 DB 세션 기록도 꼬이는 문제가 있어, 주행 중엔 새 주행 시작
+    // 버튼을 잠근다.
+    bool m_navigating {false};
 
     // shell
     QPushButton *m_waypointTabButton;

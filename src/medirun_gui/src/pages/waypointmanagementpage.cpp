@@ -139,6 +139,8 @@ void WaypointManagementPage::setNavigationService(NavigationService *service)
     connect(m_navigationService, &NavigationService::waypointProgress, this, &WaypointManagementPage::handleNavWaypointProgress);
     connect(m_navigationService, &NavigationService::amclPoseUpdated, this, &WaypointManagementPage::handleAmclPoseUpdated);
     connect(m_navigationService, &NavigationService::scanPointsUpdated, this, &WaypointManagementPage::handleScanPointsUpdated);
+    connect(m_navigationService, &NavigationService::navSessionStarted, this, &WaypointManagementPage::handleNavSessionStarted);
+    connect(m_navigationService, &NavigationService::navSessionFinished, this, &WaypointManagementPage::handleNavSessionFinished);
     connect(m_navigationService, &NavigationService::logEvent, this, [this](const QString &level, const QString &message) {
         if (level == QStringLiteral("ERROR") || level == QStringLiteral("WARN")) {
             m_navStatusLabel->setText(QStringLiteral("[%1] %2").arg(level, message));
@@ -1237,15 +1239,17 @@ void WaypointManagementPage::updateNavButtonsEnabled()
         ? QStringLiteral("Nav2 부팅 중")
         : QStringLiteral("위치 설정 필요");
     if (m_navigateButton != nullptr) {
-        m_navigateButton->setEnabled(nav2Ready && !m_creatingNew && !m_selectedWaypointId.isEmpty());
-        m_navigateButton->setText(nav2Ready ? QStringLiteral("이 웨이포인트로 주행") : blockedText);
+        m_navigateButton->setEnabled(nav2Ready && !m_navigating && !m_creatingNew && !m_selectedWaypointId.isEmpty());
+        m_navigateButton->setText(
+            m_navigating ? QStringLiteral("주행 중...") : (nav2Ready ? QStringLiteral("이 웨이포인트로 주행") : blockedText));
     }
     if (m_cancelNavButton != nullptr) {
-        m_cancelNavButton->setEnabled(hasService);
+        m_cancelNavButton->setEnabled(hasService && m_navigating);
     }
     if (m_navigateRouteButton != nullptr) {
-        m_navigateRouteButton->setEnabled(nav2Ready && !m_selectedSavedRoute.isEmpty());
-        m_navigateRouteButton->setText(nav2Ready ? QStringLiteral("선택 경로 주행") : blockedText);
+        m_navigateRouteButton->setEnabled(nav2Ready && !m_navigating && !m_selectedSavedRoute.isEmpty());
+        m_navigateRouteButton->setText(
+            m_navigating ? QStringLiteral("주행 중...") : (nav2Ready ? QStringLiteral("선택 경로 주행") : blockedText));
     }
     if (m_setInitialPoseButton != nullptr) {
         m_setInitialPoseButton->setEnabled(hasService);
@@ -1350,6 +1354,18 @@ void WaypointManagementPage::handleCancelNavigation()
 void WaypointManagementPage::handleNavStatusChanged(const QString &text)
 {
     m_navStatusLabel->setText(text);
+}
+
+void WaypointManagementPage::handleNavSessionStarted()
+{
+    m_navigating = true;
+    updateNavButtonsEnabled();
+}
+
+void WaypointManagementPage::handleNavSessionFinished()
+{
+    m_navigating = false;
+    updateNavButtonsEnabled();
 }
 
 void WaypointManagementPage::handleNav2ConnectionChanged(bool connected)
