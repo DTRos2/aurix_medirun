@@ -144,6 +144,9 @@ void DashboardCentralWidget::setCameraFeedProvider(CameraFeedProvider *provider)
     if (provider != nullptr && m_operationsOverviewPage != nullptr) {
         connect(provider, &CameraFeedProvider::connectionStateChanged, m_operationsOverviewPage, &OperationsOverviewPage::applyCameraConnection);
     }
+    if (provider != nullptr && m_headerBar != nullptr) {
+        connect(provider, &CameraFeedProvider::connectionStateChanged, m_headerBar, &HeaderBar::setCameraConnected);
+    }
 }
 
 bool DashboardCentralWidget::handleManualKeyPress(int key)
