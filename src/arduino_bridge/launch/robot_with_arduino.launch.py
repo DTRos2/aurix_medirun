@@ -26,6 +26,10 @@ def generate_launch_description():
     audio_sink = LaunchConfiguration("audio_sink")
     start_cartographer = LaunchConfiguration("start_cartographer")
     use_sim_time = LaunchConfiguration("use_sim_time")
+    start_mqtt_call_button_bridge = LaunchConfiguration("start_mqtt_call_button_bridge")
+    mqtt_broker = LaunchConfiguration("mqtt_broker")
+    mqtt_port = LaunchConfiguration("mqtt_port")
+    mqtt_topic = LaunchConfiguration("mqtt_topic")
 
     turtlebot3_bringup = get_package_share_directory("turtlebot3_bringup")
     turtlebot3_cartographer = get_package_share_directory("turtlebot3_cartographer")
@@ -82,6 +86,18 @@ def generate_launch_description():
             ),
             description="gTTS 음성을 출력할 PulseAudio sink",
         ),
+        DeclareLaunchArgument(
+            "start_mqtt_call_button_bridge",
+            default_value="false",
+            description="ESP32 무선 호출 버튼(MQTT)을 dispatch_request로 중계하는 노드를 함께 실행",
+        ),
+        DeclareLaunchArgument(
+            "mqtt_broker",
+            default_value="192.168.230.9",
+            description="무선 호출 버튼 ESP32가 연결하는 MQTT 브로커(Pi) IP",
+        ),
+        DeclareLaunchArgument("mqtt_port", default_value="1883"),
+        DeclareLaunchArgument("mqtt_topic", default_value="medirun/button"),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -150,6 +166,20 @@ def generate_launch_description():
             package="arduino_bridge",
             executable="estop_node",
             name="estop_node",
+            output="screen",
+        ),
+        Node(
+            package="arduino_bridge",
+            executable="mqtt_call_button_bridge.py",
+            name="mqtt_call_button_bridge",
+            parameters=[
+                {
+                    "mqtt_broker": mqtt_broker,
+                    "mqtt_port": ParameterValue(mqtt_port, value_type=int),
+                    "mqtt_topic": mqtt_topic,
+                }
+            ],
+            condition=IfCondition(start_mqtt_call_button_bridge),
             output="screen",
         ),
         Node(
