@@ -20,6 +20,9 @@ class SlamMappingPage;
 class OperationsOverviewPage;
 class OperationsOverviewService;
 class RobotService;
+class MissionController;
+class WaypointRepository;
+class MissionOpsPage;
 
 class DashboardCentralWidget : public QWidget
 {
@@ -36,6 +39,8 @@ public:
     void applySnapshot(const TelemetrySnapshot &snapshot);
     void setNavigationService(NavigationService *service);
     void setCameraFeedProvider(CameraFeedProvider *provider);
+    void setMissionController(MissionController *controller);
+    void setWaypointRepository(WaypointRepository *repository);
     bool handleManualKeyPress(int key);
     bool handleManualKeyRelease(int key);
 
@@ -61,6 +66,7 @@ private:
     WaypointManagementPage *m_waypointPage {nullptr};
     RemoteControlPage *m_remoteControlPage {nullptr};
     SlamMappingPage *m_slamMappingPage {nullptr};
+    MissionOpsPage *m_missionOpsPage {nullptr};
 };
 
 #endif // DASHBOARDCENTRALWIDGET_H

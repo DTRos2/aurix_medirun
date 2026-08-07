@@ -1,6 +1,7 @@
 #include "rosbatterytelemetryprovider.h"
 
 #include <QDateTime>
+#include <QSqlDatabase>
 
 #include <algorithm>
 #include <cmath>
@@ -35,6 +36,7 @@ RosBatteryTelemetryProvider::RosBatteryTelemetryProvider(QObject *parent)
     , m_displayedBatteryPercent(0)
     , m_hasFilteredBatteryPercent(false)
     , m_hasDisplayedBatteryPercent(false)
+    , m_dbConnected(false)
 {
     m_timeoutTimer->setInterval(kTimeoutCheckIntervalMs);
     connect(m_timeoutTimer, &QTimer::timeout, this, &RosBatteryTelemetryProvider::checkBatteryTimeout);
@@ -58,7 +60,8 @@ void RosBatteryTelemetryProvider::start()
         return;
     }
 
-    emit snapshotUpdated(buildWaitingSnapshot());
+    refreshDbState();
+    emitSnapshot(buildWaitingSnapshot());
 
     m_executor->add_node(m_node);
     m_spinThread = std::thread([this]() {
@@ -70,6 +73,18 @@ void RosBatteryTelemetryProvider::start()
 
 void RosBatteryTelemetryProvider::checkBatteryTimeout()
 {
+    // DB 연결 상태는 배터리 토픽 수신과 무관하게 바뀔 수 있으므로(배터리
+    // 토픽이 아예 안 들어오는 환경에서도) 매 틱마다 별도로 확인해 헤더의
+    // DB 표시가 갱신되도록 한다. 이 타이머는 GUI 스레드에서 돌기 때문에
+    // 여기서만 QSqlDatabase를 조회한다(다른 스레드에서 조회하면 안 됨).
+    const bool wasConnected = m_dbConnected.load();
+    refreshDbState();
+    if (m_dbConnected.load() != wasConnected) {
+        TelemetrySnapshot snapshot = m_lastSnapshot;
+        applyDbState(snapshot);
+        emitSnapshot(snapshot);
+    }
+
     if (!m_hasReceivedMessage.load()) {
         return;
     }
@@ -83,7 +98,7 @@ void RosBatteryTelemetryProvider::checkBatteryTimeout()
         return;
     }
 
-    emit snapshotUpdated(buildDisconnectedSnapshot());
+    emitSnapshot(buildDisconnectedSnapshot());
 }
 
 void RosBatteryTelemetryProvider::stopExecutor()
@@ -117,7 +132,7 @@ void RosBatteryTelemetryProvider::handleBatteryState(const sensor_msgs::msg::Bat
     const double filteredBatteryPercent = filterBatteryPercent(rawBatteryPercent);
     const int displayedBatteryPercent = stabilizeDisplayedPercent(filteredBatteryPercent);
 
-    emit snapshotUpdated(buildBatterySnapshot(displayedBatteryPercent, msg->voltage));
+    emitSnapshot(buildBatterySnapshot(displayedBatteryPercent, msg->voltage));
 }
 
 TelemetrySnapshot RosBatteryTelemetryProvider::buildWaitingSnapshot() const
@@ -127,6 +142,7 @@ TelemetrySnapshot RosBatteryTelemetryProvider::buildWaitingSnapshot() const
     snapshot.rosText = QStringLiteral("수신 대기");
     snapshot.rosState = ConnectionState::Warning;
     snapshot.batteryMessageReceived = false;
+    applyDbState(snapshot);
     return snapshot;
 }
 
@@ -137,6 +153,7 @@ TelemetrySnapshot RosBatteryTelemetryProvider::buildDisconnectedSnapshot() const
     snapshot.rosText = QStringLiteral("연결 끊김");
     snapshot.rosState = ConnectionState::Disconnected;
     snapshot.batteryMessageReceived = false;
+    applyDbState(snapshot);
     return snapshot;
 }
 
@@ -149,7 +166,27 @@ TelemetrySnapshot RosBatteryTelemetryProvider::buildBatterySnapshot(int batteryP
     snapshot.batteryMessageReceived = true;
     snapshot.rosText = QStringLiteral("연결됨");
     snapshot.rosState = ConnectionState::Connected;
+    applyDbState(snapshot);
     return snapshot;
+}
+
+void RosBatteryTelemetryProvider::refreshDbState()
+{
+    QSqlDatabase db = QSqlDatabase::database(QSqlDatabase::defaultConnection, false);
+    m_dbConnected.store(db.isValid() && db.isOpen());
+}
+
+void RosBatteryTelemetryProvider::applyDbState(TelemetrySnapshot &snapshot) const
+{
+    const bool connected = m_dbConnected.load();
+    snapshot.dbState = connected ? ConnectionState::Connected : ConnectionState::Disconnected;
+    snapshot.dbText = connected ? QStringLiteral("연결됨") : QStringLiteral("연결 끊김");
+}
+
+void RosBatteryTelemetryProvider::emitSnapshot(TelemetrySnapshot snapshot)
+{
+    m_lastSnapshot = snapshot;
+    emit snapshotUpdated(snapshot);
 }
 
 double RosBatteryTelemetryProvider::normalizeBatteryPercent(double percentage) const

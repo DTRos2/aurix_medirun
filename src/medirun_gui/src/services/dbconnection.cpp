@@ -2,20 +2,51 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QSqlDatabase>
 #include <QSqlError>
 
 namespace {
 
-QString configPath()
+QString findConfigFrom(QDir dir)
+{
+    for (int i = 0; i < 10; ++i) {
+        const QString candidate = dir.filePath(QStringLiteral("config/db.yaml"));
+        if (QFileInfo::exists(candidate)) {
+            return QFileInfo(candidate).absoluteFilePath();
+        }
+        if (!dir.cdUp()) {
+            break;
+        }
+    }
+    return QString();
+}
+
+QString configPath(QString &attemptedPath)
 {
     const QByteArray override = qgetenv("AURIX_DB_CONFIG");
     if (!override.isEmpty()) {
-        return QString::fromLocal8Bit(override);
+        attemptedPath = QString::fromLocal8Bit(override);
+        return attemptedPath;
     }
-    return QDir::current().filePath(QStringLiteral("config/db.yaml"));
+
+    const QString currentDirResult = findConfigFrom(QDir::current());
+    if (!currentDirResult.isEmpty()) {
+        attemptedPath = currentDirResult;
+        return currentDirResult;
+    }
+
+    const QString appDirResult = findConfigFrom(QDir(QCoreApplication::applicationDirPath()));
+    if (!appDirResult.isEmpty()) {
+        attemptedPath = appDirResult;
+        return appDirResult;
+    }
+
+    attemptedPath = QDir::current().filePath(QStringLiteral("config/db.yaml"));
+    return QString();
 }
 
 } // namespace
@@ -28,11 +59,12 @@ bool openDbConnection(QString &errorMessage)
         return true;
     }
 
-    const QString path = configPath();
-    if (!QFile::exists(path)) {
+    QString attemptedPath;
+    const QString path = configPath(attemptedPath);
+    if (path.isEmpty()) {
         errorMessage = QStringLiteral(
             "DB 설정 파일을 찾을 수 없습니다: %1 "
-            "(config/db.yaml.example을 config/db.yaml로 복사하세요)").arg(path);
+            "(config/db.yaml.example을 config/db.yaml로 복사하세요)").arg(attemptedPath);
         return false;
     }
 

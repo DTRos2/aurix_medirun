@@ -79,6 +79,14 @@ public:
         : rclcpp::Node("medirun_gui_nav_bridge")
         , m_bridge(bridge)
     {
+        recreateInterfaces();
+        m_connectionCheckTimer = create_wall_timer(
+            std::chrono::milliseconds(1000), [this]() { checkNav2Connection(); });
+        checkNav2Connection();
+    }
+
+    void recreateInterfaces()
+    {
         m_navClient = rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
         m_followClient = rclcpp_action::create_client<FollowWaypoints>(this, "follow_waypoints");
         m_initialPosePub = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("initialpose", 10);
@@ -98,19 +106,8 @@ public:
             "scan", rclcpp::SensorDataQoS(),
             [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { handleScan(msg); });
 
-        // bt_navigator/waypoint_follower의 실제 lifecycle 상태(active인지)를 직접
-        // 물어본다. action_server_is_ready()는 액션 서버 "존재 여부"만 보는데,
-        // nav2 lifecycle 노드는 on_configure() 단계에서 이미 액션 서버를 만들어
-        // 두기 때문에 activate되기 훨씬 전(예: 아직 costmap이 map 프레임을
-        // 기다리는 중)부터 true가 나와 버린다 — 실측: bt_navigator가 inactive인
-        // 상태에서도 action_server_is_ready()==true였음. GetState 서비스로
-        // PRIMARY_STATE_ACTIVE를 직접 확인해야 "goal을 실제로 받아줄 수 있는
-        // 상태"를 정확히 판정할 수 있다.
         m_btNavigatorStateClient = create_client<lifecycle_msgs::srv::GetState>("/bt_navigator/get_state");
         m_waypointFollowerStateClient = create_client<lifecycle_msgs::srv::GetState>("/waypoint_follower/get_state");
-        m_connectionCheckTimer = create_wall_timer(
-            std::chrono::milliseconds(1000), [this]() { checkNav2Connection(); });
-        checkNav2Connection();
     }
 
     void handleScan(const sensor_msgs::msg::LaserScan::SharedPtr &msg)
@@ -149,8 +146,13 @@ public:
 
     void navigateToPose(double x, double y, double yaw, const QString &frameId, const QString &label)
     {
+        if (m_navGoalHandle || m_followGoalHandle) {
+            m_bridge->navigationGoalRejected(QStringLiteral("이미 진행 중인 goal이 있습니다."));
+            return;
+        }
         if (!m_navClient->wait_for_action_server(std::chrono::seconds(1))) {
             m_bridge->logEvent(QStringLiteral("ERROR"), QStringLiteral("navigate_to_pose 액션 서버를 찾을 수 없습니다."));
+            m_bridge->navigationGoalRejected(QStringLiteral("navigate_to_pose 액션 서버 미발견"));
             return;
         }
 
@@ -172,9 +174,11 @@ public:
                 m_bridge->logEvent(QStringLiteral("ERROR"), QStringLiteral("목적지 요청이 거부되었습니다."));
                 m_bridge->statusChanged(QStringLiteral("대기 중"));
                 m_bridge->navSessionFinished(false, false);
+                m_bridge->navigationGoalRejected(QStringLiteral("navigate_to_pose goal rejected"));
                 return;
             }
             m_navGoalHandle = handle;
+            m_bridge->navigationGoalAccepted();
         };
         options.result_callback = [this](const NavClient::GoalHandle::WrappedResult &result) {
             m_navGoalHandle.reset();
@@ -186,6 +190,15 @@ public:
             m_bridge->statusChanged(QStringLiteral("대기 중 (마지막 결과: %1)").arg(text));
             m_bridge->navSessionFinished(
                 result.code == rclcpp_action::ResultCode::SUCCEEDED, result.code == rclcpp_action::ResultCode::CANCELED);
+            QString resultCode = QStringLiteral("UNKNOWN");
+            if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
+                resultCode = QStringLiteral("SUCCEEDED");
+            } else if (result.code == rclcpp_action::ResultCode::CANCELED) {
+                resultCode = QStringLiteral("CANCELED");
+            } else if (result.code == rclcpp_action::ResultCode::ABORTED) {
+                resultCode = QStringLiteral("FAILED");
+            }
+            m_bridge->navigationResult(resultCode, text);
         };
 
         m_navClient->async_send_goal(goal, options);
@@ -193,8 +206,13 @@ public:
 
     void followWaypoints(const QVector<NavPose> &poses, const QString &frameId, const QString &label)
     {
+        if (m_navGoalHandle || m_followGoalHandle) {
+            m_bridge->navigationGoalRejected(QStringLiteral("이미 진행 중인 goal이 있습니다."));
+            return;
+        }
         if (!m_followClient->wait_for_action_server(std::chrono::seconds(1))) {
             m_bridge->logEvent(QStringLiteral("ERROR"), QStringLiteral("follow_waypoints 액션 서버를 찾을 수 없습니다."));
+            m_bridge->navigationGoalRejected(QStringLiteral("follow_waypoints 액션 서버 미발견"));
             return;
         }
 
@@ -221,9 +239,11 @@ public:
                 m_bridge->logEvent(QStringLiteral("ERROR"), QStringLiteral("경로 주행 요청이 거부되었습니다."));
                 m_bridge->statusChanged(QStringLiteral("대기 중"));
                 m_bridge->navSessionFinished(false, false);
+                m_bridge->navigationGoalRejected(QStringLiteral("follow_waypoints goal rejected"));
                 return;
             }
             m_followGoalHandle = handle;
+            m_bridge->navigationGoalAccepted();
         };
         options.result_callback = [this](const FollowClient::GoalHandle::WrappedResult &result) {
             m_followGoalHandle.reset();
@@ -232,6 +252,7 @@ public:
             if (succeeded) {
                 m_bridge->logEvent(QStringLiteral("INFO"), QStringLiteral("경로 주행 완료"));
                 m_bridge->statusChanged(QStringLiteral("대기 중 (마지막 결과: 성공)"));
+                m_bridge->navigationResult(QStringLiteral("SUCCEEDED"), QStringLiteral("성공"));
             } else {
                 const QString text = resultCodeText(result.code);
                 const QString detail = missedAny
@@ -239,6 +260,10 @@ public:
                                             : QString();
                 m_bridge->logEvent(QStringLiteral("WARN"), QStringLiteral("경로 주행 결과: %1%2").arg(text, detail));
                 m_bridge->statusChanged(QStringLiteral("대기 중 (마지막 결과: %1)").arg(text));
+                const QString resultCode = (result.code == rclcpp_action::ResultCode::CANCELED)
+                                               ? QStringLiteral("CANCELED")
+                                               : QStringLiteral("FAILED");
+                m_bridge->navigationResult(resultCode, text + detail);
             }
             m_bridge->navSessionFinished(succeeded, result.code == rclcpp_action::ResultCode::CANCELED);
         };
@@ -250,19 +275,31 @@ public:
     {
         if (m_navGoalHandle) {
             m_navClient->async_cancel_goal(m_navGoalHandle);
-            m_navGoalHandle.reset();
             m_bridge->logEvent(QStringLiteral("WARN"), QStringLiteral("주행 취소를 요청했습니다."));
             m_bridge->statusChanged(QStringLiteral("취소 요청됨..."));
             return;
         }
         if (m_followGoalHandle) {
             m_followClient->async_cancel_goal(m_followGoalHandle);
-            m_followGoalHandle.reset();
             m_bridge->logEvent(QStringLiteral("WARN"), QStringLiteral("주행 취소를 요청했습니다."));
             m_bridge->statusChanged(QStringLiteral("취소 요청됨..."));
             return;
         }
         m_bridge->logEvent(QStringLiteral("INFO"), QStringLiteral("취소할 진행 중인 주행이 없습니다."));
+    }
+
+    void retryConnections()
+    {
+        recreateInterfaces();
+        checkNav2Connection();
+        const auto topics = get_topic_names_and_types();
+        const bool hasAmcl = topics.find("amcl_pose") != topics.end();
+        const bool hasScan = topics.find("scan") != topics.end();
+        const QString detail = QStringLiteral("nav2=%1 amcl_pose=%2 scan=%3")
+                                   .arg(m_nav2Connected ? QStringLiteral("ok") : QStringLiteral("pending"))
+                                   .arg(hasAmcl ? QStringLiteral("ok") : QStringLiteral("missing"))
+                                   .arg(hasScan ? QStringLiteral("ok") : QStringLiteral("missing"));
+        m_bridge->connectionRetryFinished(m_nav2Connected, detail);
     }
 
     void publishInitialPose(double x, double y, double yaw, const QString &frameId)
@@ -408,9 +445,6 @@ Nav2NavigationService::~Nav2NavigationService()
     }
     m_impl->executor.remove_node(m_impl->node);
     m_impl->node.reset();
-    if (rclcpp::ok()) {
-        rclcpp::shutdown();
-    }
 }
 
 void Nav2NavigationService::navigateToPose(double x, double y, double yawRad, const QString &frameId, const QString &label)
@@ -426,6 +460,11 @@ void Nav2NavigationService::followWaypoints(const QVector<NavPose> &poses, const
 void Nav2NavigationService::cancelGoal()
 {
     m_impl->node->cancelGoal();
+}
+
+void Nav2NavigationService::retryConnections()
+{
+    m_impl->node->retryConnections();
 }
 
 void Nav2NavigationService::publishInitialPose(double x, double y, double yawRad, const QString &frameId)
