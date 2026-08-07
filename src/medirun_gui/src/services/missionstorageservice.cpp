@@ -2,11 +2,13 @@
 
 #include "dbconnection.h"
 
+#include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSqlError>
 #include <QSqlQuery>
 #include <QSqlRecord>
 #include <QStandardPaths>
@@ -174,6 +176,8 @@ QVector<MissionQueueItem> MissionStorageService::loadQueue()
                 item.pose.valid = !query.value(5).isNull() && !query.value(6).isNull();
                 items.append(item);
             }
+        } else {
+            qWarning() << "MissionStorageService::loadQueue SELECT 실패:" << query.lastError().text();
         }
         return items;
     }
@@ -201,6 +205,8 @@ QVector<MissionHistoryEntry> MissionStorageService::loadTodayHistory()
                                                               query.value(1).toDateTime(),
                                                               query.value(2).toString()));
             }
+        } else {
+            qWarning() << "MissionStorageService::loadTodayHistory SELECT 실패:" << query.lastError().text();
         }
         return m_historyCache;
     }
@@ -291,6 +297,7 @@ int MissionStorageService::ensureDefaultRobotId()
     if (insertQuery.exec() && insertQuery.next()) {
         return insertQuery.value(0).toInt();
     }
+    qWarning() << "MissionStorageService::ensureDefaultRobotId INSERT 실패:" << insertQuery.lastError().text();
     return 0;
 }
 
@@ -314,6 +321,7 @@ int MissionStorageService::ensureCallButtonId(const MissionQueueItem &item)
     if (insertQuery.exec() && insertQuery.next()) {
         return insertQuery.value(0).toInt();
     }
+    qWarning() << "MissionStorageService::ensureCallButtonId INSERT 실패:" << insertQuery.lastError().text();
     return 0;
 }
 
@@ -339,6 +347,7 @@ int MissionStorageService::upsertMissionRow(MissionQueueItem &item)
     if (insertQuery.exec() && insertQuery.next()) {
         return insertQuery.value(0).toInt();
     }
+    qWarning() << "MissionStorageService::upsertMissionRow INSERT 실패:" << insertQuery.lastError().text();
     return 0;
 }
 
@@ -363,7 +372,9 @@ void MissionStorageService::syncMissionStatus(const MissionQueueItem &item)
     updateQuery.bindValue(QStringLiteral(":status"), status);
     updateQuery.bindValue(QStringLiteral(":robotId"), m_robotId > 0 ? QVariant(m_robotId) : QVariant());
     updateQuery.bindValue(QStringLiteral(":id"), item.missionId.toInt());
-    updateQuery.exec();
+    if (!updateQuery.exec()) {
+        qWarning() << "MissionStorageService::syncMissionStatus UPDATE 실패:" << updateQuery.lastError().text();
+    }
 }
 
 void MissionStorageService::insertSystemEvent(const MissionHistoryEntry &entry)
@@ -376,7 +387,9 @@ void MissionStorageService::insertSystemEvent(const MissionHistoryEntry &entry)
     query.bindValue(QStringLiteral(":eventType"), entry.eventType);
     query.bindValue(QStringLiteral(":severity"), severityForResult(entry.result));
     query.bindValue(QStringLiteral(":message"), QString::fromUtf8(QJsonDocument(historyPayloadObject(entry)).toJson(QJsonDocument::Compact)));
-    query.exec();
+    if (!query.exec()) {
+        qWarning() << "MissionStorageService::insertSystemEvent INSERT 실패:" << query.lastError().text();
+    }
 }
 
 void MissionStorageService::insertUserActionLog(const MissionHistoryEntry &entry)
@@ -396,7 +409,9 @@ void MissionStorageService::insertUserActionLog(const MissionHistoryEntry &entry
     query.bindValue(QStringLiteral(":payload"), QString::fromUtf8(QJsonDocument(historyPayloadObject(entry)).toJson(QJsonDocument::Compact)));
     query.bindValue(QStringLiteral(":issuedBy"), m_session.username);
     query.bindValue(QStringLiteral(":occurredAt"), entry.occurredAt);
-    query.exec();
+    if (!query.exec()) {
+        qWarning() << "MissionStorageService::insertUserActionLog INSERT 실패:" << query.lastError().text();
+    }
 }
 
 void MissionStorageService::insertConnectionStatusLog(const MissionHistoryEntry &entry)
@@ -417,7 +432,9 @@ void MissionStorageService::insertConnectionStatusLog(const MissionHistoryEntry 
                                                                                                    : QStringLiteral("error"));
     query.bindValue(QStringLiteral(":detail"), entry.detailMessage);
     query.bindValue(QStringLiteral(":changedAt"), entry.occurredAt);
-    query.exec();
+    if (!query.exec()) {
+        qWarning() << "MissionStorageService::insertConnectionStatusLog INSERT 실패:" << query.lastError().text();
+    }
 }
 
 bool MissionStorageService::isNumericId(const QString &text)
@@ -470,7 +487,8 @@ MissionQueueStatus MissionStorageService::queueStatusFromMissionStatus(const QSt
 
 QString MissionStorageService::actionTypeForEvent(const QString &eventType)
 {
-    if (eventType == QStringLiteral("MISSION_CANCEL_REQUESTED") || eventType == QStringLiteral("MISSION_CANCEL_IGNORED")) {
+    if (eventType == QStringLiteral("MISSION_CANCEL_REQUESTED") || eventType == QStringLiteral("MISSION_CANCEL_IGNORED")
+        || eventType == QStringLiteral("QUEUE_CANCELLED")) {
         return QStringLiteral("mission_cancel");
     }
     if (eventType == QStringLiteral("RETURN_HOME_REQUESTED") || eventType == QStringLiteral("RETURN_HOME_STARTED")) {
