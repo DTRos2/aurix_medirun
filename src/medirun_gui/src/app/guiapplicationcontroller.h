@@ -18,6 +18,10 @@ class OperationsOverviewService;
 class RobotService;
 class TelemetryLogRecorder;
 class NavGoalLogRecorder;
+class WaypointRepository;
+class MissionStorageService;
+class MissionRosInterface;
+class MissionController;
 
 class GuiApplicationController : public QObject
 {
@@ -45,6 +49,10 @@ private:
     std::unique_ptr<OperationsOverviewService> m_operationsOverviewService;
     std::unique_ptr<RobotService> m_robotService;
     std::unique_ptr<NavigationService> m_navigationService;
+    std::unique_ptr<WaypointRepository> m_waypointRepository;
+    std::unique_ptr<MissionStorageService> m_missionStorageService;
+    std::unique_ptr<MissionRosInterface> m_missionRosInterface;
+    std::unique_ptr<MissionController> m_missionController;
     TelemetryProvider *m_telemetryProvider;
     TelemetryLogRecorder *m_telemetryLogRecorder;
     NavGoalLogRecorder *m_navGoalLogRecorder;

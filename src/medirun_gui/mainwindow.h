@@ -19,6 +19,8 @@ class NavigationService;
 class CameraFeedProvider;
 class OperationsOverviewService;
 class RobotService;
+class MissionController;
+class WaypointRepository;
 
 class MainWindow : public QMainWindow
 {
@@ -36,6 +38,8 @@ public:
     void setTelemetryProvider(TelemetryProvider *provider);
     void setNavigationService(NavigationService *service);
     void setCameraFeedProvider(CameraFeedProvider *provider);
+    void setMissionController(MissionController *controller);
+    void setWaypointRepository(WaypointRepository *repository);
 
 signals:
     void logoutRequested();
@@ -59,5 +63,6 @@ private:
     OperationsOverviewService &m_operationsOverviewService;
     RobotService &m_robotService;
     AppSession m_session;
+    MissionController *m_missionController {nullptr};
 };
 #endif // MAINWINDOW_H

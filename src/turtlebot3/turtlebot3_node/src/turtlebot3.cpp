@@ -29,7 +29,9 @@ TurtleBot3::TurtleBot3(const std::string & usb_port)
   node_handle_ = std::shared_ptr<::rclcpp::Node>(this, [](::rclcpp::Node *) {});
 
   init_dynamixel_sdk_wrapper(usb_port);
-  check_device_status();
+  if (!check_device_status()) {
+    return;
+  }
 
   add_motors();
   add_wheels();
@@ -73,26 +75,42 @@ void TurtleBot3::init_dynamixel_sdk_wrapper(const std::string & usb_port)
   );
 }
 
-void TurtleBot3::check_device_status()
+bool TurtleBot3::check_device_status()
 {
-  if (dxl_sdk_wrapper_->is_connected_to_device()) {
-    std::string sdk_msg;
-    uint8_t reset = 1;
+  // OpenCR(등 Arduino 계열 보드)는 시리얼 포트가 열리면(DTR) 자체적으로
+  // 재부팅되고, 펌웨어가 다시 응답 가능해질 때까지 1~2초 정도 걸린다.
+  // 포트를 연 직후 바로 통신을 시도하면 아직 부팅 중이라 실패하므로,
+  // 짧은 간격으로 재시도하며 재부팅 시간을 기다린다.
+  const int max_attempts = 25;
+  const auto retry_interval = std::chrono::milliseconds(200);
 
-    dxl_sdk_wrapper_->set_data_to_device(
-      extern_control_table.imu_re_calibration.addr,
-      extern_control_table.imu_re_calibration.length,
-      &reset,
-      &sdk_msg);
+  bool connected = false;
+  for (int attempt = 0; attempt < max_attempts; ++attempt) {
+    if (dxl_sdk_wrapper_->is_connected_to_device()) {
+      connected = true;
+      break;
+    }
+    rclcpp::sleep_for(retry_interval);
+  }
 
-    RCLCPP_INFO(this->get_logger(), "Start Calibration of Gyro");
-    rclcpp::sleep_for(std::chrono::seconds(5));
-    RCLCPP_INFO(this->get_logger(), "Calibration End");
-  } else {
+  if (!connected) {
     RCLCPP_ERROR(this->get_logger(), "Failed connection with Devices");
     rclcpp::shutdown();
-    return;
+    return false;
   }
+
+  std::string sdk_msg;
+  uint8_t reset = 1;
+
+  dxl_sdk_wrapper_->set_data_to_device(
+    extern_control_table.imu_re_calibration.addr,
+    extern_control_table.imu_re_calibration.length,
+    &reset,
+    &sdk_msg);
+
+  RCLCPP_INFO(this->get_logger(), "Start Calibration of Gyro");
+  rclcpp::sleep_for(std::chrono::seconds(5));
+  RCLCPP_INFO(this->get_logger(), "Calibration End");
 
   const int8_t NOT_CONNECTED_MOTOR = -1;
 
@@ -108,6 +126,8 @@ void TurtleBot3::check_device_status()
     default:
       break;
   }
+
+  return true;
 }
 
 void TurtleBot3::add_motors()

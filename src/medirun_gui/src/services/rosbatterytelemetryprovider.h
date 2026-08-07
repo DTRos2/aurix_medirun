@@ -36,6 +36,9 @@ private:
     double normalizeBatteryPercent(double percentage) const;
     double filterBatteryPercent(double batteryPercent);
     int stabilizeDisplayedPercent(double filteredPercent);
+    void refreshDbState();
+    void applyDbState(TelemetrySnapshot &snapshot) const;
+    void emitSnapshot(TelemetrySnapshot snapshot);
 
     QTimer *m_timeoutTimer;
     rclcpp::Node::SharedPtr m_node;
@@ -52,6 +55,11 @@ private:
     int m_displayedBatteryPercent;
     bool m_hasFilteredBatteryPercent;
     bool m_hasDisplayedBatteryPercent;
+    TelemetrySnapshot m_lastSnapshot;
+    // QSqlDatabase는 연결을 만든 스레드(GUI 스레드)에서만 조회해야 하므로,
+    // 배터리 콜백(ROS spin 스레드)에서도 안전하게 읽을 수 있도록 GUI
+    // 스레드(checkBatteryTimeout)에서만 갱신하는 캐시로 들고 있는다.
+    std::atomic<bool> m_dbConnected;
 };
 
 #endif // ROSBATTERYTELEMETRYPROVIDER_H

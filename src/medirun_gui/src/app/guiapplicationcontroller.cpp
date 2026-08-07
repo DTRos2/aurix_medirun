@@ -7,12 +7,16 @@
 #include "../services/dbauthservice.h"
 #include "../services/dboperationsoverviewservice.h"
 #include "../services/dbrobotservice.h"
+#include "../services/missioncontroller.h"
+#include "../services/missionrosinterface.h"
+#include "../services/missionstorageservice.h"
 #include "../services/mockcamerafeedprovider.h"
 #include "../services/mocktelemetryprovider.h"
 #include "../services/navgoallogrecorder.h"
 #include "../services/roscamerafeedprovider.h"
 #include "../services/rosbatterytelemetryprovider.h"
 #include "../services/telemetrylogrecorder.h"
+#include "../services/waypointrepository.h"
 #include "../widgets/splashscreenwidget.h"
 
 #include <QApplication>
@@ -26,6 +30,10 @@ GuiApplicationController::GuiApplicationController(QApplication &application, QO
     , m_operationsOverviewService(std::make_unique<DbOperationsOverviewService>())
     , m_robotService(std::make_unique<DbRobotService>())
     , m_navigationService(std::make_unique<Nav2NavigationService>())
+    , m_waypointRepository(std::make_unique<WaypointRepository>())
+    , m_missionStorageService(std::make_unique<MissionStorageService>())
+    , m_missionRosInterface(std::make_unique<MissionRosInterface>())
+    , m_missionController(nullptr)
     , m_telemetryProvider(nullptr)
     , m_telemetryLogRecorder(nullptr)
     , m_navGoalLogRecorder(nullptr)
@@ -79,6 +87,13 @@ void GuiApplicationController::showLoginPage()
 void GuiApplicationController::createMainWindow()
 {
     m_mainWindow = new MainWindow(m_session, *m_authService, *m_operationsOverviewService, *m_robotService);
+    m_missionController = std::make_unique<MissionController>(
+        m_session,
+        m_navigationService.get(),
+        m_waypointRepository.get(),
+        m_missionStorageService.get(),
+        m_missionRosInterface.get(),
+        nullptr);
     if (mockModeEnabled()) {
         m_telemetryProvider = new MockTelemetryProvider(m_mainWindow);
     } else {
@@ -114,6 +129,8 @@ void GuiApplicationController::createMainWindow()
         m_cameraFeedProvider = new RosCameraFeedProvider(m_mainWindow);
     }
     m_mainWindow->setCameraFeedProvider(m_cameraFeedProvider);
+    m_mainWindow->setWaypointRepository(m_waypointRepository.get());
+    m_mainWindow->setMissionController(m_missionController.get());
     QObject::connect(m_mainWindow, &MainWindow::logoutRequested, this, &GuiApplicationController::handleLogout);
 }
 
@@ -163,6 +180,7 @@ void GuiApplicationController::handleLogout()
     m_telemetryLogRecorder = nullptr;
     m_navGoalLogRecorder = nullptr;
     m_cameraFeedProvider = nullptr;
+    m_missionController.reset();
     showLoginPage();
 }
 
