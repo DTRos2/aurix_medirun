@@ -188,12 +188,13 @@ void MissionController::requestQueueCancel(const QString &queueId)
         return;
     }
 
-    MissionQueueItem item = m_queueItems.at(index);
+    m_queueItems[index].status = MissionQueueStatus::Cancelled;
+    const MissionQueueItem item = m_queueItems.at(index);
+    saveQueue();
     m_queueItems.removeAt(index);
     addHistory(QStringLiteral("QUEUE_CANCELLED"), item.waypointId, item.waypointName, item.missionId, item.queueId,
                QStringLiteral("CANCELLED"), QStringLiteral("대기 호출 큐 취소"));
     log(QStringLiteral("QUEUE"), QStringLiteral("cancelled queue_id=%1 waypoint_id=%2").arg(item.queueId, item.waypointId));
-    saveQueue();
     emit queueChanged();
     emit historyChanged();
 }
