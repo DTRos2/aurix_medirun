@@ -41,10 +41,11 @@ QList<NavSection> sectionsForRole(UserRole role)
         }});
     }
 
-    sections.append({QStringLiteral("기록"), {
-        {PageId::RecordsPlayback, QStringLiteral("주행 기록")},
-        {PageId::CallHistory, QStringLiteral("호출 이력")},
-    }});
+    // 기록(주행 기록 / 호출 이력) 메뉴는 추후 사용을 위해 코드는 유지하고 사이드바에서만 숨김 처리.
+    // sections.append({QStringLiteral("기록"), {
+    //     {PageId::RecordsPlayback, QStringLiteral("주행 기록")},
+    //     {PageId::CallHistory, QStringLiteral("호출 이력")},
+    // }});
 
     if (role == UserRole::Admin) {
         sections.append({QStringLiteral("시스템"), {
