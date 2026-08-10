@@ -12,6 +12,7 @@ setup(
         (
             f"share/{package_name}/launch",
             [
+                "launch/navigation_bringup.launch.py",
                 "launch/navigation_rotation_test.launch.py",
                 "launch/navigation_straight_test.launch.py",
             ],
@@ -19,6 +20,7 @@ setup(
         (
             f"share/{package_name}/config",
             [
+                "config/navigation_runtime.yaml",
                 "config/navigation_rotation_test.yaml",
                 "config/navigation_straight_test.yaml",
             ],
@@ -35,6 +37,7 @@ setup(
         "console_scripts": [
             "rotation_test_runner = medirun_navigation.rotation_test_runner:main",
             "straight_test_runner = medirun_navigation.straight_test_runner:main",
+            "navigation_manager = medirun_navigation.navigation_manager:main",
         ]
     },
 )

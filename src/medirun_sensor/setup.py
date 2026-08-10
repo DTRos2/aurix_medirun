@@ -9,8 +9,8 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
-        (f"share/{package_name}/launch", ["launch/.gitkeep"]),
-        (f"share/{package_name}/config", ["config/.gitkeep"]),
+        (f"share/{package_name}/launch", ["launch/sensor_bringup.launch.py"]),
+        (f"share/{package_name}/config", ["config/sensor_ports.yaml"]),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -19,4 +19,10 @@ setup(
     description="Sensor integration package for the MediRun project.",
     license="Apache-2.0",
     tests_require=["pytest"],
+    entry_points={
+        "console_scripts": [
+            "sos_bridge = medirun_sensor.sos_bridge:main",
+            "mqtt_bridge = medirun_sensor.mqtt_bridge:main",
+        ]
+    },
 )

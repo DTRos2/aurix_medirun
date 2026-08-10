@@ -1,14 +1,19 @@
+import os
 from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
+THIS_DIR = os.path.dirname(os.path.realpath(__file__))
+WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(THIS_DIR)))
+
 
 def generate_launch_description() -> LaunchDescription:
     share_dir = Path(get_package_share_directory("medirun_mission"))
     mission_config = str(share_dir / "config" / "mission.yaml")
-    waypoint_config = str(share_dir / "config" / "waypoints.yaml")
+    # GUI(WaypointRepository::defaultWaypointFilePath)가 기본으로 보는 파일과 동일하게 맞춘다.
+    waypoint_config = os.path.join(WORKSPACE_ROOT, "maps", "waypoints", "second.yaml")
     return LaunchDescription(
         [
             Node(

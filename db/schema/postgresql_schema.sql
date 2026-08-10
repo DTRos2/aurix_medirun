@@ -260,18 +260,20 @@ CREATE TABLE call_button (
     map_id          INTEGER,
     pos_x           DOUBLE PRECISION,
     pos_y           DOUBLE PRECISION,
+    yaw             DOUBLE PRECISION,
     created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
     deregistered_at TIMESTAMP,
     CHECK (deregistered_at IS NULL OR deregistered_at >= created_at)
 );
 
-COMMENT ON TABLE call_button IS '웨이포인트별 호출 버튼 등록 (하드웨어는 ESP32+MQTT 예정, 현재 보류 중)';
+COMMENT ON TABLE call_button IS '웨이포인트별 호출 버튼 등록 (하드웨어는 ESP32+MQTT). Qt GUI 웨이포인트 관리 페이지가 BTN_* 콜존을 추가/수정할 때마다 upsert하며, GUI 시작 시 이 테이블 값이 웨이포인트 파일보다 우선한다';
 COMMENT ON COLUMN call_button.id IS '호출 버튼 PK, 자동 증가';
 COMMENT ON COLUMN call_button.code IS '버튼 코드, 예: BTN_01';
 COMMENT ON COLUMN call_button.zone_name IS '버튼 설치 구역 이름, 예: 중앙 대합실';
 COMMENT ON COLUMN call_button.map_id IS '버튼 좌표 기준 맵 id. 좌표 보정 전엔 NULL';
 COMMENT ON COLUMN call_button.pos_x IS '맵 기준 버튼 x 좌표. 좌표 보정 전엔 NULL';
 COMMENT ON COLUMN call_button.pos_y IS '맵 기준 버튼 y 좌표. 좌표 보정 전엔 NULL';
+COMMENT ON COLUMN call_button.yaw IS '맵 기준 버튼 도착 시 로봇이 바라볼 방향(라디안). 좌표 보정 전엔 NULL';
 COMMENT ON COLUMN call_button.created_at IS '버튼 등록 시간';
 COMMENT ON COLUMN call_button.deregistered_at IS '버튼 등록 해제 시간. NULL이면 사용 중';
 

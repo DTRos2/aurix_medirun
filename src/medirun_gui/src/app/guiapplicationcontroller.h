@@ -2,6 +2,7 @@
 #define GUIAPPLICATIONCONTROLLER_H
 
 #include "appsession.h"
+#include "../models/waypointtypes.h"
 
 #include <QObject>
 #include <memory>
@@ -38,6 +39,16 @@ private:
     void showSplashScreen();
     void showLoginPage();
     void createMainWindow();
+    // 대시보드를 처음 켰을 때 웨이포인트 저장소를 call_button DB 내용 +
+    // HOME(waypoint_set.name = "home")만으로 초기화한다(그 외 파일/DB
+    // 라이브러리 자동 로드 없음). 웨이포인트 파일이나 waypoint_set이 재부팅
+    // 후 구버전으로 남아있어도, 사용자가 명시적으로 "불러오기"를 누르기
+    // 전까지는 실제 등록된 BTN_* 좌표 + HOME만 신뢰하도록 한다.
+    void resetWaypointRepositoryToStartupDefaults();
+    // waypoint_set에 name="home"으로 저장된 라이브러리에서 kind=Home인
+    // 항목만 골라 waypoints에 얹는다. 등록된 로봇이 정확히 1대가 아니거나
+    // "home" 이름으로 저장된 게 없으면 조용히 건너뛴다.
+    void mergeHomeWaypointFromDb(WaypointMap &waypoints) const;
     void connectWindowFlow();
     void presentMainWindow();
     void handleLoginAccepted();
