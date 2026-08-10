@@ -1,6 +1,5 @@
 #include "mapviewwidget.h"
 
-#include "badgelabel.h"
 #include "../theme/dashboardpalette.h"
 
 #include <QLabel>
@@ -343,7 +342,6 @@ MapViewWidget::MapViewWidget(QWidget *parent)
     , m_hasDestination(false)
     , m_hasHome(false)
     , m_robotVisible(true)
-    , m_recording(false)
     , m_overlayChipsVisible(true)
 {
     setObjectName(QStringLiteral("mapViewCanvas"));
@@ -352,9 +350,6 @@ MapViewWidget::MapViewWidget(QWidget *parent)
     m_captionLabel = new QLabel(this);
     m_captionLabel->setObjectName(QStringLiteral("mapCaption"));
     m_captionLabel->hide();
-
-    m_recBadge = makeBadgeLabel(QStringLiteral("● REC"), QStringLiteral("red"), this);
-    m_recBadge->hide();
 
     m_followChip = new QPushButton(QStringLiteral("로봇 따라가기"), this);
     m_followChip->setObjectName(QStringLiteral("mapToggleChip"));
@@ -374,7 +369,6 @@ void MapViewWidget::setMode(MapViewMode mode)
     const bool live = (mode == MapViewMode::Live);
     m_followChip->setVisible(live && m_overlayChipsVisible);
     m_hidePathChip->setVisible(live && m_overlayChipsVisible);
-    m_recBadge->setVisible(live && m_recording);
     layoutOverlay();
     update();
 }
@@ -395,13 +389,6 @@ void MapViewWidget::setPoseSettingEnabled(bool enabled)
     m_poseSettingEnabled = enabled;
     m_dragging = false;
     update();
-}
-
-void MapViewWidget::setRecording(bool recording)
-{
-    m_recording = recording;
-    m_recBadge->setVisible(recording && m_mode == MapViewMode::Live);
-    layoutOverlay();
 }
 
 void MapViewWidget::setOverlayChipsVisible(bool visible)
@@ -542,9 +529,6 @@ void MapViewWidget::layoutOverlay()
 {
     m_captionLabel->adjustSize();
     m_captionLabel->move(9, 7);
-
-    m_recBadge->adjustSize();
-    m_recBadge->move(width() - m_recBadge->width() - 9, 7);
 
     m_followChip->adjustSize();
     m_hidePathChip->adjustSize();

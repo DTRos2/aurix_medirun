@@ -18,6 +18,9 @@ public:
     void applySnapshot(const TelemetrySnapshot &snapshot);
     void setCameraConnected(bool connected);
 
+public slots:
+    void setCameraConnected(bool connected);
+
 signals:
     void estopRequested();
 

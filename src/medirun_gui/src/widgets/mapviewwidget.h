@@ -38,7 +38,6 @@ public:
 
     void setMode(MapViewMode mode);
     void setCaption(const QString &text);
-    void setRecording(bool recording);
     void setOverlayChipsVisible(bool visible);
 
     // nav2 map_server YAML에서 불러온 배경 지도 이미지. 없으면(비어있으면)
@@ -107,11 +106,9 @@ private:
     QPointF m_home;
     bool m_hasHome;
     bool m_robotVisible;
-    bool m_recording;
     bool m_overlayChipsVisible;
 
     QLabel *m_captionLabel;
-    QLabel *m_recBadge;
     QPushButton *m_followChip;
     QPushButton *m_hidePathChip;
 };
