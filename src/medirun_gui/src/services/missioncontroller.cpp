@@ -159,7 +159,7 @@ void MissionController::requestRetry()
 
 void MissionController::requestReturnHome()
 {
-    if (beginReturnHomeFlow(QStringLiteral("운영자 홈 복귀 요청"), PendingAction::ReturnHome)) {
+    if (beginReturnHomeFlow(QStringLiteral("운영자 홈 복귀 요청"))) {
         m_rosInterface->publishMissionCommand(QStringLiteral("return_home"), m_snapshot.missionId, m_snapshot.queueId, QString());
     }
 }
@@ -172,9 +172,21 @@ void MissionController::requestMissionCancel()
         emit historyChanged();
         return;
     }
-    if (beginReturnHomeFlow(QStringLiteral("운영자 미션 취소 요청"), PendingAction::CancelAndReturnHome)) {
-        m_rosInterface->publishMissionCommand(QStringLiteral("cancel"), m_snapshot.missionId, m_snapshot.queueId, QString());
+    if (m_snapshot.state == MissionState::Cancelling || m_snapshot.state == MissionState::Diverting) {
+        return;
     }
+
+    // 홈 복귀 없이 그 자리에서 정지 + 진행 중이던 호출(큐 항목)은 삭제한다.
+    // 실제 종료 처리(Cancelled 상태 전환, 큐 삭제)는 Nav2가 취소를 확인해 준
+    // 뒤 handleNavigationResult()의 CANCELED 처리에서 수행한다.
+    m_pendingAction = PendingAction::None;
+    m_pendingReason = QStringLiteral("운영자 미션 취소 요청 — 현재 위치에서 정지");
+    setMissionState(MissionState::Cancelling);
+    addHistory(QStringLiteral("MISSION_CANCEL_REQUESTED"), QString(), m_snapshot.destinationName, m_snapshot.missionId, m_snapshot.queueId,
+               QStringLiteral("REQUESTED"), m_pendingReason);
+    emit historyChanged();
+    m_navigationService->cancelGoal();
+    m_rosInterface->publishMissionCommand(QStringLiteral("cancel"), m_snapshot.missionId, m_snapshot.queueId, QString());
 }
 
 void MissionController::requestQueueCancel(const QString &queueId)
@@ -274,7 +286,7 @@ void MissionController::handleNavigationResult(const QString &resultCode, const 
             startMissionForQueue(divertedQueueId, true);
             return;
         }
-        if (m_pendingAction == PendingAction::ReturnHome || m_pendingAction == PendingAction::CancelAndReturnHome) {
+        if (m_pendingAction == PendingAction::ReturnHome) {
             WaypointDef homeWaypoint;
             WaypointPose homePose;
             QString errorMessage;
@@ -291,6 +303,13 @@ void MissionController::handleNavigationResult(const QString &resultCode, const 
             m_navigationService->navigateToPose(homePose.positionX, homePose.positionY, homePose.yawRadians, homePose.frameId);
             return;
         }
+
+        // 미션 취소(그 자리에서 정지) — Nav2가 취소를 확인해준 시점. 대기하던
+        // 진행 중 호출을 큐에서 완전히 삭제하고 Cancelled로 종료 처리한다.
+        removeQueueItem(m_snapshot.queueId);
+        finishMission(MissionState::Cancelled, m_pendingReason.isEmpty() ? QStringLiteral("운영자 미션 취소 요청") : m_pendingReason,
+                      QStringLiteral("MISSION_CANCELLED"), QStringLiteral("CANCELLED"));
+        return;
     }
 
     if (resultCode == QStringLiteral("SUCCEEDED")) {
@@ -480,7 +499,7 @@ void MissionController::startMissionForQueue(const QString &queueId, bool divert
     m_navigationService->navigateToPose(item.pose.positionX, item.pose.positionY, item.pose.yawRadians, item.pose.frameId);
 }
 
-bool MissionController::beginReturnHomeFlow(const QString &reason, PendingAction action)
+bool MissionController::beginReturnHomeFlow(const QString &reason)
 {
     if (m_snapshot.state == MissionState::ReturningHome) {
         return false;
@@ -504,7 +523,7 @@ bool MissionController::beginReturnHomeFlow(const QString &reason, PendingAction
         m_snapshot.nextWaypointName = homeWaypoint.label;
         m_snapshot.startedAt = QDateTime::currentDateTime();
         m_snapshot.returningHome = true;
-        m_pendingAction = action;
+        m_pendingAction = PendingAction::ReturnHome;
         m_pendingReason = reason;
         setMissionState(MissionState::ReturningHome);
         addHistory(QStringLiteral("RETURN_HOME_STARTED"), homeWaypoint.name, homeWaypoint.label, m_snapshot.missionId, QString(),
@@ -519,10 +538,10 @@ bool MissionController::beginReturnHomeFlow(const QString &reason, PendingAction
         return false;
     }
 
-    m_pendingAction = action;
+    m_pendingAction = PendingAction::ReturnHome;
     m_pendingReason = reason;
     setMissionState(MissionState::Cancelling);
-    addHistory(action == PendingAction::CancelAndReturnHome ? QStringLiteral("MISSION_CANCEL_REQUESTED") : QStringLiteral("RETURN_HOME_REQUESTED"),
+    addHistory(QStringLiteral("RETURN_HOME_REQUESTED"),
                QString(), m_snapshot.destinationName, m_snapshot.missionId, m_snapshot.queueId,
                QStringLiteral("REQUESTED"), reason);
     emit historyChanged();

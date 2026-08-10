@@ -69,7 +69,6 @@ private:
     enum class PendingAction {
         None,
         ReturnHome,
-        CancelAndReturnHome,
         Divert
     };
 
@@ -79,7 +78,7 @@ private:
                      const QDateTime &requestedAt);
     void startNextQueueIfPossible();
     void startMissionForQueue(const QString &queueId, bool divertedFromActiveMission);
-    bool beginReturnHomeFlow(const QString &reason, PendingAction action);
+    bool beginReturnHomeFlow(const QString &reason);
     bool resolveHomeWaypoint(WaypointDef &homeWaypoint, WaypointPose &homePose, QString &errorMessage) const;
     void finishMission(MissionState finalState, const QString &reason, const QString &historyType, const QString &historyResult);
     void markQueueStatus(const QString &queueId, MissionQueueStatus status);
