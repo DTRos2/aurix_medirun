@@ -19,6 +19,17 @@ public:
 
     ~CameraFeedProvider() override = default;
 
+    // 카메라가 로봇에 180도 회전된 방향(상하+좌우 모두 뒤집힌 상태)으로 장착돼
+    // 있어 실제 눈으로 보는 방향과 일치시키려면 두 축을 모두 뒤집어야 한다.
+    // 축 하나만 뒤집으면(예: mirrored(false, true)) 나머지 축이 거울상으로
+    // 남아 좌우가 반전돼 보인다 — 실제로 그렇게 되어있던 버그였다. 구현체마다
+    // 원시 mirrored(bool, bool) 호출을 반복하면 그 실수가 또 나기 쉬우므로,
+    // 실물 카메라 프레임을 만드는 provider는 이 헬퍼를 통해서만 보정한다.
+    static QImage correctMountOrientation(const QImage &frame)
+    {
+        return frame.mirrored(true, true);
+    }
+
 public slots:
     virtual void start() = 0;
 
