@@ -35,7 +35,7 @@ def generate_launch_description():
                 parameters=[
                     {
                         "video_device": video_device,
-                        "image_size": [640, 480],
+                        "image_size": [1280, 720],
                     }
                 ],
             ),
