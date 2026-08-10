@@ -312,12 +312,13 @@ int MissionStorageService::ensureCallButtonId(const MissionQueueItem &item)
 
     QSqlQuery insertQuery;
     insertQuery.prepare(QStringLiteral(
-        "INSERT INTO call_button (code, zone_name, pos_x, pos_y) "
-        "VALUES (:code, :zoneName, :posX, :posY) RETURNING id"));
+        "INSERT INTO call_button (code, zone_name, pos_x, pos_y, yaw) "
+        "VALUES (:code, :zoneName, :posX, :posY, :yaw) RETURNING id"));
     insertQuery.bindValue(QStringLiteral(":code"), item.waypointId);
     insertQuery.bindValue(QStringLiteral(":zoneName"), item.waypointName.isEmpty() ? item.waypointId : item.waypointName);
     insertQuery.bindValue(QStringLiteral(":posX"), item.pose.valid ? QVariant(item.pose.positionX) : QVariant());
     insertQuery.bindValue(QStringLiteral(":posY"), item.pose.valid ? QVariant(item.pose.positionY) : QVariant());
+    insertQuery.bindValue(QStringLiteral(":yaw"), item.pose.valid ? QVariant(item.pose.yawRadians) : QVariant());
     if (insertQuery.exec() && insertQuery.next()) {
         return insertQuery.value(0).toInt();
     }

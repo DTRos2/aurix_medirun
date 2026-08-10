@@ -1,0 +1,16 @@
+frame_id: map
+waypoints:
+  BTN_01:
+    x: 3.1000000000000001
+    y: 1.0900000000000001
+    yaw: -3.1415926535897931
+    kind: call_zone
+    label: call_01
+  BTN_02:
+    x: 2.2200000000000002
+    y: -0.64000000000000001
+    yaw: 1.1693705988362009
+    kind: call_zone
+    label: call_02
+trajectories:
+  {}

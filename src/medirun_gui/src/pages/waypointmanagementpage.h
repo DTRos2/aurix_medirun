@@ -83,11 +83,6 @@ private:
     // user having to click "지도 불러오기" manually. Silently does nothing
     // if the file isn't found (e.g. running outside the install layout).
     void autoLoadDefaultMap();
-    // 시작 시 DB(waypoint_set)에 저장된 웨이포인트 라이브러리를 불러온다 —
-    // 파일을 한 번도 저장/불러오기 하지 않았어도 이전에 "파일로 저장" 시점에
-    // DB에 같이 기록됐던 웨이포인트가 있으면 그걸로 채운다. 등록된 로봇이
-    // 정확히 1대가 아니면 조용히 건너뛴다(다른 자동기록과 동일한 제약).
-    void autoLoadWaypointLibraryFromDb();
     // <workspace>/install/.../lib/medirun_gui에서 4단계 위로 올라간 경로.
     // 계산 불가 시(설치 레이아웃 밖에서 실행 등) 빈 문자열.
     QString workspaceRootPath() const;
@@ -96,9 +91,17 @@ private:
     // 목록을 보여주고 고른 걸 불러온다.
     void handleLoadWaypointFromDb();
     void handleSaveWaypointFile();
-    // handleLoadWaypointFile/handleLoadWaypointFromDb/autoLoadWaypointLibraryFromDb가
-    // 공유 — 불러온 frame_id+waypoints+trajectories를 페이지 상태에 반영하고
-    // 화면을 갱신한다.
+    // call_button DB의 콜존(BTN_* 등)을 waypoints 위에 upsert한다. 대시보드
+    // 최초 진입 화면(빈 상태) 및 "웨이포인트 불러오기" 직후 둘 다 이걸 거쳐야
+    // call_button 등록분이 항상 지도에 나온다는 불변식이 성립한다.
+    void mergeCallButtonsInto(WaypointMap &waypoints) const;
+    // waypoint_set에 name="home"으로 저장된 라이브러리에서 kind=Home인
+    // 항목만 골라 waypoints 위에 얹는다. mergeCallButtonsInto와 동일한
+    // 지점(최초 진입 + 불러오기 직후)에서 같이 호출해 HOME도 항상 나오게 한다.
+    void mergeHomeWaypointInto(WaypointMap &waypoints) const;
+    // handleLoadWaypointFile/handleLoadWaypointFromDb가 공유 — 불러온
+    // frame_id+waypoints+trajectories를(call_button과 합쳐서) 페이지 상태에
+    // 반영하고 화면을 갱신한다.
     void applyLoadedWaypointLibrary(
         const QString &frameId, const WaypointMap &waypoints, const TrajectoryMap &trajectories, const QString &statusMessage);
 

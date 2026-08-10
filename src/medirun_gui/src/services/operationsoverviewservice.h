@@ -56,6 +56,16 @@ struct NavGoalPoint
     double yaw {0.0};
 };
 
+// call_button 테이블 한 행. code가 웨이포인트 id(예: "BTN_01")와 대응한다.
+struct CallButtonRow
+{
+    QString code;
+    QString zoneName;
+    double x {0.0};
+    double y {0.0};
+    double yaw {0.0};
+};
+
 class OperationsOverviewService
 {
 public:
@@ -137,6 +147,17 @@ public:
     virtual bool saveWaypointLibrary(
         int robotId, const QString &name, const QString &frameId, const WaypointMap &waypoints,
         const TrajectoryMap &trajectories, QString &errorMessage) = 0;
+
+    // 등록 해제되지 않은(deregistered_at IS NULL) call_button 전부를 읽어온다.
+    // GUI 시작 시 웨이포인트 파일(second.yaml 등)이 재부팅 등으로 구버전이어도
+    // 실제 등록된 콜존 좌표를 덮어쓰는 데 쓴다.
+    virtual bool loadActiveCallButtons(QVector<CallButtonRow> &rows, QString &errorMessage) = 0;
+
+    // 콜존 웨이포인트(BTN_* 등, kind=CallZone) 하나를 call_button에 upsert한다.
+    // code(=waypoint id) UNIQUE라 이미 있으면 zone_name/좌표/yaw를 갱신하고,
+    // 등록 해제돼 있었으면 다시 활성화(deregistered_at = NULL)한다.
+    virtual bool upsertCallButton(
+        const QString &code, const QString &zoneName, double x, double y, double yaw, QString &errorMessage) = 0;
 };
 
 #endif // OPERATIONSOVERVIEWSERVICE_H

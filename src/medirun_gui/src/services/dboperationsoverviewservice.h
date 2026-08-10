@@ -50,6 +50,10 @@ public:
     bool saveWaypointLibrary(
         int robotId, const QString &name, const QString &frameId, const WaypointMap &waypoints,
         const TrajectoryMap &trajectories, QString &errorMessage) override;
+
+    bool loadActiveCallButtons(QVector<CallButtonRow> &rows, QString &errorMessage) override;
+    bool upsertCallButton(
+        const QString &code, const QString &zoneName, double x, double y, double yaw, QString &errorMessage) override;
 };
 
 #endif // DBOPERATIONSOVERVIEWSERVICE_H
