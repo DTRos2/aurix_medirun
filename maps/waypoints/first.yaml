@@ -19,4 +19,6 @@ waypoints:
     kind: waypoint
     label: second
 trajectories:
-  {}
+  test:
+    - BTN_01
+    - W-01

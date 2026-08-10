@@ -9,6 +9,7 @@
 #include <QAbstractItemView>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QDebug>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -118,7 +119,6 @@ WaypointManagementPage::WaypointManagementPage(RobotService &robotService, Opera
     layout->addWidget(m_tabStack, 1);
 
     autoLoadDefaultMap();
-    autoLoadWaypointLibraryFromDb();
     refreshWaypointList();
     refreshMapMarkers();
     refreshRouteCombo();
@@ -833,6 +833,17 @@ void WaypointManagementPage::handleSaveWaypoint()
         m_waypointStatusLabel->setText(QStringLiteral("%1 웨이포인트를 수정했습니다.").arg(m_selectedWaypointId));
     }
 
+    if (kind == WaypointMarkerKind::CallZone) {
+        // 콜존(BTN_*)은 "파일로 저장"을 누르기 전이라도 등록/수정 즉시
+        // call_button에 반영한다 — MQTT 버튼 파이프라인이 참조하는 값이
+        // 웨이포인트 파일 저장 시점과 어긋나지 않게 하기 위함.
+        const WaypointDef &saved = m_waypoints.value(m_selectedWaypointId);
+        QString dbErrorMessage;
+        if (!m_overviewService.upsertCallButton(saved.name, saved.label, saved.x, saved.y, saved.yaw, dbErrorMessage)) {
+            qWarning() << "call_button upsert 실패:" << dbErrorMessage;
+        }
+    }
+
     refreshWaypointList();
     refreshMapMarkers();
     refreshRouteCombo();
@@ -1212,7 +1223,26 @@ void WaypointManagementPage::autoLoadDefaultMap()
     }
 }
 
-void WaypointManagementPage::autoLoadWaypointLibraryFromDb()
+void WaypointManagementPage::mergeCallButtonsInto(WaypointMap &waypoints) const
+{
+    QVector<CallButtonRow> rows;
+    QString errorMessage;
+    if (!m_overviewService.loadActiveCallButtons(rows, errorMessage)) {
+        return;
+    }
+    for (const CallButtonRow &row : std::as_const(rows)) {
+        WaypointDef def;
+        def.name = row.code;
+        def.label = row.zoneName.isEmpty() ? row.code : row.zoneName;
+        def.x = row.x;
+        def.y = row.y;
+        def.yaw = row.yaw;
+        def.kind = WaypointMarkerKind::CallZone;
+        waypoints.insert(def.name, def);
+    }
+}
+
+void WaypointManagementPage::mergeHomeWaypointInto(WaypointMap &waypoints) const
 {
     const QVector<RobotRecord> robots = m_robotService.listRobots(false);
     if (robots.size() != 1) {
@@ -1220,26 +1250,30 @@ void WaypointManagementPage::autoLoadWaypointLibraryFromDb()
     }
 
     QString frameId;
-    WaypointMap waypoints;
+    WaypointMap homeWaypoints;
     TrajectoryMap trajectories;
-    bool found = false;
     QString errorMessage;
-    if (!m_overviewService.loadWaypointLibrary(robots.first().id, frameId, waypoints, trajectories, found, errorMessage)) {
-        m_waypointStatusLabel->setText(errorMessage);
-        return;
-    }
-    if (!found) {
+    if (!m_overviewService.loadWaypointLibraryByName(
+            robots.first().id, QStringLiteral("home"), frameId, homeWaypoints, trajectories, errorMessage)) {
         return;
     }
 
-    applyLoadedWaypointLibrary(frameId, waypoints, trajectories, QStringLiteral("DB에 저장된 웨이포인트를 불러왔습니다."));
+    for (auto it = homeWaypoints.cbegin(); it != homeWaypoints.cend(); ++it) {
+        if (it.value().kind == WaypointMarkerKind::Home) {
+            waypoints.insert(it.key(), it.value());
+        }
+    }
 }
 
 void WaypointManagementPage::applyLoadedWaypointLibrary(
     const QString &frameId, const WaypointMap &waypoints, const TrajectoryMap &trajectories, const QString &statusMessage)
 {
+    WaypointMap mergedWaypoints = waypoints;
+    mergeCallButtonsInto(mergedWaypoints);
+    mergeHomeWaypointInto(mergedWaypoints);
+
     m_frameId = frameId;
-    m_waypoints = waypoints;
+    m_waypoints = mergedWaypoints;
     m_trajectories = trajectories;
     m_selectedSavedRoute.clear();
     m_routeOrderList->clear();
@@ -1331,6 +1365,12 @@ void WaypointManagementPage::handleLoadWaypointFile()
             QMessageBox::warning(this, QStringLiteral("웨이포인트 불러오기 실패"), errorMessage);
             return;
         }
+        // 불러온 파일 내용 위에 call_button + HOME을 합쳐서 반영한다 — 파일에
+        // 없거나 좌표가 오래된 콜존/HOME이어도 실제 등록값으로 지도에 나오게 함.
+        WaypointMap overrides;
+        mergeCallButtonsInto(overrides);
+        mergeHomeWaypointInto(overrides);
+        m_waypointRepository->upsertWaypoints(overrides.values());
         return;
     }
 

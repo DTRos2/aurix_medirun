@@ -41,8 +41,9 @@ void clearLayout(QLayout *layout)
 
     while (QLayoutItem *child = layout->takeAt(0)) {
         if (QLayout *nestedLayout = child->layout()) {
+            // QLayout이 QLayoutItem을 상속하므로 nestedLayout과 child는 같은 객체다.
+            // 아래 delete child가 이미 정리하므로 여기서 따로 delete하면 이중 해제.
             clearLayout(nestedLayout);
-            delete nestedLayout;
         }
         if (QWidget *widget = child->widget()) {
             delete widget;
