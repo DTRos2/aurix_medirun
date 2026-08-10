@@ -532,6 +532,46 @@ QPushButton#cyanChipButton:hover {
     border-color: #39c5e0;
 }
 
+/* ---- Recording pause/resume (live control camera bar) ---- */
+
+QPushButton#pauseChipButton {
+    min-width: 34px;
+    max-width: 34px;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0;
+    font-size: 15px;
+    font-weight: 700;
+    background-color: #332508;
+    border: 1px solid #6b4e12;
+    border-radius: 17px;
+    color: #fbbf24;
+}
+
+QPushButton#pauseChipButton:hover {
+    background-color: #3d2c0a;
+    border-color: #fbbf24;
+}
+
+QPushButton#resumeChipButton {
+    min-width: 34px;
+    max-width: 34px;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0;
+    font-size: 15px;
+    font-weight: 700;
+    background-color: #3d1220;
+    border: 1px solid #7c2438;
+    border-radius: 17px;
+    color: #f87171;
+}
+
+QPushButton#resumeChipButton:hover {
+    background-color: #4a1626;
+    border-color: #ff6e92;
+}
+
 QPushButton#ghostChipButton {
     min-height: 26px;
     padding: 0 12px;
