@@ -1396,7 +1396,6 @@ SlamMappingPage::SlamMappingPage(QWidget *parent)
     m_mapView->setMode(MapViewMode::Live);
     m_mapView->setOverlayChipsVisible(false);
     m_mapView->setCaption(QStringLiteral("매핑 시작 전 · Cartographer 대기 화면"));
-    m_mapView->setRecording(false);
     m_mapView->setRobotPose(QPointF(0.5, 0.5), 0.0);
     m_mapView->setRobotState(RobotMarkerState::Ready);
     m_mapView->setPlannedPath({});

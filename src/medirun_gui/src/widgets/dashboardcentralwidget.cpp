@@ -18,6 +18,7 @@
 #include "../services/camerafeedprovider.h"
 #include "../services/missioncontroller.h"
 #include "../services/waypointrepository.h"
+#include "../services/operationsoverviewservice.h"
 
 #include <QHBoxLayout>
 #include <QStackedWidget>
@@ -61,10 +62,12 @@ DashboardCentralWidget::DashboardCentralWidget(
 
     rootLayout->addLayout(bodyLayout, 1);
 
-    auto *liveControl = new LiveControlPage(m_stack);
-    connect(liveControl, &LiveControlPage::missionCancelRequested, this, &DashboardCentralWidget::missionCancelRequested);
-    connect(liveControl, &LiveControlPage::returnHomeRequested, this, &DashboardCentralWidget::returnHomeRequested);
-    addPage(PageId::LiveControl, liveControl);
+    m_liveControlPage = new LiveControlPage(m_stack);
+    m_liveControlPage->setSession(m_session);
+    m_liveControlPage->setOperationsOverviewService(&operationsOverviewService);
+    connect(m_liveControlPage, &LiveControlPage::missionCancelRequested, this, &DashboardCentralWidget::missionCancelRequested);
+    connect(m_liveControlPage, &LiveControlPage::returnHomeRequested, this, &DashboardCentralWidget::returnHomeRequested);
+    addPage(PageId::LiveControl, m_liveControlPage);
 
     m_missionOpsPage = new MissionOpsPage(m_stack);
     connect(m_missionOpsPage, &MissionOpsPage::missionCancelRequested, this, &DashboardCentralWidget::missionCancelRequested);
@@ -112,6 +115,9 @@ void DashboardCentralWidget::setNavigationService(NavigationService *service)
     if (m_remoteControlPage != nullptr) {
         m_remoteControlPage->setNavigationService(service);
     }
+    if (m_liveControlPage != nullptr) {
+        m_liveControlPage->setNavigationService(service);
+    }
     if (service != nullptr && m_operationsOverviewPage != nullptr) {
         connect(service, &NavigationService::nav2ConnectionChanged, m_operationsOverviewPage, &OperationsOverviewPage::applyNav2Connection);
         connect(service, &NavigationService::amclPoseUpdated, m_operationsOverviewPage, &OperationsOverviewPage::applyAmclPose);
@@ -127,12 +133,18 @@ void DashboardCentralWidget::setMissionController(MissionController *controller)
         connect(m_missionOpsPage, &MissionOpsPage::queueCancelRequested, controller, &MissionController::requestQueueCancel);
         connect(m_missionOpsPage, &MissionOpsPage::queueDivertRequested, controller, &MissionController::requestQueueDivert);
     }
+    if (m_liveControlPage != nullptr) {
+        m_liveControlPage->setMissionController(controller);
+    }
 }
 
 void DashboardCentralWidget::setWaypointRepository(WaypointRepository *repository)
 {
     if (m_waypointPage != nullptr) {
         m_waypointPage->setWaypointRepository(repository);
+    }
+    if (m_liveControlPage != nullptr) {
+        m_liveControlPage->setWaypointRepository(repository);
     }
 }
 
@@ -141,13 +153,38 @@ void DashboardCentralWidget::setCameraFeedProvider(CameraFeedProvider *provider)
     if (m_remoteControlPage != nullptr) {
         m_remoteControlPage->setCameraFeedProvider(provider);
     }
+    if (m_liveControlPage != nullptr) {
+        m_liveControlPage->setCameraFeedProvider(provider);
+    }
     if (provider != nullptr && m_operationsOverviewPage != nullptr) {
         connect(provider, &CameraFeedProvider::connectionStateChanged, m_operationsOverviewPage, &OperationsOverviewPage::applyCameraConnection);
     }
     if (provider != nullptr && m_headerBar != nullptr) {
         connect(provider, &CameraFeedProvider::connectionStateChanged, m_headerBar, &HeaderBar::setCameraConnected);
     }
+
 }
+
+void DashboardCentralWidget::setTelemetryProvider(TelemetryProvider *provider)
+{
+    if (m_liveControlPage != nullptr) {
+        m_liveControlPage->setTelemetryProvider(provider);
+    }
+}
+
+void DashboardCentralWidget::setSensorTelemetryProvider(SensorTelemetryProvider *provider)
+{
+    if (m_liveControlPage != nullptr) {
+        m_liveControlPage->setSensorTelemetryProvider(provider);
+    }
+}
+
+void DashboardCentralWidget::setDrivingRecordService(DrivingRecordService *service)
+{
+    if (m_liveControlPage != nullptr) {
+        m_liveControlPage->setDrivingRecordService(service);
+    }
+
 
 bool DashboardCentralWidget::handleManualKeyPress(int key)
 {

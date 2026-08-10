@@ -110,7 +110,7 @@ void RosCameraFeedProvider::handleImage(const sensor_msgs::msg::Image::ConstShar
                         cvImage->image.rows,
                         static_cast<int>(cvImage->image.step),
                         QImage::Format_RGB888);
-    // 카메라가 로봇에 상하 뒤집힌 방향으로 장착돼 있어 보정 필요.
-    // mirrored()가 새 QImage를 만들어 반환하므로 cvImage 버퍼에 대한 깊은 복사도 겸함.
-    emit frameReady(frame.mirrored(false, true));
+    // correctMountOrientation()이 새 QImage를 만들어 반환하므로 cvImage 버퍼에
+    // 대한 깊은 복사도 겸함(mirrored() 기반).
+    emit frameReady(correctMountOrientation(frame));
 }
