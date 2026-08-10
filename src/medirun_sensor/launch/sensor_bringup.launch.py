@@ -31,6 +31,13 @@ def generate_launch_description() -> LaunchDescription:
             ),
             Node(
                 package="medirun_sensor",
+                executable="mqtt_bridge",
+                name="mqtt_bridge",
+                parameters=[config],
+                output="screen",
+            ),
+            Node(
+                package="medirun_sensor",
                 executable="ready_notifier",
                 name="ready_notifier",
                 output="screen",
