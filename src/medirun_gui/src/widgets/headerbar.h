@@ -17,6 +17,9 @@ public:
     void setPageTitle(const QString &title);
     void applySnapshot(const TelemetrySnapshot &snapshot);
 
+public slots:
+    void setCameraConnected(bool connected);
+
 signals:
     void estopRequested();
 

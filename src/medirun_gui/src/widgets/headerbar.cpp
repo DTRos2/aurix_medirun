@@ -149,3 +149,10 @@ void HeaderBar::applySnapshot(const TelemetrySnapshot &snapshot)
         m_batteryLabel->setToolTip(QStringLiteral("배터리 상태 수신 대기 중"));
     }
 }
+
+void HeaderBar::setCameraConnected(bool connected)
+{
+    m_camChip->setProperty("badgeKind", connected ? QStringLiteral("green") : QStringLiteral("red"));
+    m_camChip->style()->unpolish(m_camChip);
+    m_camChip->style()->polish(m_camChip);
+}
