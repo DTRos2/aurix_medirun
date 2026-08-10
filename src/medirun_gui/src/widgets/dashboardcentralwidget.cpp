@@ -162,6 +162,7 @@ void DashboardCentralWidget::setCameraFeedProvider(CameraFeedProvider *provider)
     if (provider != nullptr && m_headerBar != nullptr) {
         connect(provider, &CameraFeedProvider::connectionStateChanged, m_headerBar, &HeaderBar::setCameraConnected);
     }
+
 }
 
 void DashboardCentralWidget::setTelemetryProvider(TelemetryProvider *provider)
@@ -183,7 +184,7 @@ void DashboardCentralWidget::setDrivingRecordService(DrivingRecordService *servi
     if (m_liveControlPage != nullptr) {
         m_liveControlPage->setDrivingRecordService(service);
     }
-}
+
 
 bool DashboardCentralWidget::handleManualKeyPress(int key)
 {
