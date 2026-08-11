@@ -164,7 +164,7 @@ void severityLabelAndKind(const QString &severity, QString &label, QString &kind
         kind = QStringLiteral("amber");
     } else {
         label = QStringLiteral("INFO");
-        kind = QStringLiteral("muted");
+        kind = QStringLiteral("cyan");
     }
 }
 
@@ -341,13 +341,48 @@ bool DbOperationsOverviewService::fetchRecentEvents(int limit, QVector<Operation
         return false;
     }
 
+    // system_event만으로는 ROS 연결 끊김/재연결 같은 연결 상태 변화가 안 보인다
+    // (TelemetryLogRecorder가 그건 connection_status_log에만 기록함) — 실시간
+    // 관제 이벤트 스트림이 실제로 "지금 무슨 일이 있었는지" 다 보여주려면 두
+    // 테이블을 시간순으로 합쳐야 한다.
     QSqlQuery query;
     query.prepare(QStringLiteral(
-        "SELECT se.created_at, se.severity, se.message, r.name AS robot_name "
-        "FROM system_event se "
-        "LEFT JOIN robot_session rs ON rs.id = se.session_id "
-        "LEFT JOIN robot r ON r.id = rs.robot_id "
-        "ORDER BY se.created_at DESC "
+        "SELECT created_at, severity, message, robot_name FROM ("
+        "  SELECT se.created_at AS created_at, se.severity AS severity, se.message AS message, "
+        "         r.name AS robot_name "
+        "  FROM system_event se "
+        "  LEFT JOIN robot_session rs ON rs.id = se.session_id "
+        "  LEFT JOIN robot r ON r.id = rs.robot_id "
+        "  UNION ALL "
+        "  SELECT csl.changed_at AS created_at, "
+        "         CASE csl.status "
+        "           WHEN 'connected' THEN 'info' "
+        "           WHEN 'reconnecting' THEN 'warn' "
+        "           ELSE 'error' "
+        "         END AS severity, "
+        "         (CASE csl.target "
+        "            WHEN 'ros_bridge' THEN 'ROS2' "
+        "            WHEN 'database' THEN 'DB' "
+        "            WHEN 'serial' THEN '아두이노' "
+        "            WHEN 'camera' THEN '카메라' "
+        "            WHEN 'unity' THEN 'Unity' "
+        "            ELSE csl.target "
+        "          END || ' ' || "
+        "          CASE csl.status "
+        "            WHEN 'connected' THEN '연결됨' "
+        "            WHEN 'disconnected' THEN '연결 끊김' "
+        "            WHEN 'reconnecting' THEN '재연결 중' "
+        "            ELSE '연결 오류' "
+        "          END || "
+        "          COALESCE(' · ' || NULLIF(csl.detail, ''), '')) AS message, "
+        "         r.name AS robot_name "
+        "  FROM connection_status_log csl "
+        "  LEFT JOIN robot r ON r.id = csl.robot_id "
+        ") combined_events "
+        // DB에는 계속 다 쌓이지만(삭제 안 함), 화면에는 미션 관제 "오늘 처리
+        // 이력"과 동일하게 최근 24시간 안의 것만 보여준다.
+        "WHERE created_at >= NOW() - INTERVAL '24 hours' "
+        "ORDER BY created_at DESC "
         "LIMIT :limit"));
     query.bindValue(QStringLiteral(":limit"), limit);
     if (!query.exec()) {
