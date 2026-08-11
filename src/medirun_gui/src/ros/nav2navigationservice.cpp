@@ -341,7 +341,7 @@ public:
     void checkNav2Connection()
     {
         if (!m_btNavigatorStateClient->service_is_ready() || !m_waypointFollowerStateClient->service_is_ready()) {
-            updateNav2Connected(false);
+            registerConnectionResult(false);
             return;
         }
 
@@ -368,7 +368,25 @@ public:
         if (m_btNavigatorActiveForRound.first != round || m_waypointFollowerActiveForRound.first != round) {
             return;
         }
-        updateNav2Connected(m_btNavigatorActiveForRound.second && m_waypointFollowerActiveForRound.second);
+        registerConnectionResult(m_btNavigatorActiveForRound.second && m_waypointFollowerActiveForRound.second);
+    }
+
+    // 초기 위치 설정(퍼블리시) 직후처럼 AMCL/bt_navigator에 순간적으로 부하가
+    // 걸리면 GetState 서비스 응답이 1초 폴링 주기를 넘겨 한 라운드 정도 실패할
+    // 수 있다. 그 한 번으로 바로 배지를 꺼버리면 "붙었다 꺼졌다" 깜빡임으로
+    // 보이므로, RosSensorTelemetryProvider/RosBatteryTelemetryProvider가 쓰는
+    // 것과 같은 디바운스 방식을 적용한다 — 연속 실패가 임계치를 넘어야만
+    // "끊김"으로 확정하고, 성공은 즉시 반영해 복귀는 빠르게 보이게 한다.
+    void registerConnectionResult(bool connectedNow)
+    {
+        if (connectedNow) {
+            m_disconnectStreak = 0;
+            updateNav2Connected(true);
+            return;
+        }
+        if (++m_disconnectStreak >= kDisconnectDebounceRounds) {
+            updateNav2Connected(false);
+        }
     }
 
     void updateNav2Connected(bool connected)
@@ -402,6 +420,10 @@ private:
     std::pair<uint64_t, bool> m_btNavigatorActiveForRound {0, false};
     std::pair<uint64_t, bool> m_waypointFollowerActiveForRound {0, false};
     bool m_nav2Connected {false};
+    // checkNav2Connection()이 1초마다 도니 3회 연속 실패 ≈ 3초 미수신을 뜻한다.
+    // 03번 설계서 1.5절 통신 규칙과 같은 "일정 시간 미수신 시 단절" 취지.
+    static constexpr int kDisconnectDebounceRounds = 3;
+    int m_disconnectStreak {0};
 };
 
 struct Nav2NavigationService::Impl
