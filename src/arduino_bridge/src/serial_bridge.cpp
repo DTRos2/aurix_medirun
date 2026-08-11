@@ -33,6 +33,12 @@ public:
       create_publisher<std_msgs::msg::Int32>("/arduino/front_distance_cm", 10);
     rear_distance_pub_ =
       create_publisher<std_msgs::msg::Int32>("/arduino/rear_distance_cm", 10);
+    // 예전엔 HALL:이 상태 변화 시에만 오는 edge-triggered 값이라 transient_local로
+    // 늦게 붙는 구독자에게 마지막 상태를 즉시 전달했는데, CycloneDDS 환경에서
+    // transient_local late-join 재전달이 간헐적으로 실패해 GUI가 값을 아예 못
+    // 받는 문제가 있었다. 지금은 아두이노가 변화 없어도 1초마다 HALL:을
+    // 재전송하므로(all_in_one_module.ino updateHall() 참고) durability를 DIST/
+    // DIST_REAR와 같은 기본(volatile) QoS로 맞춰 그 실패 지점을 없앤다.
     payload_pub_ = create_publisher<std_msgs::msg::Bool>("/arduino/payload_loaded", 10);
     status_pub_ = create_publisher<std_msgs::msg::String>(
       "/arduino/status", rclcpp::QoS(10).transient_local());

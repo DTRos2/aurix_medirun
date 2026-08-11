@@ -84,9 +84,15 @@ bool dockedSequenceDone = false;
 const uint8_t HALL_PIN = A0;
 const int MAGNET_RAW_MAX = 506;
 const unsigned long HALL_DEBOUNCE_MS = 500;
+// HALL:은 원래 상태가 바뀔 때만 보내는 edge-triggered 값이었는데, 그러면 어쩌다
+// 한 줄이 시리얼 노이즈로 깨지거나 유실됐을 때 다음 변화가 생기기 전까지(자석이
+// 계속 그대로면 영영) GUI가 값을 못 받는다. DIST/DIST_REAR처럼 주기적으로도
+// 같이 보내서 한 번 놓쳐도 최대 HALL_REPORT_INTERVAL_MS 안에 자동 복구되게 한다.
+const unsigned long HALL_REPORT_INTERVAL_MS = 1000;
 bool hallRawState = false;
 bool hallStableState = false;
 unsigned long hallLastChangeAt = 0;
+unsigned long hallLastReportAt = 0;
 
 // 시리얼
 const unsigned long BAUD_RATE = 9600;
@@ -381,6 +387,10 @@ void updateHall() {
   if (now - hallLastChangeAt >= HALL_DEBOUNCE_MS && hallStableState != hallRawState) {
     hallStableState = hallRawState;
     reportHallState(hallStableState);
+    hallLastReportAt = now;
+  } else if (now - hallLastReportAt >= HALL_REPORT_INTERVAL_MS) {
+    reportHallState(hallStableState);
+    hallLastReportAt = now;
   }
 }
 
@@ -408,6 +418,7 @@ void setup() {
   hallRawState = isMagnetPresent(readSmoothedHallValue());
   hallStableState = hallRawState;
   hallLastChangeAt = millis();
+  hallLastReportAt = millis();
 
   applyModeEntry(MODE_IDLE);
 
