@@ -18,6 +18,9 @@ public:
         int robotId, const QString &target, const QString &status, const QString &detail, QString &errorMessage) override;
     bool recordSystemEvent(
         const QString &eventType, const QString &severity, const QString &message, QString &errorMessage) override;
+    bool recordControlCommand(
+        int robotId, const QString &commandSource, const QString &commandType, bool emergencyStopActive,
+        const QString &issuedBy, QString &errorMessage) override;
 
     bool startRobotSession(
         int robotId,

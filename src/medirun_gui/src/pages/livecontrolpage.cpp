@@ -22,12 +22,15 @@
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QStandardPaths>
 #include <QStyle>
 #include <QTimer>
 #include <QUuid>
 #include <QVBoxLayout>
 #include <QtMath>
+
+#include <algorithm>
 
 namespace {
 
@@ -105,6 +108,19 @@ QVector<QString> computeStepStates(const MissionSnapshot &snapshot)
         states[4] = QStringLiteral("done");
     } else if (snapshot.returningHome) {
         states[4] = QStringLiteral("active");
+    } else if (snapshot.state == MissionState::Failed || snapshot.state == MissionState::Cancelled) {
+        // finishMission()이 returningHome을 리셋하기 직전 값을 저장해둔
+        // arrivedBeforeEnd로, 실패/취소가 복귀 단계까지 가서 난 건지 그 전인
+        // 출동/주행 중에 난 건지를 구분해 그 단계에 표시를 준다. 시스템이
+        // 감지한 실패는 빨강("failed"), 운영자가 의도적으로 취소한 건 주황
+        // ("cancelled")으로 구분한다.
+        const QString marker = snapshot.state == MissionState::Failed ? QStringLiteral("failed") : QStringLiteral("cancelled");
+        if (snapshot.arrivedBeforeEnd) {
+            states[1] = states[2] = states[3] = QStringLiteral("done");
+            states[4] = marker;
+        } else {
+            states[1] = marker;
+        }
     }
     return states;
 }
@@ -116,6 +132,9 @@ QColor colorForEventKind(const QString &kind)
     }
     if (kind == QStringLiteral("red")) {
         return DashboardPalette::Red;
+    }
+    if (kind == QStringLiteral("cyan")) {
+        return DashboardPalette::Cyan;
     }
     return DashboardPalette::TextMuted;
 }
@@ -435,11 +454,20 @@ QWidget *LiveControlPage::buildEventStreamPanel()
     layout->setSpacing(6);
     layout->addWidget(makeLabel(QStringLiteral("이벤트 스트림"), QStringLiteral("metricCaption")));
 
-    auto *streamContainer = new QWidget(panel);
+    auto *streamContainer = new QWidget;
     m_eventStreamLayout = new QVBoxLayout(streamContainer);
-    m_eventStreamLayout->setContentsMargins(0, 0, 0, 0);
+    m_eventStreamLayout->setContentsMargins(0, 0, 0, 4);
     m_eventStreamLayout->setSpacing(6);
-    layout->addWidget(streamContainer, 1);
+
+    // 미션 관제의 "오늘 처리 이력"과 동일한 패턴: 패널이 무한정 늘어나지
+    // 않게 스크롤 영역에 담는다.
+    auto *scrollArea = new QScrollArea(panel);
+    scrollArea->setWidget(streamContainer);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    layout->addWidget(scrollArea, 1);
     m_eventStreamLayout->addWidget(makeLabel(QStringLiteral("이벤트가 없습니다."), QStringLiteral("metricCaption")));
 
     return panel;
@@ -524,7 +552,15 @@ void LiveControlPage::refreshMissionStepper()
         const QVector<QString> states = computeStepStates(snapshot);
         for (int i = 0; i < m_stepCircles.size() && i < states.size(); ++i) {
             QLabel *circle = m_stepCircles.at(i);
-            circle->setText(states.at(i) == QStringLiteral("done") ? QStringLiteral("✓") : QString());
+            if (states.at(i) == QStringLiteral("done")) {
+                circle->setText(QStringLiteral("✓"));
+            } else if (states.at(i) == QStringLiteral("failed")) {
+                circle->setText(QStringLiteral("✕"));
+            } else if (states.at(i) == QStringLiteral("cancelled")) {
+                circle->setText(QStringLiteral("■"));
+            } else {
+                circle->setText(QString());
+            }
             circle->setProperty("stepState", states.at(i));
             circle->style()->unpolish(circle);
             circle->style()->polish(circle);
@@ -569,7 +605,10 @@ void LiveControlPage::refreshEventStream()
 
     QVector<OperationsEventRow> rows;
     QString errorMessage;
-    if (!m_operationsOverviewService->fetchRecentEvents(6, rows, errorMessage)) {
+    // 6건만 가져오면 항목이 패널 높이 안에 다 들어가버려서 스크롤이 생길
+    // 일이 거의 없다 — "오늘 처리 이력"처럼 실제로 스크롤이 필요할 만큼
+    // 더 넉넉히 가져온다.
+    if (!m_operationsOverviewService->fetchRecentEvents(30, rows, errorMessage)) {
         return;
     }
 
@@ -578,6 +617,10 @@ void LiveControlPage::refreshEventStream()
         m_eventStreamLayout->addWidget(makeLabel(QStringLiteral("이벤트가 없습니다."), QStringLiteral("metricCaption")));
         return;
     }
+    // 최신 이벤트가 맨 위에 오도록 표시 직전에 명시적으로 정렬한다.
+    std::sort(rows.begin(), rows.end(), [](const OperationsEventRow &a, const OperationsEventRow &b) {
+        return a.occurredAt > b.occurredAt;
+    });
     for (const OperationsEventRow &event : rows) {
         m_eventStreamLayout->addWidget(buildEventRow(event));
     }

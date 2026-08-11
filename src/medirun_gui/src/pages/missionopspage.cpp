@@ -14,6 +14,8 @@
 #include <QStyle>
 #include <QVBoxLayout>
 
+#include <algorithm>
+
 namespace {
 
 QLabel *makeLabel(const QString &text, const QString &objectName = {})
@@ -81,6 +83,27 @@ QString stateColor(MissionState state)
         return DashboardPalette::Amber.name();
     }
     return DashboardPalette::Cyan.name();
+}
+
+// MissionController::addHistory()의 result 인자(REQUESTED/IGNORED/CANCELLED/
+// STARTED/SUCCEEDED/FAILED/WAITING/DECLINED/DIVERTED)를 색으로 구분한다 —
+// 전부 같은 색이면 실패/취소 같은 중요한 항목이 눈에 안 띈다.
+QString resultColor(const QString &result)
+{
+    if (result == QStringLiteral("FAILED")) {
+        return DashboardPalette::Red.name();
+    }
+    if (result == QStringLiteral("SUCCEEDED")) {
+        return DashboardPalette::Green.name();
+    }
+    if (result == QStringLiteral("CANCELLED") || result == QStringLiteral("REQUESTED") || result == QStringLiteral("WAITING")) {
+        return DashboardPalette::Amber.name();
+    }
+    if (result == QStringLiteral("STARTED") || result == QStringLiteral("DIVERTED")) {
+        return DashboardPalette::Cyan.name();
+    }
+    // IGNORED, DECLINED 등 "아무 일도 안 일어남" 계열은 눈에 덜 띄게.
+    return DashboardPalette::TextMuted.name();
 }
 
 QString elapsedText(qint64 elapsedSeconds)
@@ -378,11 +401,15 @@ void MissionOpsPage::refreshHistory()
         return;
     }
 
-    const QVector<MissionHistoryEntry> entries = m_controller->todayHistory();
+    QVector<MissionHistoryEntry> entries = m_controller->todayHistory();
     if (entries.isEmpty()) {
         m_historyListLayout->addWidget(makeLabel(QStringLiteral("오늘 기록이 없습니다."), QStringLiteral("metricCaption")));
         return;
     }
+    // 최신 항목이 맨 위에 오도록 표시 직전에 명시적으로 정렬한다.
+    std::sort(entries.begin(), entries.end(), [](const MissionHistoryEntry &a, const MissionHistoryEntry &b) {
+        return a.occurredAt > b.occurredAt;
+    });
 
     for (const MissionHistoryEntry &entry : entries) {
         auto *rowLayout = new QHBoxLayout;
@@ -392,7 +419,9 @@ void MissionOpsPage::refreshHistory()
         rowLayout->addWidget(timeLabel);
         auto *textCol = new QVBoxLayout;
         textCol->setSpacing(1);
-        textCol->addWidget(makeLabel(QStringLiteral("%1 · %2").arg(entry.eventType, entry.result)));
+        auto *resultLabel = makeLabel(QStringLiteral("%1 · %2").arg(entry.eventType, entry.result));
+        resultLabel->setStyleSheet(QStringLiteral("color: %1; font-weight: 600;").arg(resultColor(entry.result)));
+        textCol->addWidget(resultLabel);
         const QString detail = QStringLiteral("%1 · mission=%2 · queue=%3 · %4")
                                    .arg(entry.waypointName.isEmpty() ? QStringLiteral("-") : entry.waypointName,
                                         entry.missionId.isEmpty() ? QStringLiteral("-") : entry.missionId,
