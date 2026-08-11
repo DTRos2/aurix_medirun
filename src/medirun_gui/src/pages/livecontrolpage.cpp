@@ -105,6 +105,19 @@ QVector<QString> computeStepStates(const MissionSnapshot &snapshot)
         states[4] = QStringLiteral("done");
     } else if (snapshot.returningHome) {
         states[4] = QStringLiteral("active");
+    } else if (snapshot.state == MissionState::Failed || snapshot.state == MissionState::Cancelled) {
+        // finishMission()이 returningHome을 리셋하기 직전 값을 저장해둔
+        // arrivedBeforeEnd로, 실패/취소가 복귀 단계까지 가서 난 건지 그 전인
+        // 출동/주행 중에 난 건지를 구분해 그 단계에 표시를 준다. 시스템이
+        // 감지한 실패는 빨강("failed"), 운영자가 의도적으로 취소한 건 주황
+        // ("cancelled")으로 구분한다.
+        const QString marker = snapshot.state == MissionState::Failed ? QStringLiteral("failed") : QStringLiteral("cancelled");
+        if (snapshot.arrivedBeforeEnd) {
+            states[1] = states[2] = states[3] = QStringLiteral("done");
+            states[4] = marker;
+        } else {
+            states[1] = marker;
+        }
     }
     return states;
 }
@@ -524,7 +537,15 @@ void LiveControlPage::refreshMissionStepper()
         const QVector<QString> states = computeStepStates(snapshot);
         for (int i = 0; i < m_stepCircles.size() && i < states.size(); ++i) {
             QLabel *circle = m_stepCircles.at(i);
-            circle->setText(states.at(i) == QStringLiteral("done") ? QStringLiteral("✓") : QString());
+            if (states.at(i) == QStringLiteral("done")) {
+                circle->setText(QStringLiteral("✓"));
+            } else if (states.at(i) == QStringLiteral("failed")) {
+                circle->setText(QStringLiteral("✕"));
+            } else if (states.at(i) == QStringLiteral("cancelled")) {
+                circle->setText(QStringLiteral("■"));
+            } else {
+                circle->setText(QString());
+            }
             circle->setProperty("stepState", states.at(i));
             circle->style()->unpolish(circle);
             circle->style()->polish(circle);

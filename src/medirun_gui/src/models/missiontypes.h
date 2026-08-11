@@ -81,6 +81,11 @@ struct MissionSnapshot
     qint64 elapsedSeconds {0};
     int waitingCount {0};
     bool returningHome {false};
+    // finishMission()이 최종 상태로 전환하는 순간의 returningHome 값을 그대로
+    // 저장해둔 것 — returningHome 자체는 finishMission()에서 바로 false로
+    // 리셋되어(다음 대기 호출이 막히지 않게) 실시간 관제 스텝퍼가 "실패가
+    // 출동/주행 중 났는지, 복귀 단계에서 났는지" 구분할 방법이 없어진다.
+    bool arrivedBeforeEnd {false};
     QString failureReason;
     double distanceRemainingMeters {-1.0};
     int progressPercent {-1};
