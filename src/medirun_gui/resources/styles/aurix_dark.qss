@@ -663,6 +663,24 @@ QLabel[stepState="pending"] {
     border-radius: 8px;
 }
 
+QLabel[stepState="failed"] {
+    background-color: #f87171;
+    border: none;
+    border-radius: 8px;
+    color: #3d1220;
+    font-weight: 800;
+    qproperty-alignment: AlignCenter;
+}
+
+QLabel[stepState="cancelled"] {
+    background-color: #fbbf24;
+    border: none;
+    border-radius: 8px;
+    color: #332508;
+    font-weight: 800;
+    qproperty-alignment: AlignCenter;
+}
+
 QFrame#stepConnectorDone {
     background-color: #39c5e0;
     border: none;
