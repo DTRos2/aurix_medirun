@@ -41,6 +41,8 @@ public slots:
     void requestMissionCancel();
     void requestQueueCancel(const QString &queueId);
     void requestQueueDivert(const QString &queueId);
+    void confirmStartNextQueue(const QString &queueId);
+    void declineNextQueue();
 
 signals:
     void missionChanged();
@@ -48,6 +50,7 @@ signals:
     void historyChanged();
     void connectionStateChanged();
     void retryStateChanged();
+    void nextQueueConfirmationRequested(const QString &queueId, const QString &waypointName);
 
 private slots:
     void handleDispatchRequested(const QString &buttonId,
@@ -80,7 +83,9 @@ private:
     void startMissionForQueue(const QString &queueId, bool divertedFromActiveMission);
     bool beginReturnHomeFlow(const QString &reason);
     bool resolveHomeWaypoint(WaypointDef &homeWaypoint, WaypointPose &homePose, QString &errorMessage) const;
-    void finishMission(MissionState finalState, const QString &reason, const QString &historyType, const QString &historyResult);
+    void finishMission(MissionState finalState, const QString &reason, const QString &historyType, const QString &historyResult,
+                       bool requiresQueueConfirmation = false);
+    void resetToIdleSnapshot();
     void markQueueStatus(const QString &queueId, MissionQueueStatus status);
     void removeQueueItem(const QString &queueId);
     int queueIndex(const QString &queueId) const;
