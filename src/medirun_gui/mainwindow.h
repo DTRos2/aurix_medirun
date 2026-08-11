@@ -55,6 +55,7 @@ private slots:
     void handleMissionCancel();
     void handleReturnHome();
     void handleLogout();
+    void handleNextQueueConfirmationRequested(const QString &queueId, const QString &waypointName);
 
 private:
     Ui::MainWindow *ui;

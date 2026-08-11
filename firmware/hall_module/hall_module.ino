@@ -5,7 +5,9 @@
 // 용도: AED 거치대 자석 감지 → 적재/반출 판정 (요구사항 02번 §8.1)
 // 채터링 방지: 상태 변화가 0.5초 이상 유지될 때만 유효 이벤트로 처리 (§8.3)
 // 시리얼 프로토콜: Arduino -> Pi "HALL:<0|1>\n", 1=적재, 0=반출 (§8.3)
-//   부팅 직후 현재 상태를 1회 보고하고, 이후 안정적으로 바뀔 때마다 다시 보고한다.
+//   부팅 직후 현재 상태를 1회 보고하고, 이후 안정적으로 바뀔 때마다 다시 보고하며,
+//   변화가 없어도 REPORT_INTERVAL_MS(1초)마다 재전송한다 — 시리얼 노이즈로 한 줄이
+//   깨지거나 유실돼도 값이 영영 갱신되지 않는 일이 없게 하기 위함.
 //
 // 동작 방식: analogRead 값이 MAGNET_RAW_MAX 이하로 내려가면 자석 감지로 판단한다(절대값 기준
 // 고정 컷오프). 실측: 자석 없음 507~511, 자석을 0.5cm 근처로 가져가면 506 이하로 떨어짐(최대
@@ -21,10 +23,14 @@ const int MAGNET_RAW_MAX = 506; // 이 값 이하면 자석 감지 (실측: 무�
 
 const unsigned long DEBOUNCE_MS = 500; // §8.3 채터링 방지 0.5초
 const unsigned long BAUD_RATE = 9600;
+// 상태 변화가 없어도 주기적으로 재전송해, 한 줄이 시리얼 노이즈로 유실돼도
+// 최대 REPORT_INTERVAL_MS 안에 자동 복구되게 한다 (all_in_one_module과 동일 방식).
+const unsigned long REPORT_INTERVAL_MS = 1000;
 
 bool rawState;
 bool stableState;
 unsigned long lastChangeAt;
+unsigned long lastReportAt;
 
 bool isMagnetPresent(int value) {
   return value <= MAGNET_RAW_MAX;
@@ -67,6 +73,7 @@ void setup() {
   rawState = isMagnetPresent(readSmoothedValue());
   stableState = rawState;
   lastChangeAt = millis();
+  lastReportAt = millis();
 
   Serial.println("READY");
   reportState(stableState); // 부팅 시 현재 상태를 1회 보고
@@ -87,5 +94,9 @@ void loop() {
   if (now - lastChangeAt >= DEBOUNCE_MS && stableState != rawState) {
     stableState = rawState;
     reportState(stableState);
+    lastReportAt = now;
+  } else if (now - lastReportAt >= REPORT_INTERVAL_MS) {
+    reportState(stableState);
+    lastReportAt = now;
   }
 }
