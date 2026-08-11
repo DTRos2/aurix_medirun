@@ -30,6 +30,8 @@
 #include <QVBoxLayout>
 #include <QtMath>
 
+#include <algorithm>
+
 namespace {
 
 constexpr int kEventPollIntervalMs = 5000;
@@ -615,6 +617,10 @@ void LiveControlPage::refreshEventStream()
         m_eventStreamLayout->addWidget(makeLabel(QStringLiteral("이벤트가 없습니다."), QStringLiteral("metricCaption")));
         return;
     }
+    // 최신 이벤트가 맨 위에 오도록 표시 직전에 명시적으로 정렬한다.
+    std::sort(rows.begin(), rows.end(), [](const OperationsEventRow &a, const OperationsEventRow &b) {
+        return a.occurredAt > b.occurredAt;
+    });
     for (const OperationsEventRow &event : rows) {
         m_eventStreamLayout->addWidget(buildEventRow(event));
     }
