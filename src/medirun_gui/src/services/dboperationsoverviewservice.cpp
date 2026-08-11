@@ -452,6 +452,61 @@ bool DbOperationsOverviewService::recordSystemEvent(
     return true;
 }
 
+bool DbOperationsOverviewService::recordControlCommand(
+    int robotId, const QString &commandSource, const QString &commandType, bool emergencyStopActive,
+    const QString &issuedBy, QString &errorMessage)
+{
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    // control_command_log.session_id가 NOT NULL이라, 진행 중(status='running')인
+    // robot_session이 없으면 감사 기록 전용 수동 세션을 하나 만들어 붙인다.
+    QSqlQuery sessionLookup;
+    sessionLookup.prepare(QStringLiteral(
+        "SELECT id FROM robot_session WHERE robot_id = :robotId AND status = 'running' "
+        "ORDER BY started_at DESC LIMIT 1"));
+    sessionLookup.bindValue(QStringLiteral(":robotId"), robotId);
+    if (!sessionLookup.exec()) {
+        errorMessage = QStringLiteral("진행 중인 세션 조회 실패: %1").arg(sessionLookup.lastError().text());
+        return false;
+    }
+
+    int sessionId = -1;
+    if (sessionLookup.next()) {
+        sessionId = sessionLookup.value(0).toInt();
+    } else {
+        QSqlQuery createSession;
+        createSession.prepare(QStringLiteral(
+            "INSERT INTO robot_session (robot_id, session_name, mode, status) "
+            "VALUES (:robotId, '실시간 관제', 'manual', 'running') RETURNING id"));
+        createSession.bindValue(QStringLiteral(":robotId"), robotId);
+        if (!createSession.exec() || !createSession.next()) {
+            errorMessage = QStringLiteral("제어 명령용 세션 생성 실패: %1").arg(createSession.lastError().text());
+            return false;
+        }
+        sessionId = createSession.value(0).toInt();
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "INSERT INTO control_command_log "
+        "(session_id, command_source, authority_state, command_type, issued_by, emergency_stop_active) "
+        "VALUES (:sessionId, :commandSource, 'granted', :commandType, :issuedBy, :emergencyStopActive)"));
+    query.bindValue(QStringLiteral(":sessionId"), sessionId);
+    query.bindValue(QStringLiteral(":commandSource"), commandSource);
+    query.bindValue(QStringLiteral(":commandType"), commandType);
+    query.bindValue(QStringLiteral(":issuedBy"), issuedBy.isEmpty() ? QVariant() : QVariant(issuedBy));
+    query.bindValue(QStringLiteral(":emergencyStopActive"), emergencyStopActive);
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("제어 명령 기록 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    errorMessage.clear();
+    return true;
+}
+
 bool DbOperationsOverviewService::startRobotSession(
     int robotId,
     const QString &mode,
