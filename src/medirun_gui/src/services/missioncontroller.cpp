@@ -483,6 +483,7 @@ void MissionController::startMissionForQueue(const QString &queueId, bool divert
         return candidate.status == MissionQueueStatus::Waiting;
     });
     m_snapshot.returningHome = false;
+    m_snapshot.arrivedBeforeEnd = false;
     m_snapshot.failureReason.clear();
     m_snapshot.distanceRemainingMeters = -1.0;
     m_initialDistanceMeters = -1.0;
@@ -593,6 +594,10 @@ void MissionController::finishMission(MissionState finalState,
     addHistory(historyType, QString(), m_snapshot.destinationName, m_snapshot.missionId, m_snapshot.queueId, historyResult,
                reason.isEmpty() ? resultText(historyResult) : reason);
     m_snapshot.failureReason = reason;
+    // returningHome은 바로 아래서 false로 리셋해야 다음 대기 호출이 안 막히니,
+    // 실시간 관제 스텝퍼가 "복귀 단계까지는 갔었는지" 나중에 구분할 수 있게
+    // 그 순간의 값을 arrivedBeforeEnd에 남겨둔다.
+    m_snapshot.arrivedBeforeEnd = m_snapshot.returningHome || finalState == MissionState::Completed;
     setMissionState(finalState);
     m_pendingAction = PendingAction::None;
     m_pendingDivertQueueId.clear();
