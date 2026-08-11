@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QLayoutItem>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QStyle>
 #include <QVBoxLayout>
 
@@ -225,13 +226,23 @@ QWidget *MissionOpsPage::buildTodayHistory()
     auto *layout = new QVBoxLayout(panel);
     layout->setContentsMargins(12, 11, 12, 11);
     layout->setSpacing(8);
-    layout->addWidget(makeLabel(QStringLiteral("오늘 처리 이력"), QStringLiteral("metricCaption")));
+    layout->addWidget(makeLabel(QStringLiteral("오늘 처리 이력 (최근 24시간)"), QStringLiteral("metricCaption")));
 
-    auto *historyContainer = new QWidget(panel);
+    // 로그가 계속 쌓여도 패널이 무한정 늘어나지 않게 스크롤 영역에 담는다.
+    // 실제 이력은 DB에 전부 남으니(system_event 등), 여기서 24시간이 지난
+    // 항목을 숨기는 건 화면 표시만 줄이는 것일 뿐 데이터 손실은 아니다.
+    auto *historyContainer = new QWidget;
     m_historyListLayout = new QVBoxLayout(historyContainer);
-    m_historyListLayout->setContentsMargins(0, 0, 0, 0);
+    m_historyListLayout->setContentsMargins(0, 0, 0, 4);
     m_historyListLayout->setSpacing(8);
-    layout->addWidget(historyContainer, 1);
+
+    auto *scrollArea = new QScrollArea(panel);
+    scrollArea->setWidget(historyContainer);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    layout->addWidget(scrollArea, 1);
 
     layout->addWidget(makeLabel(QStringLiteral("모든 판단은 사용자 ID와 함께 저장소에 기록됩니다."), QStringLiteral("metricCaption")));
     return panel;
