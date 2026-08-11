@@ -5,6 +5,7 @@
 #include "src/services/missioncontroller.h"
 #include "src/services/waypointrepository.h"
 #include "src/services/telemetryprovider.h"
+#include "src/ros/navigationservice.h"
 #include "src/widgets/dashboardcentralwidget.h"
 #include "src/windows/mainwindowstyler.h"
 #include "ui_mainwindow.h"
@@ -87,6 +88,7 @@ void MainWindow::setTelemetryProvider(TelemetryProvider *provider)
 
 void MainWindow::setNavigationService(NavigationService *service)
 {
+    m_navigationService = service;
     m_dashboardWidget->setNavigationService(service);
 }
 
@@ -172,7 +174,29 @@ void MainWindow::handleDashboardExit()
 
 void MainWindow::handleEmergencyStop()
 {
-    QMessageBox::warning(this, QStringLiteral("비상 정지"), QStringLiteral("비상 정지 요청을 전송합니다."));
+    // 웨이포인트 관리 페이지의 시험 주행처럼 MissionController를 거치지 않고
+    // NavigationService에 직접 navigateToPose를 거는 경로도 있어서, 미션
+    // 상태(Idle 등)와 무관하게 항상 cancelGoal()부터 무조건 호출한다.
+    // requestMissionCancel()은 그 위에 미션 큐/이력 정리를 더해준다.
+    if (m_navigationService != nullptr) {
+        m_navigationService->cancelGoal();
+    }
+    if (m_missionController != nullptr) {
+        m_missionController->requestMissionCancel();
+    }
+
+    // control_command_log 감사 기록 — 로봇이 정확히 1대일 때만(다른 로그
+    // 기록기들과 동일한 가정) 남긴다. 실패해도 정지 자체는 이미 위에서
+    // 처리됐으니 에러 메시지는 조용히 무시한다.
+    const QVector<RobotRecord> robots = m_robotService.listRobots(false);
+    if (robots.size() == 1) {
+        QString logErrorMessage;
+        m_operationsOverviewService.recordControlCommand(
+            robots.first().id, QStringLiteral("qt"), QStringLiteral("estop"), true, m_session.username, logErrorMessage);
+    }
+
+    QMessageBox::warning(this, QStringLiteral("비상 정지"),
+                          QStringLiteral("비상 정지 요청을 전송했습니다. 로봇이 현재 위치에서 정지합니다."));
 }
 
 void MainWindow::handleMissionCancel()

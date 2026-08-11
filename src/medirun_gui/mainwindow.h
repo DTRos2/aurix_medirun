@@ -65,5 +65,6 @@ private:
     RobotService &m_robotService;
     AppSession m_session;
     MissionController *m_missionController {nullptr};
+    NavigationService *m_navigationService {nullptr};
 };
 #endif // MAINWINDOW_H

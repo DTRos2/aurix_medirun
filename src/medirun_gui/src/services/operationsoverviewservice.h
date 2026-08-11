@@ -75,6 +75,15 @@ public:
     virtual bool recordSystemEvent(
         const QString &eventType, const QString &severity, const QString &message, QString &errorMessage) = 0;
 
+    // control_command_log 1행 기록 (제어 명령 감사 로그). commandSource: "qt" |
+    // "unity" | "navigation" | "playback" | "safety". commandType: "drive" |
+    // "stop" | "estop" | "mode_change" | "goal" | "resume". session_id가
+    // NOT NULL이라, 진행 중(status='running')인 robot_session이 없으면
+    // startDrivingSession과 동일하게 수동 세션을 하나 만들어 붙인다.
+    virtual bool recordControlCommand(
+        int robotId, const QString &commandSource, const QString &commandType, bool emergencyStopActive,
+        const QString &issuedBy, QString &errorMessage) = 0;
+
     // robot_session 1행 + goals 각각에 대한 nav_goal_log 행(waypoint_seq_no로
     // 순번 구분)을 만든다. mode: "auto" | "manual" | "unity" | "playback" | "mapping".
     // 성공하면 sessionId에 새 robot_session.id를 채운다.
