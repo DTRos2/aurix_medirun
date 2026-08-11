@@ -88,7 +88,18 @@ QVector<MissionQueueItem> MissionController::waitingQueue() const
 
 QVector<MissionHistoryEntry> MissionController::todayHistory() const
 {
-    return m_historyEntries;
+    // DB(system_event 등)에는 전부 남지만, GUI에는 최근 24시간 안의 항목만
+    // 보여준다 — 자정 기준 "오늘"이 아니라 지금 시각 기준 rolling 24시간이라
+    // GUI를 며칠씩 켜놔도 표시 목록이 무한정 쌓이지 않는다.
+    const QDateTime cutoff = QDateTime::currentDateTime().addSecs(-24 * 60 * 60);
+    QVector<MissionHistoryEntry> recent;
+    recent.reserve(m_historyEntries.size());
+    for (const MissionHistoryEntry &entry : m_historyEntries) {
+        if (entry.occurredAt >= cutoff) {
+            recent.append(entry);
+        }
+    }
+    return recent;
 }
 
 QString MissionController::queueSummaryText() const
