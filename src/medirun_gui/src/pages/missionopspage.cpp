@@ -14,6 +14,8 @@
 #include <QStyle>
 #include <QVBoxLayout>
 
+#include <algorithm>
+
 namespace {
 
 QLabel *makeLabel(const QString &text, const QString &objectName = {})
@@ -377,11 +379,15 @@ void MissionOpsPage::refreshHistory()
         return;
     }
 
-    const QVector<MissionHistoryEntry> entries = m_controller->todayHistory();
+    QVector<MissionHistoryEntry> entries = m_controller->todayHistory();
     if (entries.isEmpty()) {
         m_historyListLayout->addWidget(makeLabel(QStringLiteral("오늘 기록이 없습니다."), QStringLiteral("metricCaption")));
         return;
     }
+    // 최신 항목이 맨 위에 오도록 표시 직전에 명시적으로 정렬한다.
+    std::sort(entries.begin(), entries.end(), [](const MissionHistoryEntry &a, const MissionHistoryEntry &b) {
+        return a.occurredAt > b.occurredAt;
+    });
 
     for (const MissionHistoryEntry &entry : entries) {
         auto *rowLayout = new QHBoxLayout;
