@@ -306,9 +306,10 @@ void MissionController::handleNavigationResult(const QString &resultCode, const 
 
         // 미션 취소(그 자리에서 정지) — Nav2가 취소를 확인해준 시점. 대기하던
         // 진행 중 호출을 큐에서 완전히 삭제하고 Cancelled로 종료 처리한다.
+        // 다음 대기 호출로 바로 주행하지 않고, 운영자에게 확인을 받는다.
         removeQueueItem(m_snapshot.queueId);
         finishMission(MissionState::Cancelled, m_pendingReason.isEmpty() ? QStringLiteral("운영자 미션 취소 요청") : m_pendingReason,
-                      QStringLiteral("MISSION_CANCELLED"), QStringLiteral("CANCELLED"));
+                      QStringLiteral("MISSION_CANCELLED"), QStringLiteral("CANCELLED"), true);
         return;
     }
 
@@ -445,11 +446,7 @@ void MissionController::startNextQueueIfPossible()
         }
     }
 
-    m_snapshot = MissionSnapshot();
-    m_snapshot.waitingCount = std::count_if(m_queueItems.cbegin(), m_queueItems.cend(), [](const MissionQueueItem &item) {
-        return item.status == MissionQueueStatus::Waiting;
-    });
-    emit missionChanged();
+    resetToIdleSnapshot();
 }
 
 void MissionController::startMissionForQueue(const QString &queueId, bool divertedFromActiveMission)
@@ -574,7 +571,8 @@ bool MissionController::resolveHomeWaypoint(WaypointDef &homeWaypoint, WaypointP
 void MissionController::finishMission(MissionState finalState,
                                       const QString &reason,
                                       const QString &historyType,
-                                      const QString &historyResult)
+                                      const QString &historyResult,
+                                      bool requiresQueueConfirmation)
 {
     if (MissionQueueItem *item = activeQueueItem()) {
         item->status = (finalState == MissionState::Completed)
@@ -592,7 +590,49 @@ void MissionController::finishMission(MissionState finalState,
     emit queueChanged();
     emit historyChanged();
     emit missionChanged();
+
+    if (requiresQueueConfirmation) {
+        for (const MissionQueueItem &item : std::as_const(m_queueItems)) {
+            if (item.status == MissionQueueStatus::Waiting) {
+                log(QStringLiteral("QUEUE"), QStringLiteral("awaiting operator confirmation queue_id=%1").arg(item.queueId));
+                resetToIdleSnapshot();
+                emit nextQueueConfirmationRequested(item.queueId, item.waypointName);
+                return;
+            }
+        }
+    }
+
     startNextQueueIfPossible();
+}
+
+void MissionController::resetToIdleSnapshot()
+{
+    m_snapshot = MissionSnapshot();
+    m_snapshot.waitingCount = std::count_if(m_queueItems.cbegin(), m_queueItems.cend(), [](const MissionQueueItem &item) {
+        return item.status == MissionQueueStatus::Waiting;
+    });
+    emit missionChanged();
+}
+
+void MissionController::confirmStartNextQueue(const QString &queueId)
+{
+    if (m_snapshot.state != MissionState::Idle) {
+        return;
+    }
+    const int index = queueIndex(queueId);
+    if (index < 0 || m_queueItems.at(index).status != MissionQueueStatus::Waiting) {
+        return;
+    }
+    log(QStringLiteral("QUEUE"), QStringLiteral("operator confirmed next queue_id=%1").arg(queueId));
+    startMissionForQueue(queueId, false);
+}
+
+void MissionController::declineNextQueue()
+{
+    log(QStringLiteral("QUEUE"), QStringLiteral("operator declined next queue start, staying stopped"));
+    addHistory(QStringLiteral("QUEUE_START_DECLINED"), QString(), QString(), QString(), QString(),
+               QStringLiteral("DECLINED"), QStringLiteral("다음 호출 주행을 보류하고 현재 위치에서 대기"));
+    emit historyChanged();
 }
 
 void MissionController::markQueueStatus(const QString &queueId, MissionQueueStatus status)

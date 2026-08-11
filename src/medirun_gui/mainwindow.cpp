@@ -99,6 +99,8 @@ void MainWindow::setMissionController(MissionController *controller)
 {
     m_missionController = controller;
     m_dashboardWidget->setMissionController(controller);
+    connect(m_missionController, &MissionController::nextQueueConfirmationRequested,
+            this, &MainWindow::handleNextQueueConfirmationRequested);
 }
 
 void MainWindow::setWaypointRepository(WaypointRepository *repository)
@@ -184,6 +186,24 @@ void MainWindow::handleReturnHome()
 {
     if (m_missionController != nullptr) {
         m_missionController->requestReturnHome();
+    }
+}
+
+void MainWindow::handleNextQueueConfirmationRequested(const QString &queueId, const QString &waypointName)
+{
+    if (m_missionController == nullptr) {
+        return;
+    }
+
+    const auto answer = QMessageBox::question(
+        this, QStringLiteral("대기 호출 주행"),
+        QStringLiteral("미션이 취소되어 현재 위치에서 정지했습니다.\n대기 중인 첫 번째 호출(%1)로 주행하시겠습니까?").arg(waypointName),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+
+    if (answer == QMessageBox::Yes) {
+        m_missionController->confirmStartNextQueue(queueId);
+    } else {
+        m_missionController->declineNextQueue();
     }
 }
 
