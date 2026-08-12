@@ -25,4 +25,10 @@ source "${WORKSPACE_ROOT}/install/setup.bash"
 : "${TURTLEBOT3_MODEL:=burger}"
 export TURTLEBOT3_MODEL
 
+# 팀 전체가 CycloneDDS로 통일해서 씀. RMW 구현체가 다르면 같은
+# ROS_DOMAIN_ID라도 디스커버리가 안 되는 경우가 있어 헤더 ROS2 표시등이
+# 안 뜨는 문제로 이어진 적이 있음.
+: "${RMW_IMPLEMENTATION:=rmw_cyclonedds_cpp}"
+export RMW_IMPLEMENTATION
+
 exec ros2 launch medirun_bringup bringup.launch.py "$@"

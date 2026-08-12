@@ -412,7 +412,9 @@ void MissionOpsPage::refreshHistory()
     });
 
     for (const MissionHistoryEntry &entry : entries) {
-        auto *rowLayout = new QHBoxLayout;
+        auto *rowWidget = new QWidget;
+        auto *rowLayout = new QHBoxLayout(rowWidget);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
         rowLayout->setSpacing(7);
         auto *timeLabel = makeLabel(entry.occurredAt.toString(QStringLiteral("HH:mm")), QStringLiteral("metricCaption"));
         timeLabel->setFixedWidth(36);
@@ -429,7 +431,7 @@ void MissionOpsPage::refreshHistory()
                                         entry.detailMessage);
         textCol->addWidget(makeLabel(detail, QStringLiteral("metricCaption")));
         rowLayout->addLayout(textCol, 1);
-        m_historyListLayout->addLayout(rowLayout);
+        m_historyListLayout->addWidget(rowWidget);
     }
     m_historyListLayout->addStretch();
 }
