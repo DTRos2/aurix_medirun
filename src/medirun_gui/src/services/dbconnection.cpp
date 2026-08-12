@@ -98,3 +98,16 @@ bool openDbConnection(QString &errorMessage)
     errorMessage.clear();
     return true;
 }
+
+QDateTime dbTimestampToLocal(const QVariant &value)
+{
+    QDateTime dt = value.toDateTime();
+    if (!dt.isValid()) {
+        return dt;
+    }
+    // Qt가 돌려준 QDateTime은 로컬 시간인 것처럼 timeSpec이 잡혀 있지만, 실제
+    // 저장된 벽시계 값은 UTC 기준이었다(dbconnection.h 주석 참고) — timeSpec만
+    // UTC로 바로잡아 재해석한 뒤 로컬(KST)로 변환한다.
+    dt.setTimeSpec(Qt::UTC);
+    return dt.toLocalTime();
+}

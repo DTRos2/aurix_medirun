@@ -406,6 +406,64 @@ bool DbOperationsOverviewService::fetchRecentEvents(int limit, QVector<Operation
     return true;
 }
 
+bool DbOperationsOverviewService::fetchSystemEvents(
+    const QDate &startDate, const QDate &endDate, const QString &keyword, QVector<OperationsEventRow> &rows,
+    QString &errorMessage)
+{
+    rows.clear();
+
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    // endDate까지 "포함"해서 보여줘야 하므로 다음 날 00:00을 배타적 상한으로 쓴다.
+    const QDateTime start(startDate.startOfDay());
+    const QDateTime end(endDate.addDays(1).startOfDay());
+    const QString trimmedKeyword = keyword.trimmed();
+
+    // 이름 있는 바인딩(:keyword)을 같은 문장 안에서 두 번 이상 쓰면 QPSQL
+    // 드라이버가 각 자리마다 다른 파라미터로 취급해서 하나만 실제로 바인딩된
+    // 값이 들어가고 나머지는 비어버리는 문제가 있었다(검색어를 쳐도 목록이
+    // 하나도 안 바뀌던 원인) — 자리마다 이름을 따로 줘서 피한다. LIKE 패턴의
+    // '%'도 SQL에서 문자열 연결(||)하지 않고 C++에서 미리 붙여서 바인딩한다.
+    QString sql = QStringLiteral(
+        "SELECT created_at, severity, message, event_type "
+        "FROM system_event "
+        "WHERE created_at >= :start AND created_at < :end");
+    if (!trimmedKeyword.isEmpty()) {
+        sql += QStringLiteral(" AND (message ILIKE :keywordMessage OR event_type ILIKE :keywordEventType)");
+    }
+    sql += QStringLiteral(" ORDER BY created_at DESC");
+
+    QSqlQuery query;
+    query.prepare(sql);
+    query.bindValue(QStringLiteral(":start"), start);
+    query.bindValue(QStringLiteral(":end"), end);
+    if (!trimmedKeyword.isEmpty()) {
+        // QString::arg()는 리터럴 '%'와 플레이스홀더 "%1"이 섞이면 파싱이
+        // 헷갈릴 수 있어(예: "%%%1%%") 그냥 이어붙인다.
+        const QString likePattern = QLatin1Char('%') + trimmedKeyword + QLatin1Char('%');
+        query.bindValue(QStringLiteral(":keywordMessage"), likePattern);
+        query.bindValue(QStringLiteral(":keywordEventType"), likePattern);
+    }
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("DB 조회 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    while (query.next()) {
+        OperationsEventRow row;
+        row.occurredAt = dbTimestampToLocal(query.value(QStringLiteral("created_at")));
+        severityLabelAndKind(query.value(QStringLiteral("severity")).toString(), row.severityLabel, row.kind);
+        row.message = QStringLiteral("%1 · %2").arg(
+            query.value(QStringLiteral("event_type")).toString(), query.value(QStringLiteral("message")).toString());
+        rows.push_back(row);
+    }
+
+    errorMessage.clear();
+    return true;
+}
+
 bool DbOperationsOverviewService::recordConnectionStatus(
     int robotId, const QString &target, const QString &status, const QString &detail, QString &errorMessage)
 {

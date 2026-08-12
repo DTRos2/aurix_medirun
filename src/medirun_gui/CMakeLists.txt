@@ -98,6 +98,8 @@ qt_add_executable(medirun_gui
     src/widgets/dashboardcentralwidget.h
     src/widgets/headerbar.cpp
     src/widgets/headerbar.h
+    src/widgets/livesearchlineedit.cpp
+    src/widgets/livesearchlineedit.h
     src/widgets/mapviewwidget.cpp
     src/widgets/mapviewwidget.h
     src/widgets/waypointmapwidget.cpp
