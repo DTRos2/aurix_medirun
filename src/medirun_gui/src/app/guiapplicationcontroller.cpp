@@ -7,14 +7,17 @@
 #include "../services/dbauthservice.h"
 #include "../services/dboperationsoverviewservice.h"
 #include "../services/dbrobotservice.h"
+#include "../services/drivingrecordservice.h"
 #include "../services/missioncontroller.h"
 #include "../services/missionrosinterface.h"
 #include "../services/missionstorageservice.h"
 #include "../services/mockcamerafeedprovider.h"
+#include "../services/mocksensortelemetryprovider.h"
 #include "../services/mocktelemetryprovider.h"
 #include "../services/navgoallogrecorder.h"
 #include "../services/roscamerafeedprovider.h"
 #include "../services/rosbatterytelemetryprovider.h"
+#include "../services/rossensortelemetryprovider.h"
 #include "../services/telemetrylogrecorder.h"
 #include "../services/waypointrepository.h"
 #include "../widgets/splashscreenwidget.h"
@@ -38,6 +41,8 @@ GuiApplicationController::GuiApplicationController(QApplication &application, QO
     , m_telemetryLogRecorder(nullptr)
     , m_navGoalLogRecorder(nullptr)
     , m_cameraFeedProvider(nullptr)
+    , m_sensorTelemetryProvider(nullptr)
+    , m_drivingRecordService(nullptr)
     , m_splashScreen(nullptr)
     , m_loginDialog(nullptr)
     , m_mainWindow(nullptr)
@@ -131,6 +136,19 @@ void GuiApplicationController::createMainWindow()
     m_mainWindow->setCameraFeedProvider(m_cameraFeedProvider);
     m_mainWindow->setWaypointRepository(m_waypointRepository.get());
     m_mainWindow->setMissionController(m_missionController.get());
+
+    if (mockModeEnabled()) {
+        m_sensorTelemetryProvider = new MockSensorTelemetryProvider(m_mainWindow);
+    } else {
+        m_sensorTelemetryProvider = new RosSensorTelemetryProvider(m_mainWindow);
+    }
+    m_mainWindow->setSensorTelemetryProvider(m_sensorTelemetryProvider);
+
+    m_drivingRecordService = new DrivingRecordService(
+        m_session, m_navigationService.get(), m_telemetryProvider, m_cameraFeedProvider, m_waypointRepository.get(),
+        *m_robotService, *m_operationsOverviewService, m_mainWindow);
+    m_mainWindow->setDrivingRecordService(m_drivingRecordService);
+
     QObject::connect(m_mainWindow, &MainWindow::logoutRequested, this, &GuiApplicationController::handleLogout);
 }
 
@@ -143,6 +161,9 @@ void GuiApplicationController::presentMainWindow()
     }
     if (m_cameraFeedProvider != nullptr) {
         m_cameraFeedProvider->start();
+    }
+    if (m_sensorTelemetryProvider != nullptr) {
+        m_sensorTelemetryProvider->start();
     }
 }
 

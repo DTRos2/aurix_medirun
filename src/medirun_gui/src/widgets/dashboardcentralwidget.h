@@ -23,6 +23,10 @@ class RobotService;
 class MissionController;
 class WaypointRepository;
 class MissionOpsPage;
+class LiveControlPage;
+class TelemetryProvider;
+class SensorTelemetryProvider;
+class DrivingRecordService;
 
 class DashboardCentralWidget : public QWidget
 {
@@ -41,6 +45,9 @@ public:
     void setCameraFeedProvider(CameraFeedProvider *provider);
     void setMissionController(MissionController *controller);
     void setWaypointRepository(WaypointRepository *repository);
+    void setTelemetryProvider(TelemetryProvider *provider);
+    void setSensorTelemetryProvider(SensorTelemetryProvider *provider);
+    void setDrivingRecordService(DrivingRecordService *service);
     bool handleManualKeyPress(int key);
     bool handleManualKeyRelease(int key);
 
@@ -67,6 +74,7 @@ private:
     RemoteControlPage *m_remoteControlPage {nullptr};
     SlamMappingPage *m_slamMappingPage {nullptr};
     MissionOpsPage *m_missionOpsPage {nullptr};
+    LiveControlPage *m_liveControlPage {nullptr};
 };
 
 #endif // DASHBOARDCENTRALWIDGET_H

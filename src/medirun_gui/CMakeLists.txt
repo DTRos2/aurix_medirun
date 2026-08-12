@@ -26,6 +26,7 @@ find_package(action_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc videoio)
 find_package(tf2 REQUIRED)
 find_package(tf2_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
@@ -87,6 +88,15 @@ qt_add_executable(medirun_gui
     src/services/roscamerafeedprovider.h
     src/services/rosbatterytelemetryprovider.cpp
     src/services/rosbatterytelemetryprovider.h
+    src/services/sensortelemetryprovider.h
+    src/services/mocksensortelemetryprovider.cpp
+    src/services/mocksensortelemetryprovider.h
+    src/services/rossensortelemetryprovider.cpp
+    src/services/rossensortelemetryprovider.h
+    src/services/drivingrecordservice.cpp
+    src/services/drivingrecordservice.h
+    src/services/videorecorder.cpp
+    src/services/videorecorder.h
     src/services/telemetryprovider.h
     src/services/waypointfile.cpp
     src/services/waypointfile.h
@@ -154,6 +164,7 @@ target_link_libraries(medirun_gui
         Qt::Sql
         yaml-cpp
         crypt
+        ${OpenCV_LIBS}
 )
 
 ament_target_dependencies(medirun_gui

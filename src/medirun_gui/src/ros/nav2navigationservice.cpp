@@ -10,6 +10,7 @@
 #include <nav2_msgs/action/follow_waypoints.hpp>
 #include <nav2_msgs/action/navigate_to_pose.hpp>
 #include <nav2_msgs/msg/speed_limit.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
@@ -105,6 +106,12 @@ public:
         m_scanSub = create_subscription<sensor_msgs::msg::LaserScan>(
             "scan", rclcpp::SensorDataQoS(),
             [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { handleScan(msg); });
+
+        m_odomSub = create_subscription<nav_msgs::msg::Odometry>(
+            "odom", rclcpp::QoS(10),
+            [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
+                m_bridge->odomVelocityUpdated(msg->twist.twist.linear.x, msg->twist.twist.angular.z);
+            });
 
         m_btNavigatorStateClient = create_client<lifecycle_msgs::srv::GetState>("/bt_navigator/get_state");
         m_waypointFollowerStateClient = create_client<lifecycle_msgs::srv::GetState>("/waypoint_follower/get_state");
@@ -406,6 +413,7 @@ private:
     rclcpp::Publisher<nav2_msgs::msg::SpeedLimit>::SharedPtr m_speedLimitPub;
     rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr m_amclSub;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr m_scanSub;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr m_odomSub;
     std::unique_ptr<tf2_ros::Buffer> m_tfBuffer;
     std::shared_ptr<tf2_ros::TransformListener> m_tfListener;
     NavClient::GoalHandle::SharedPtr m_navGoalHandle;
