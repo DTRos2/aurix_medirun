@@ -162,6 +162,7 @@ void DashboardCentralWidget::setCameraFeedProvider(CameraFeedProvider *provider)
     if (provider != nullptr && m_headerBar != nullptr) {
         connect(provider, &CameraFeedProvider::connectionStateChanged, m_headerBar, &HeaderBar::setCameraConnected);
     }
+
 }
 
 void DashboardCentralWidget::setTelemetryProvider(TelemetryProvider *provider)

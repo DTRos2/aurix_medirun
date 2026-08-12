@@ -23,6 +23,7 @@
 #include "../widgets/splashscreenwidget.h"
 
 #include <QApplication>
+#include <QDebug>
 #include <QDialog>
 #include <QTimer>
 
@@ -89,9 +90,62 @@ void GuiApplicationController::showLoginPage()
     m_loginDialog->activateWindow();
 }
 
+void GuiApplicationController::mergeHomeWaypointFromDb(WaypointMap &waypoints) const
+{
+    const QVector<RobotRecord> robots = m_robotService->listRobots(false);
+    if (robots.size() != 1) {
+        return;
+    }
+
+    QString frameId;
+    WaypointMap homeWaypoints;
+    TrajectoryMap trajectories;
+    QString errorMessage;
+    if (!m_operationsOverviewService->loadWaypointLibraryByName(
+            robots.first().id, QStringLiteral("home"), frameId, homeWaypoints, trajectories, errorMessage)) {
+        return;
+    }
+
+    for (auto it = homeWaypoints.cbegin(); it != homeWaypoints.cend(); ++it) {
+        if (it.value().kind == WaypointMarkerKind::Home) {
+            waypoints.insert(it.key(), it.value());
+        }
+    }
+}
+
+void GuiApplicationController::resetWaypointRepositoryToStartupDefaults()
+{
+    QVector<CallButtonRow> rows;
+    QString errorMessage;
+    if (!m_operationsOverviewService->loadActiveCallButtons(rows, errorMessage)) {
+        qWarning() << "call_button 로드 실패, 초기 웨이포인트를 비워둡니다:" << errorMessage;
+        rows.clear();
+    }
+
+    WaypointMap waypoints;
+    for (const CallButtonRow &row : std::as_const(rows)) {
+        WaypointDef def;
+        def.name = row.code;
+        def.label = row.zoneName.isEmpty() ? row.code : row.zoneName;
+        def.x = row.x;
+        def.y = row.y;
+        def.yaw = row.yaw;
+        def.kind = WaypointMarkerKind::CallZone;
+        waypoints.insert(def.name, def);
+    }
+    mergeHomeWaypointFromDb(waypoints);
+
+    // WaypointRepository 생성자가 이미 기본 웨이포인트 파일을 읽어둔 상태지만,
+    // 대시보드 최초 진입 화면은 그 파일 내용을 무시하고 call_button + HOME만
+    // 반영해야 하므로 통째로 교체한다. 사용자가 "웨이포인트 불러오기"를
+    // 명시적으로 눌러야 그 파일 내용이 여기에 합쳐져서 다시 채워진다.
+    m_waypointRepository->replaceAll(QStringLiteral("map"), waypoints, TrajectoryMap(), QString());
+}
+
 void GuiApplicationController::createMainWindow()
 {
     m_mainWindow = new MainWindow(m_session, *m_authService, *m_operationsOverviewService, *m_robotService);
+    resetWaypointRepositoryToStartupDefaults();
     m_missionController = std::make_unique<MissionController>(
         m_session,
         m_navigationService.get(),

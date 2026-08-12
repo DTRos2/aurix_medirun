@@ -44,8 +44,9 @@ void clearLayout(QLayout *layout)
 
     while (QLayoutItem *child = layout->takeAt(0)) {
         if (QLayout *nestedLayout = child->layout()) {
+            // QLayout이 QLayoutItem을 상속하므로 nestedLayout과 child는 같은 객체다.
+            // 아래 delete child가 이미 정리하므로 여기서 따로 delete하면 이중 해제.
             clearLayout(nestedLayout);
-            delete nestedLayout;
         }
         if (QWidget *widget = child->widget()) {
             delete widget;
@@ -411,7 +412,9 @@ void MissionOpsPage::refreshHistory()
     });
 
     for (const MissionHistoryEntry &entry : entries) {
-        auto *rowLayout = new QHBoxLayout;
+        auto *rowWidget = new QWidget;
+        auto *rowLayout = new QHBoxLayout(rowWidget);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
         rowLayout->setSpacing(7);
         auto *timeLabel = makeLabel(entry.occurredAt.toString(QStringLiteral("HH:mm")), QStringLiteral("metricCaption"));
         timeLabel->setFixedWidth(36);
@@ -428,7 +431,7 @@ void MissionOpsPage::refreshHistory()
                                         entry.detailMessage);
         textCol->addWidget(makeLabel(detail, QStringLiteral("metricCaption")));
         rowLayout->addLayout(textCol, 1);
-        m_historyListLayout->addLayout(rowLayout);
+        m_historyListLayout->addWidget(rowWidget);
     }
     m_historyListLayout->addStretch();
 }

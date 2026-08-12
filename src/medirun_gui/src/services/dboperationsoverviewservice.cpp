@@ -424,7 +424,7 @@ bool DbOperationsOverviewService::fetchRecentEvents(int limit, QVector<Operation
 
     while (query.next()) {
         OperationsEventRow row;
-        row.occurredAt = query.value(QStringLiteral("created_at")).toDateTime();
+        row.occurredAt = dbTimestampToLocal(query.value(QStringLiteral("created_at")));
         severityLabelAndKind(query.value(QStringLiteral("severity")).toString(), row.severityLabel, row.kind);
 
         const QString robotName = query.value(QStringLiteral("robot_name")).toString();
@@ -1078,6 +1078,63 @@ bool DbOperationsOverviewService::recordFile(
     query.bindValue(QStringLiteral(":uploadedBy"), uploadedBy.isEmpty() ? QVariant() : QVariant(uploadedBy));
     if (!query.exec()) {
         errorMessage = QStringLiteral("파일 기록 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::loadActiveCallButtons(QVector<CallButtonRow> &rows, QString &errorMessage)
+{
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    rows.clear();
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "SELECT code, zone_name, pos_x, pos_y, yaw FROM call_button "
+        "WHERE deregistered_at IS NULL AND pos_x IS NOT NULL AND pos_y IS NOT NULL"));
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("호출 버튼 목록 조회 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+    while (query.next()) {
+        CallButtonRow row;
+        row.code = query.value(0).toString();
+        row.zoneName = query.value(1).toString();
+        row.x = query.value(2).toDouble();
+        row.y = query.value(3).toDouble();
+        row.yaw = query.value(4).isNull() ? 0.0 : query.value(4).toDouble();
+        rows.append(row);
+    }
+
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::upsertCallButton(
+    const QString &code, const QString &zoneName, double x, double y, double yaw, QString &errorMessage)
+{
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "INSERT INTO call_button (code, zone_name, pos_x, pos_y, yaw) "
+        "VALUES (:code, :zoneName, :x, :y, :yaw) "
+        "ON CONFLICT (code) DO UPDATE SET "
+        "zone_name = EXCLUDED.zone_name, pos_x = EXCLUDED.pos_x, pos_y = EXCLUDED.pos_y, "
+        "yaw = EXCLUDED.yaw, deregistered_at = NULL"));
+    query.bindValue(QStringLiteral(":code"), code);
+    query.bindValue(QStringLiteral(":zoneName"), zoneName.isEmpty() ? code : zoneName);
+    query.bindValue(QStringLiteral(":x"), x);
+    query.bindValue(QStringLiteral(":y"), y);
+    query.bindValue(QStringLiteral(":yaw"), yaw);
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("호출 버튼 등록 실패: %1").arg(query.lastError().text());
         return false;
     }
 

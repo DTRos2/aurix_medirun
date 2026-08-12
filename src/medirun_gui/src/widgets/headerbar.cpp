@@ -104,7 +104,7 @@ HeaderBar::HeaderBar(QWidget *parent)
     layout->addWidget(m_rosChip);
     m_dbChip = makeBadgeLabel(QStringLiteral("DB"), QStringLiteral("green"), this);
     layout->addWidget(m_dbChip);
-    m_camChip = makeBadgeLabel(QStringLiteral("CAM"), QStringLiteral("amber"), this);
+    m_camChip = makeBadgeLabel(QStringLiteral("CAM"), QStringLiteral("red"), this);
     layout->addWidget(m_camChip);
 
     m_batteryLabel = new QLabel(QStringLiteral("--%"), this);

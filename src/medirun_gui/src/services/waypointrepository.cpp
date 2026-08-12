@@ -104,6 +104,22 @@ void WaypointRepository::replaceAll(const QString &frameId,
     emit repositoryChanged();
 }
 
+void WaypointRepository::upsertWaypoint(const WaypointDef &waypoint)
+{
+    upsertWaypoints({waypoint});
+}
+
+void WaypointRepository::upsertWaypoints(const QVector<WaypointDef> &waypoints)
+{
+    if (waypoints.isEmpty()) {
+        return;
+    }
+    for (const WaypointDef &waypoint : waypoints) {
+        m_waypoints.insert(waypoint.name, waypoint);
+    }
+    emit repositoryChanged();
+}
+
 bool WaypointRepository::waypoint(const QString &waypointId, WaypointDef &waypoint) const
 {
     if (!m_waypoints.contains(waypointId)) {

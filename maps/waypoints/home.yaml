@@ -1,0 +1,10 @@
+frame_id: map
+waypoints:
+  HOME:
+    x: 2.8700000000000001
+    y: -2.02
+    yaw: 1.4486232791552935
+    kind: home
+    label: home
+trajectories:
+  {}

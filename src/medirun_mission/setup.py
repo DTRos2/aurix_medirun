@@ -9,8 +9,8 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
-        (f"share/{package_name}/launch", ["launch/.gitkeep"]),
-        (f"share/{package_name}/config", ["config/.gitkeep"]),
+        (f"share/{package_name}/launch", ["launch/mission_bringup.launch.py"]),
+        (f"share/{package_name}/config", ["config/mission.yaml"]),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -19,4 +19,11 @@ setup(
     description="Mission orchestration package for the MediRun project.",
     license="Apache-2.0",
     tests_require=["pytest"],
+    entry_points={
+        "console_scripts": [
+            "emergency_dispatcher = medirun_mission.emergency_dispatcher:main",
+            "waypoint_manager = medirun_mission.waypoint_manager:main",
+            "mission_manager = medirun_mission.mission_manager:main",
+        ]
+    },
 )

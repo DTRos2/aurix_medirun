@@ -74,6 +74,10 @@ public:
         const QString &entityType, const QString &entityId, const QString &fileCategory, const QString &storagePath,
         const QString &originalFilename, const QString &mimeType, const QString &uploadedBy,
         QString &errorMessage) override;
+
+    bool loadActiveCallButtons(QVector<CallButtonRow> &rows, QString &errorMessage) override;
+    bool upsertCallButton(
+        const QString &code, const QString &zoneName, double x, double y, double yaw, QString &errorMessage) override;
 };
 
 #endif // DBOPERATIONSOVERVIEWSERVICE_H

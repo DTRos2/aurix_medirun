@@ -1,0 +1,1251 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AURIX MediRun 발표 슬라이드</title>
+<style>
+:root{
+  --bg:#07111d;
+  --bg-soft:#0d1b2d;
+  --panel:#11243a;
+  --panel-2:#152c46;
+  --line:rgba(201,222,244,.16);
+  --ink:#f8fbff;
+  --muted:#a8bfd6;
+  --cyan:#54d3ff;
+  --green:#4ade80;
+  --amber:#fbbf24;
+  --red:#fb7185;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font-family:"SUIT Variable","Pretendard","Noto Sans KR","Malgun Gothic",sans-serif;
+  color:var(--ink);
+  overflow:hidden;
+  background:
+    radial-gradient(circle at 12% 16%,rgba(84,211,255,.18),transparent 24%),
+    radial-gradient(circle at 85% 12%,rgba(251,191,36,.16),transparent 24%),
+    linear-gradient(135deg,#02070f,#091423 46%,#06101e);
+}
+.deck{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr auto}
+.topbar,.footer{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:12px 22px;
+  background:rgba(4,10,18,.82);
+  backdrop-filter:blur(14px);
+  border-color:var(--line);
+}
+.topbar{border-bottom:1px solid var(--line)}
+.footer{border-top:1px solid var(--line)}
+.brand{font-weight:900;letter-spacing:-.03em}
+.brand span{color:var(--cyan)}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+button,.btn{
+  font:inherit;
+  color:var(--ink);
+  background:rgba(17,36,58,.9);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:8px 11px;
+  cursor:pointer;
+  text-decoration:none;
+}
+button:hover,.btn:hover{border-color:var(--cyan)}
+.stage{display:flex;align-items:center;justify-content:center;padding:18px;min-height:0}
+.slide{
+  display:none;
+  position:relative;
+  width:min(95vw,calc((100vh - 140px)*16/9));
+  aspect-ratio:16/9;
+  padding:42px 50px 38px;
+  overflow:hidden;
+  border-radius:30px;
+  border:1px solid rgba(220,236,255,.14);
+  background:
+    linear-gradient(145deg,rgba(10,22,37,.98),rgba(7,16,29,.98)),
+    linear-gradient(180deg,rgba(84,211,255,.06),transparent 50%);
+  box-shadow:0 30px 100px rgba(0,0,0,.46);
+}
+.slide.active{display:block}
+.slide:before{
+  content:"";
+  position:absolute;
+  inset:0;
+  opacity:.18;
+  background-image:
+    linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);
+  background-size:42px 42px;
+  mask-image:radial-gradient(circle at 75% 18%,black,transparent 72%);
+  pointer-events:none;
+}
+.slide>*{position:relative;z-index:1}
+.slide-no{
+  position:absolute;
+  right:28px;
+  top:22px;
+  font-size:14px;
+  font-weight:900;
+  color:rgba(255,255,255,.34);
+}
+.kicker{
+  color:var(--cyan);
+  font-size:13px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  font-weight:900;
+}
+h1,h2,h3,h4,p{margin:0}
+h1{
+  margin-top:12px;
+  font-size:60px;
+  line-height:1.02;
+  letter-spacing:-.06em;
+}
+h2{
+  margin-top:10px;
+  font-size:40px;
+  line-height:1.1;
+  letter-spacing:-.05em;
+}
+h3{
+  font-size:18px;
+  line-height:1.25;
+  letter-spacing:-.02em;
+}
+.subtitle{
+  margin-top:14px;
+  font-size:24px;
+  color:#e8f6ff;
+  font-weight:800;
+}
+.lead{
+  margin-top:12px;
+  font-size:18px;
+  line-height:1.5;
+  color:#d7e7f6;
+  max-width:920px;
+}
+.body-copy{
+  font-size:15px;
+  line-height:1.55;
+  color:#d4e2f0;
+}
+.topline{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+}
+.source-tag{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  padding:8px 12px;
+  border-radius:999px;
+  border:1px solid rgba(84,211,255,.22);
+  background:rgba(84,211,255,.10);
+  color:#def7ff;
+  font-size:13px;
+  font-weight:800;
+}
+.layout-2{display:grid;grid-template-columns:1.08fr .92fr;gap:18px;margin-top:22px}
+.layout-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}
+.layout-4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px}
+.panel{
+  border:1px solid var(--line);
+  border-radius:22px;
+  background:rgba(20,42,67,.72);
+  padding:18px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+.panel h3{margin-bottom:8px}
+.panel p{font-size:15px;line-height:1.5;color:#d1dfed}
+.accent-panel{
+  background:
+    linear-gradient(135deg,rgba(84,211,255,.12),rgba(84,211,255,.03)),
+    rgba(20,42,67,.72);
+}
+.warning-panel{
+  background:
+    linear-gradient(135deg,rgba(251,113,133,.12),rgba(251,113,133,.03)),
+    rgba(20,42,67,.72);
+}
+.tag-row,.pill-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.pill{
+  display:inline-flex;
+  align-items:center;
+  padding:9px 13px;
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:999px;
+  background:rgba(255,255,255,.06);
+  font-size:13px;
+  color:#edf7ff;
+  font-weight:800;
+}
+.hero{
+  display:grid;
+  grid-template-columns:1.05fr .95fr;
+  gap:24px;
+  align-items:center;
+  min-height:100%;
+}
+.cover-card{
+  padding:18px;
+  border-radius:28px;
+  border:1px solid rgba(255,255,255,.14);
+  background:linear-gradient(160deg,rgba(19,41,63,.88),rgba(11,22,35,.82));
+}
+.cover-visual{
+  height:420px;
+  border-radius:22px;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.12);
+  background:#091523;
+}
+.cover-visual img,.figure img,.gallery-card img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+.cover-stat{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:10px;
+  margin-top:18px;
+}
+.mini-stat{
+  padding:14px 12px;
+  border-radius:18px;
+  background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.10);
+}
+.mini-stat strong{
+  display:block;
+  font-size:21px;
+  color:var(--cyan);
+}
+.mini-stat span{
+  display:block;
+  margin-top:6px;
+  font-size:12px;
+  color:var(--muted);
+  line-height:1.35;
+}
+.card-grid{display:grid;gap:14px;margin-top:18px}
+.card-grid.two{grid-template-columns:repeat(2,1fr)}
+.card-grid.three{grid-template-columns:repeat(3,1fr)}
+.card-grid.four{grid-template-columns:repeat(4,1fr)}
+.card{
+  min-height:132px;
+  padding:16px;
+  border-radius:20px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);
+}
+.card .num{
+  color:var(--cyan);
+  font-size:22px;
+  font-weight:900;
+  margin-bottom:10px;
+}
+.card p{font-size:14px;line-height:1.5;color:#cfdeec}
+.stack{display:grid;gap:12px}
+.note{
+  margin-top:16px;
+  padding:14px 16px;
+  border-left:4px solid var(--cyan);
+  border-radius:14px;
+  background:rgba(255,255,255,.06);
+  font-size:15px;
+  line-height:1.5;
+  color:#ddedfb;
+}
+.arch-grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:14px;
+  margin-top:18px;
+}
+.arch-col{
+  min-height:250px;
+  padding:16px;
+  border-radius:22px;
+  border:1px solid rgba(255,255,255,.12);
+  background:linear-gradient(180deg,rgba(84,211,255,.08),rgba(255,255,255,.04));
+}
+.arch-col h3{margin-bottom:10px}
+.arch-col ul{
+  list-style:none;
+  padding:0;
+  margin:0;
+  display:grid;
+  gap:8px;
+}
+.arch-col li{
+  padding:9px 10px;
+  border-radius:12px;
+  background:rgba(7,16,29,.34);
+  font-size:13px;
+  line-height:1.45;
+  color:#dbe9f6;
+}
+.mono{
+  font-family:"JetBrains Mono","Fira Code","D2Coding",monospace;
+  font-size:12px;
+  color:#bfeeff;
+}
+.flow{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:14px;
+  margin-top:18px;
+}
+.flow-step{
+  position:relative;
+  min-height:178px;
+  padding:18px;
+  border-radius:22px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);
+}
+.flow-step:after{
+  content:"";
+  position:absolute;
+  top:50%;
+  right:-9px;
+  width:18px;
+  height:18px;
+  transform:translateY(-50%) rotate(45deg);
+  background:rgba(84,211,255,.8);
+  border-radius:4px;
+}
+.flow-step:last-child:after{display:none}
+.flow-step .step{
+  display:inline-flex;
+  width:34px;
+  height:34px;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  background:rgba(84,211,255,.14);
+  color:var(--cyan);
+  font-weight:900;
+  margin-bottom:12px;
+}
+.flow-step p{margin-top:8px;font-size:14px;line-height:1.5;color:#d1dfec}
+.code-flow{
+  margin-top:16px;
+  padding:16px 18px;
+  border-radius:18px;
+  border:1px solid rgba(84,211,255,.18);
+  background:rgba(6,16,29,.64);
+  font-family:"JetBrains Mono","Fira Code","D2Coding",monospace;
+  font-size:12px;
+  line-height:1.6;
+  color:#c8f4ff;
+}
+.state-track{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:14px;
+}
+.state{
+  position:relative;
+  padding:10px 14px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.06);
+  font-size:13px;
+  font-weight:800;
+  color:#edf7ff;
+}
+.state-arrow{
+  display:flex;
+  align-items:center;
+  color:rgba(255,255,255,.35);
+  font-weight:900;
+}
+.gallery{
+  display:grid;
+  grid-template-columns:1.2fr .8fr;
+  gap:14px;
+  margin-top:18px;
+}
+.gallery-main,.gallery-side{
+  display:grid;
+  gap:14px;
+}
+.gallery-side{grid-template-rows:1fr 1fr}
+.gallery-card{
+  overflow:hidden;
+  border-radius:22px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(9,21,35,.9);
+}
+.gallery-main .gallery-card{min-height:374px}
+.gallery-side .gallery-card{min-height:180px}
+.gallery-caption{
+  padding:11px 13px;
+  border-top:1px solid rgba(255,255,255,.08);
+  background:rgba(7,16,29,.88);
+}
+.gallery-caption strong{display:block;font-size:14px}
+.gallery-caption span{display:block;margin-top:4px;font-size:12px;color:var(--muted);line-height:1.4}
+.split-visual{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:14px;
+  margin-top:18px;
+}
+.figure{
+  overflow:hidden;
+  border-radius:24px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(8,18,31,.94);
+}
+.figure.large{height:378px}
+.figure.medium{height:258px}
+.figure-tint{
+  position:relative;
+}
+.figure-tint:after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(180deg,transparent 55%,rgba(2,6,12,.72));
+  pointer-events:none;
+}
+.figure-label{
+  position:absolute;
+  left:16px;
+  right:16px;
+  bottom:14px;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  font-size:13px;
+  font-weight:800;
+}
+.sensor-grid{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:12px;
+  margin-top:16px;
+}
+.sensor{
+  padding:14px;
+  border-radius:18px;
+  background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.10);
+}
+.sensor strong{display:block;font-size:15px}
+.sensor span{display:block;margin-top:6px;font-size:13px;line-height:1.45;color:#cfdeec}
+.thresholds{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:10px;
+  margin-top:16px;
+}
+.threshold{
+  padding:14px;
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.05);
+}
+.threshold strong{
+  display:block;
+  font-size:28px;
+  line-height:1;
+  color:var(--amber);
+}
+.threshold span{
+  display:block;
+  margin-top:6px;
+  font-size:12px;
+  color:var(--muted);
+}
+.metrics{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:14px;
+  margin-top:18px;
+}
+.metric{
+  padding:18px;
+  border-radius:22px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);
+}
+.metric .value{
+  font-size:46px;
+  line-height:.95;
+  letter-spacing:-.05em;
+  font-weight:900;
+  color:var(--cyan);
+}
+.metric .label{
+  margin-top:10px;
+  font-size:15px;
+  font-weight:800;
+}
+.metric .desc{
+  margin-top:6px;
+  font-size:13px;
+  line-height:1.45;
+  color:var(--muted);
+}
+.meter-grid{
+  display:grid;
+  grid-template-columns:1.1fr .9fr;
+  gap:14px;
+  margin-top:16px;
+}
+.meter-row{margin-top:13px}
+.meter-row:first-child{margin-top:0}
+.meter-label{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  font-size:13px;
+  color:#eaf6ff;
+  margin-bottom:7px;
+}
+.meter{
+  height:10px;
+  border-radius:999px;
+  background:rgba(255,255,255,.10);
+  overflow:hidden;
+}
+.meter > span{
+  display:block;
+  height:100%;
+  border-radius:999px;
+  background:linear-gradient(90deg,var(--cyan),var(--green));
+}
+.doc-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:14px;
+  margin-top:18px;
+}
+.doc-card{
+  min-height:170px;
+  padding:16px;
+  border-radius:20px;
+  border:1px solid rgba(255,255,255,.12);
+  background:linear-gradient(180deg,rgba(251,191,36,.10),rgba(255,255,255,.04));
+}
+.doc-card h3{margin-bottom:8px}
+.doc-card p{font-size:14px;line-height:1.5;color:#d6e4f2}
+.doc-card .ref{
+  display:inline-block;
+  margin-top:10px;
+  padding:6px 10px;
+  border-radius:999px;
+  background:rgba(7,16,29,.36);
+  color:#ffe9a7;
+  font-size:12px;
+  font-weight:800;
+}
+.issue-grid{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:14px;
+  margin-top:18px;
+}
+.issue{
+  min-height:180px;
+  padding:16px;
+  border-radius:22px;
+  border:1px solid rgba(255,255,255,.12);
+  background:linear-gradient(180deg,rgba(251,113,133,.10),rgba(255,255,255,.04));
+}
+.issue .date{
+  display:inline-flex;
+  padding:6px 10px;
+  border-radius:999px;
+  background:rgba(7,16,29,.36);
+  color:#ffd0d8;
+  font-size:12px;
+  font-weight:900;
+}
+.issue h3{margin-top:10px}
+.issue p{margin-top:8px;font-size:14px;line-height:1.5;color:#d7e4f2}
+.issue .result{
+  margin-top:10px;
+  color:#baf7cf;
+  font-size:13px;
+  font-weight:800;
+}
+.close-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:16px;
+  margin-top:20px;
+}
+.summary-list{
+  display:grid;
+  gap:10px;
+  margin-top:14px;
+}
+.summary-item{
+  padding:13px 14px;
+  border-radius:16px;
+  background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.10);
+  font-size:14px;
+  line-height:1.45;
+  color:#d7e4f2;
+}
+.summary-item strong{color:#fff}
+.closing-mark{
+  margin-top:18px;
+  font-size:26px;
+  line-height:1.25;
+  font-weight:900;
+  letter-spacing:-.04em;
+}
+.progress-wrap{
+  height:7px;
+  flex:1;
+  border-radius:999px;
+  overflow:hidden;
+  background:rgba(255,255,255,.10);
+}
+.progress{
+  height:100%;
+  width:0;
+  border-radius:999px;
+  background:linear-gradient(90deg,var(--cyan),var(--amber));
+}
+.counter{min-width:90px;text-align:right;color:var(--muted);font-weight:900}
+.hint{color:var(--muted);font-size:13px}
+.drawer{
+  position:fixed;
+  right:18px;
+  top:72px;
+  bottom:72px;
+  width:min(420px,calc(100vw - 36px));
+  transform:translateX(calc(100% + 26px));
+  transition:.2s;
+  z-index:30;
+  overflow:auto;
+  padding:15px;
+  border-radius:20px;
+  border:1px solid var(--line);
+  background:rgba(5,13,25,.96);
+  box-shadow:0 28px 80px rgba(0,0,0,.5);
+}
+.drawer.open{transform:translateX(0)}
+.drawer h2{font-size:18px;margin:4px 4px 12px}
+.drawer button{width:100%;text-align:left;margin:4px 0}
+@media(max-width:900px){
+  body{overflow:auto}
+  .deck{position:relative;min-height:100%}
+  .stage{display:block}
+  .slide{
+    width:100%;
+    height:auto;
+    min-height:calc(100vh - 140px);
+    aspect-ratio:auto;
+    overflow:auto;
+    padding:28px;
+  }
+  h1{font-size:40px}
+  h2{font-size:30px}
+  .subtitle{font-size:18px}
+  .lead{font-size:16px}
+  .hero,.layout-2,.layout-3,.layout-4,.arch-grid,.flow,.gallery,.split-visual,.metrics,.meter-grid,.doc-grid,.issue-grid,.close-grid,.cover-stat,.card-grid.two,.card-grid.three,.card-grid.four,.thresholds,.sensor-grid{display:block}
+  .panel,.card,.arch-col,.flow-step,.metric,.doc-card,.issue,.mini-stat,.threshold,.sensor{margin-top:12px}
+  .gallery-main .gallery-card,.gallery-side .gallery-card,.figure.large,.figure.medium,.cover-visual{min-height:240px;height:240px}
+  .flow-step:after{display:none}
+}
+@media print{
+  body{overflow:visible;background:white}
+  .topbar,.footer,.drawer{display:none}
+  .deck,.stage{display:block;position:static;padding:0}
+  .slide{
+    display:block!important;
+    width:100%;
+    height:auto;
+    page-break-after:always;
+    border-radius:0;
+    box-shadow:none;
+  }
+}
+</style>
+</head>
+<body>
+<div class="deck">
+  <header class="topbar">
+    <div class="brand"><span>AURIX</span> MediRun Slides</div>
+    <div class="actions">
+      <button data-prev>이전</button>
+      <button data-next>다음</button>
+      <button data-toc>목차</button>
+      <button data-full>전체화면</button>
+      <button onclick="window.print()">인쇄/PDF</button>
+    </div>
+  </header>
+  <main class="stage">
+    <section class="slide" data-title="AURIX MediRun">
+      <div class="slide-no">01</div>
+      <div class="hero">
+        <div>
+          <div class="kicker">AURIX Robotics Project</div>
+          <h1>AURIX MediRun</h1>
+          <p class="subtitle">지하철 역사 응급 AED 운반 보조 로봇</p>
+          <p class="lead">SOS 버튼 호출 이후 AED를 목적지까지 자율 주행으로 운반하고, 반출 감지·자동 복귀·운영 기록까지 이어지는 ROS 2 기반 응급 대응 보조 서비스입니다.</p>
+          <div class="pill-row">
+            <span class="pill">Team AURIX · 도희정 · 최치언</span>
+            <span class="pill">TurtleBot3 Burger · ROS 2 Humble</span>
+            <span class="pill">Qt6 Dashboard · PostgreSQL</span>
+          </div>
+          <div class="cover-stat">
+            <div class="mini-stat"><strong>12</strong><span>문서와 코드 구조를 반영한 발표 슬라이드</span></div>
+            <div class="mini-stat"><strong>3</strong><span>핵심 데모 축: 호출, 주행, 복귀</span></div>
+            <div class="mini-stat"><strong>2</strong><span>정밀도 시험 문서 반영: T-00, T-01</span></div>
+            <div class="mini-stat"><strong>4+</strong><span>실기 이슈 해결 사례 포함</span></div>
+          </div>
+          <p class="closing-mark">“현장 호출부터 운반, 복귀, 기록까지 한 흐름으로 연결된 응급 운반 로봇”</p>
+        </div>
+        <div class="cover-card">
+          <div class="cover-visual"><img src="../assets/robot.jpg" alt="AURIX MediRun TurtleBot3 실물 사진"></div>
+          <div class="tag-row">
+            <span class="source-tag">실물 기반 프로젝트</span>
+            <span class="source-tag">GUI 화면 캡처 포함</span>
+            <span class="source-tag">문서·시험·트러블슈팅 통합</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Project Overview">
+      <div class="slide-no">02</div>
+      <div class="topline">
+        <div>
+          <div class="kicker">AURIX MediRun</div>
+          <h2>Project Overview</h2>
+        </div>
+        <div class="source-tag">docs 00 · docs 01 기준</div>
+      </div>
+      <p class="lead">목격자가 환자 곁을 떠나 AED를 가지러 가는 시간을 줄이기 위해, SOS 버튼이 눌린 구역으로 로봇이 AED를 자율 운반하는 구조를 제안합니다.</p>
+      <div class="card-grid four">
+        <div class="card">
+          <div class="num">01</div>
+          <h3>프로젝트 목적</h3>
+          <p>지하철 역사에서 버튼이 눌린 구역까지 AED를 운반하고, 호출 접수부터 복귀까지 전 과정을 자동화합니다.</p>
+        </div>
+        <div class="card">
+          <div class="num">02</div>
+          <h3>운용 범위</h3>
+          <p>호출 접수, 출동, 도착, AED 반출 감지, 자동 복귀, 홈 도킹, 로컬 DB 기록까지를 이번 범위로 둡니다.</p>
+        </div>
+        <div class="card">
+          <div class="num">03</div>
+          <h3>제외 범위</h3>
+          <p>환자 상태 판단, 의료 행위, 실제 119 자동 신고는 수행하지 않으며, 응급 대응 보조에 집중합니다.</p>
+        </div>
+        <div class="card">
+          <div class="num">04</div>
+          <h3>시연 기준</h3>
+          <p>버튼 3개와 목적지 3개의 1:1 매핑, 홈 위치 대기, 배터리·센서·AED 적재 상태 확인을 기본 시나리오로 잡았습니다.</p>
+        </div>
+      </div>
+      <div class="layout-2">
+        <div class="panel accent-panel">
+          <h3>서비스 시나리오 한 줄 요약</h3>
+          <p>평일 퇴근 시간대 대합실에서 응급 상황 발생 → 현장 SOS 버튼 호출 → 관리자와 로봇이 동시에 반응 → AED 전달 후 복귀.</p>
+        </div>
+        <div class="panel warning-panel">
+          <h3>발표에서 강조할 책임 범위</h3>
+          <p>“의료 판단 로봇”이 아니라 “위치 기반 운반·안내·기록 로봇”이라는 점을 명확히 두는 것이 핵심입니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Workspace Architecture">
+      <div class="slide-no">03</div>
+      <div class="topline">
+        <div>
+          <div class="kicker">Repository Structure</div>
+          <h2>Workspace Architecture</h2>
+        </div>
+        <div class="source-tag">README · src 구조 기준</div>
+      </div>
+      <p class="lead">현재 저장소는 ROS 2 Humble, Qt6 GUI, PostgreSQL, TurtleBot3 벤더 패키지까지 하나의 워크스페이스 안에서 운영되도록 정리되어 있습니다.</p>
+      <div class="arch-grid">
+        <div class="arch-col">
+          <h3>Device Layer</h3>
+          <ul>
+            <li><span class="mono">src/arduino_bridge</span><br>시리얼 브리지, LED, payload, 초음파, 버튼 연동</li>
+            <li><span class="mono">src/medirun_sensor</span><br>센서 추상화와 mock/실기 연결 구조</li>
+            <li><span class="mono">firmware/</span><br>all-in-one 모듈, hall sensor, ultrasonic 펌웨어</li>
+          </ul>
+        </div>
+        <div class="arch-col">
+          <h3>Mission Layer</h3>
+          <ul>
+            <li><span class="mono">src/medirun_mission</span><br>mission_manager, payload_monitor, audio/LED manager</li>
+            <li><span class="mono">src/medirun_msgs</span><br>커스텀 메시지, 서비스, 액션 인터페이스</li>
+            <li><span class="mono">src/medirun_vision</span><br>카메라, ArUco, 도킹 보조 경로</li>
+          </ul>
+        </div>
+        <div class="arch-col">
+          <h3>Operation Layer</h3>
+          <ul>
+            <li><span class="mono">src/medirun_gui</span><br>운영 현황, 실시간 관제, 미션 관제, 원격 제어, 지도 생성</li>
+            <li><span class="mono">src/medirun_db</span><br>PostgreSQL 연동, 이벤트·미션 기록</li>
+            <li><span class="mono">docs/screenshots/gui</span><br>실제 발표에 쓸 운영 화면 캡처 보관</li>
+          </ul>
+        </div>
+        <div class="arch-col">
+          <h3>Platform Layer</h3>
+          <ul>
+            <li><span class="mono">src/medirun_navigation</span><br>Nav2, AMCL, 정밀도 시험 러너</li>
+            <li><span class="mono">src/medirun_bringup</span><br>전체 시스템 기동 launch</li>
+            <li><span class="mono">src/turtlebot3*</span><br>ROBOTIS 벤더 패키지 포함</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note">문서용 구조가 아니라 실제 저장소에 존재하는 패키지 단위로 발표를 설명하면, “아이디어”가 아니라 “구현된 시스템”으로 전달됩니다.</p>
+    </section>
+
+    <section class="slide" data-title="End-to-End Mission Flow">
+      <div class="slide-no">04</div>
+      <div class="topline">
+        <div>
+          <div class="kicker">Runtime Flow</div>
+          <h2>End-to-End Mission Flow</h2>
+        </div>
+        <div class="source-tag">docs 01 · docs 04 · docs 05 기준</div>
+      </div>
+      <p class="lead">문서의 서비스 시나리오와 현재 노드 구조가 직접 만나는 구간입니다. 발표에서는 이 흐름을 끊기지 않게 설명하는 것이 가장 중요합니다.</p>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="step">1</div>
+          <h3>SOS 입력</h3>
+          <p>벽면 버튼 또는 GUI 호출이 들어오면 <span class="mono">button_id</span>와 구역 정보를 이벤트로 발행합니다.</p>
+        </div>
+        <div class="flow-step">
+          <div class="step">2</div>
+          <h3>출동 검증</h3>
+          <p>AED 적재, 배터리, 시스템 ready 상태를 확인하고 <span class="mono">mission_id</span>를 생성합니다.</p>
+        </div>
+        <div class="flow-step">
+          <div class="step">3</div>
+          <h3>경로 확정</h3>
+          <p>버튼 ID를 waypoint/route로 매핑한 뒤 Nav2 goal을 발행해 실내 경로를 실행합니다.</p>
+        </div>
+        <div class="flow-step">
+          <div class="step">4</div>
+          <h3>도착·반출·복귀</h3>
+          <p>목적지 도착 후 홀센서로 AED 반출을 감지하고, 일정 시간 후 자동 복귀와 도킹을 수행합니다.</p>
+        </div>
+      </div>
+      <div class="code-flow">/medirun/sensor/sos_button → /medirun/mission/dispatch_request → /medirun/mission/dispatch_command → /medirun/navigation/goal → /medirun/vision/dock_request</div>
+      <div class="layout-2">
+        <div class="panel">
+          <h3>운영자 관점</h3>
+          <p>호출 확인, 로봇 위치, 배터리, AED 적재 여부, 최근 이벤트를 한 화면에서 추적합니다.</p>
+        </div>
+        <div class="panel">
+          <h3>로봇 관점</h3>
+          <p>미션 상태 전이, Nav2 목표 이동, 안전 정지, 음성 안내, 복귀 도킹이 순차적으로 이어집니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Mission State Machine">
+      <div class="slide-no">05</div>
+      <div class="topline">
+        <div>
+          <div class="kicker">Mission Logic</div>
+          <h2>Mission State Machine</h2>
+        </div>
+        <div class="source-tag">mission_manager · payload_monitor 기준</div>
+      </div>
+      <p class="lead">미션 상태는 이벤트 하나마다 명확하게 전이되도록 설계되어 있으며, 이 구조 덕분에 GUI·LED·음성 안내가 같은 상태를 공유할 수 있습니다.</p>
+      <div class="panel accent-panel">
+        <h3>핵심 상태 전이</h3>
+        <div class="state-track">
+          <span class="state">IDLE</span><span class="state-arrow">→</span>
+          <span class="state">DISPATCHED</span><span class="state-arrow">→</span>
+          <span class="state">NAVIGATING</span><span class="state-arrow">→</span>
+          <span class="state">ARRIVED</span><span class="state-arrow">→</span>
+          <span class="state">PAYLOAD_REMOVED</span><span class="state-arrow">→</span>
+          <span class="state">RETURNING_HOME</span><span class="state-arrow">→</span>
+          <span class="state">DOCKING</span><span class="state-arrow">→</span>
+          <span class="state">DOCKED</span><span class="state-arrow">→</span>
+          <span class="state">COMPLETED</span>
+        </div>
+      </div>
+      <div class="layout-2">
+        <div class="stack">
+          <div class="panel">
+            <h3>도착 후 분기</h3>
+            <p>AED가 반출되면 즉시 복귀 단계로 넘어가고, 반출이 없더라도 대기 timeout 후 복귀하도록 설계했습니다.</p>
+          </div>
+          <div class="panel">
+            <h3>실패 조건</h3>
+            <p>Nav2 goal rejected, 주행 실패, 도킹 실패 시 <span class="mono">FAILED</span>로 종료되며, GUI 이력과 LED 상태에 동시에 반영됩니다.</p>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="panel">
+            <h3>상태 연동 효과</h3>
+            <p>상태가 바뀌면 LED는 <span class="mono">LED:RUN / ARRIVE / DOCKED / ERROR</span>, 오디오는 <span class="mono">dispatch_started / arrived / returning_home</span>로 연결됩니다.</p>
+          </div>
+          <div class="panel warning-panel">
+            <h3>발표 포인트</h3>
+            <p>“버튼을 눌렀다”보다 “미션 상태가 어떻게 검증되고 종료되는가”를 설명하면 시스템 완성도가 훨씬 높게 전달됩니다.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Operator Dashboard">
+      <div class="slide-no">06</div>
+      <div class="topline">
+        <div>
+          <div class="kicker">GUI Overview</div>
+          <h2>Operator Dashboard</h2>
+        </div>
+        <div class="source-tag">docs 03 · screenshots/gui/v2 기준</div>
+      </div>
+      <p class="lead">운영 현황, 실시간 관제, 미션 관제를 하나의 Qt 대시보드 안에서 연결해 운영자가 현재 상태와 조치 지점을 즉시 파악할 수 있게 구성했습니다.</p>
+      <div class="gallery">
+        <div class="gallery-main">
+          <div class="gallery-card">
+            <img src="../docs/screenshots/gui/v2/01_overview.png" alt="운영 현황 화면">
+            <div class="gallery-caption">
+              <strong>운영 현황</strong>
+              <span>연결 로봇 수, 진행 미션, 시스템 헬스, 최근 이벤트를 상단 KPI와 테이블로 요약합니다.</span>
+            </div>
+          </div>
+        </div>
+        <div class="gallery-side">
+          <div class="gallery-card">
+            <img src="../docs/screenshots/gui/v2/02_live_monitor.png" alt="실시간 관제 화면">
+            <div class="gallery-caption">
+              <strong>실시간 관제</strong>
+              <span>맵 위 경로, 현재 위치, 배터리, Nav2 상태, 이벤트 스트림을 동시에 확인합니다.</span>
+            </div>
+          </div>
+          <div class="gallery-card">
+            <img src="../docs/screenshots/gui/v2/03_missions.png" alt="미션 관제 화면">
+            <div class="gallery-caption">
+              <strong>미션 관제</strong>
+              <span>대기 호출 큐, 진행 미션, 이상 상황 배너, 재시도·취소·홈 복귀 액션을 제공합니다.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tag-row">
+        <span class="pill">헤더 배지: ROS2 · DB · CAM · 배터리</span>
+        <span class="pill">역할 기반 화면 분리</span>
+        <span class="pill">이벤트 로그와 운영 이력 동시 제공</span>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Remote Control And Mapping">
+      <div class="slide-no">07</div>
+      <div class="topline">
+        <div>
+          <div class="kicker">Control View</div>
+          <h2>Remote Control And Mapping</h2>
+        </div>
+        <div class="source-tag">docs 03 · screenshots/gui/v3 기준</div>
+      </div>
+      <p class="lead">자동 미션만으로 끝나지 않고, 운영자가 원격 제어와 SLAM 맵 관리까지 GUI에서 이어서 수행할 수 있도록 보조 기능을 붙였습니다.</p>
+      <div class="split-visual">
+        <div class="figure large figure-tint">
+          <img src="../docs/screenshots/gui/v3/00-5_remote_control_amcl.png" alt="원격 제어 및 AMCL 기반 지도 화면">
+          <div class="figure-label"><span>RemoteControlPage</span><span>카메라 · 미니맵 · 초기 위치 설정 · 속도 제한</span></div>
+        </div>
+        <div class="figure large figure-tint">
+          <img src="../docs/screenshots/gui/v3/01_slam_mapping_stable.png" alt="SLAM 지도 생성 화면">
+          <div class="figure-label"><span>SlamMappingPage</span><span>Cartographer 실행 · 지도 저장 · 로그 확인</span></div>
+        </div>
+      </div>
+      <div class="layout-2">
+        <div class="panel">
+          <h3>운영 보조 기능</h3>
+          <p>초기 위치 설정, 수동 조작, 카메라 확인, 도킹 재시도까지 긴급 상황 대응 중 필요한 보정 기능을 한 화면에 모았습니다.</p>
+        </div>
+        <div class="panel">
+          <h3>맵 관리 기능</h3>
+          <p>SLAM 결과를 저장하고 waypoint 관리 화면과 연결해 다음 미션의 기준 지도를 GUI에서 직접 다룰 수 있습니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Sensors And Safety">
+      <div class="slide-no">08</div>
+      <div class="topline">
+        <div>
+          <div class="kicker">Safety Layer</div>
+          <h2>Sensors And Safety</h2>
+        </div>
+        <div class="source-tag">docs 04 · docs 05 · firmware 기준</div>
+      </div>
+      <p class="lead">MediRun의 핵심은 단순 이동이 아니라, 센서 상태와 안전 규칙을 미션 흐름에 묶어 사람 많은 공간에서도 통제 가능한 동작을 만드는 데 있습니다.</p>
+      <div class="layout-2">
+        <div class="panel">
+          <h3>센서 구성</h3>
+          <div class="sensor-grid">
+            <div class="sensor"><strong>SOS Button</strong><span>현장 호출 시작점. button_id와 함께 구역 이벤트를 생성합니다.</span></div>
+            <div class="sensor"><strong>Hall Sensor</strong><span>AED 적재 여부와 반출 시점을 감지해 복귀 시점을 결정합니다.</span></div>
+            <div class="sensor"><strong>Ultrasonic</strong><span>근거리 장애물 감지. 전방/후방 안전 여유를 GUI와 연동합니다.</span></div>
+            <div class="sensor"><strong>OpenCR Battery</strong><span><span class="mono">/battery_state</span>를 통해 브링업 상태와 배터리 잔량을 제공합니다.</span></div>
+          </div>
+          <div class="thresholds">
+            <div class="threshold"><strong>35cm</strong><span>전방 안전 차단 기준</span></div>
+            <div class="threshold"><strong>25cm</strong><span>후방 안전 차단 기준</span></div>
+          </div>
+        </div>
+        <div class="panel accent-panel">
+          <div class="figure medium"><img src="../assets/robot.jpg" alt="MediRun TurtleBot3 실물 구조"></div>
+          <div class="stack" style="margin-top:14px">
+            <div class="panel">
+              <h3>상태 연동</h3>
+              <p>LED 상태, 오디오 안내, 미션 배지, 최근 이벤트가 모두 같은 미션 상태를 공유하도록 묶었습니다.</p>
+            </div>
+            <div class="panel warning-panel">
+              <h3>안전 발표 포인트</h3>
+              <p>혼잡 구역 전체 주행보다 제한 구역 PoC와 저속 정책, 정지 규칙, 수동 개입 가능성을 강조하는 편이 현실적입니다.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Navigation Test Results">
+      <div class="slide-no">09</div>
+      <div class="topline">
+        <div>
+          <div class="kicker">Verification</div>
+          <h2>Navigation Test Results</h2>
+        </div>
+        <div class="source-tag">docs/tests · 2026-07-24 시험</div>
+      </div>
+      <p class="lead">발표에서 “잘 될 것 같다”보다 중요한 것은 이미 측정한 정밀도 근거입니다. T-00 회전 시험과 T-01 직진 시험 결과를 그대로 가져와 신뢰성을 보여줄 수 있습니다.</p>
+      <div class="metrics">
+        <div class="metric">
+          <div class="value">0.13°</div>
+          <div class="label">T-00 회전 정확도</div>
+          <div class="desc">90도 회전 10회 기준 절대평균오차. 판정 기준 2도 이내를 넉넉히 충족합니다.</div>
+        </div>
+        <div class="metric">
+          <div class="value">0.2cm</div>
+          <div class="label">T-01 직진 정확도</div>
+          <div class="desc">0.45m 전진 10회 기준 절대평균오차. 기준 1cm 이내를 만족합니다.</div>
+        </div>
+        <div class="metric">
+          <div class="value">10 / 10</div>
+          <div class="label">반복 시험 통과</div>
+          <div class="desc">2026-07-24 반복 측정 기준 회전과 직진 모두 실내 호출 시나리오 근거를 확보했습니다.</div>
+        </div>
+      </div>
+      <div class="meter-grid">
+        <div class="panel">
+          <h3>기준 대비 여유</h3>
+          <div class="meter-row">
+            <div class="meter-label"><span>회전 오차 기준 대비</span><span>0.13° / 2.0°</span></div>
+            <div class="meter"><span style="width:6.5%"></span></div>
+          </div>
+          <div class="meter-row">
+            <div class="meter-label"><span>직진 오차 기준 대비</span><span>0.2cm / 1.0cm</span></div>
+            <div class="meter"><span style="width:20%"></span></div>
+          </div>
+          <div class="meter-row">
+            <div class="meter-label"><span>횡방향 절대평균오차</span><span>0.001m</span></div>
+            <div class="meter"><span style="width:10%"></span></div>
+          </div>
+        </div>
+        <div class="panel accent-panel">
+          <h3>시험 문서 핵심 문장</h3>
+          <p>회전은 90도 10회 반복에서 모두 기준을 충족했고, 직진은 0.451~0.453m 수준으로 수렴했습니다. 즉 데모 코스에서 호출 지점까지 이동하는 기본 정밀도는 이미 확보된 상태입니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Documentation And Rules">
+      <div class="slide-no">10</div>
+      <div class="topline">
+        <div>
+          <div class="kicker">Project Asset Map</div>
+          <h2>Documentation And Rules</h2>
+        </div>
+        <div class="source-tag">docs 00 · 02 · 03 · 04 · 06</div>
+      </div>
+      <p class="lead">이 프로젝트는 문서와 코드가 분리된 상태가 아니라, 요구사항·GUI·ROS2·시험·트러블슈팅이 같은 저장소 안에서 서로 연결되도록 관리되고 있습니다.</p>
+      <div class="doc-grid">
+        <div class="doc-card">
+          <h3>프로젝트 개요 · 시나리오</h3>
+          <p>서비스 목적, 적용 장소, 호출부터 복귀까지의 운영 흐름을 발표 언어로 정리하는 기준 문서입니다.</p>
+          <span class="ref">docs 00 · docs 01</span>
+        </div>
+        <div class="doc-card">
+          <h3>요구사항 · 위험관리</h3>
+          <p>문서 간 충돌을 정리하는 개정 기준, 인수 조건, 안전·범위 정의가 담겨 있어 발표의 책임 범위를 잡아줍니다.</p>
+          <span class="ref">docs 02</span>
+        </div>
+        <div class="doc-card">
+          <h3>GUI · HMI 설계</h3>
+          <p>Qt Widgets 기반 대시보드의 페이지 구조, 권한, 화면 역할을 설명해 실제 화면 발표와 직접 이어집니다.</p>
+          <span class="ref">docs 03</span>
+        </div>
+        <div class="doc-card">
+          <h3>ROS2 소프트웨어 설계</h3>
+          <p>노드 책임, 토픽 인터페이스, 상태 머신, 데이터 로그 설계를 코드 구조와 연결해 설명할 수 있습니다.</p>
+          <span class="ref">docs 04</span>
+        </div>
+        <div class="doc-card">
+          <h3>시험 결과 문서</h3>
+          <p>이동 정밀도 수치를 정리한 시험 문서는 “아이디어 검증”이 아니라 “성능 검증” 근거로 사용됩니다.</p>
+          <span class="ref">docs/tests</span>
+        </div>
+        <div class="doc-card">
+          <h3>트러블슈팅 · 개발 규칙</h3>
+          <p>문제 발생, 원인 분석, 수정, 재발 방지를 남기는 기록 방식 자체가 프로젝트의 운영 성숙도를 보여줍니다.</p>
+          <span class="ref">docs/troubleshooting · docs 06</span>
+        </div>
+      </div>
+      <p class="note">발표자료도 같은 원칙으로 정리했습니다. 이상적인 설계만 나열하지 않고, 현재 저장소에 실제 있는 패키지·화면·시험·트러블슈팅까지 맞춰 재구성했습니다.</p>
+    </section>
+
+    <section class="slide" data-title="Recent Real-World Fixes">
+      <div class="slide-no">11</div>
+      <div class="topline">
+        <div>
+          <div class="kicker">Field Issues</div>
+          <h2>Recent Real-World Fixes</h2>
+        </div>
+        <div class="source-tag">docs/troubleshooting · log.md</div>
+      </div>
+      <p class="lead">이 저장소는 단순한 화면 목업이 아니라 실제 운영 문제를 추적한 기록을 갖고 있습니다. 발표에서는 이 부분이 프로젝트의 “현장성”을 가장 강하게 보여줍니다.</p>
+      <div class="issue-grid">
+        <div class="issue">
+          <span class="date">2026-08-06</span>
+          <h3>OpenCR 연결 실패로 <span class="mono">/battery_state</span> 미수신</h3>
+          <p>포트는 열렸지만 OpenCR 재부팅 타이밍을 기다리지 못해 <span class="mono">turtlebot3_node</span>가 크래시했고, 그 결과 배터리와 ROS2 헤더 표시가 꺼졌습니다.</p>
+          <div class="result">조치: 연결 재시도 로직 추가, 실패 시 초기화 중단으로 크래시 방지</div>
+        </div>
+        <div class="issue">
+          <span class="date">2026-08-09</span>
+          <h3>미션 관제 버튼 클릭 시 GUI 전체 세그폴트</h3>
+          <p>이력 리스트를 raw <span class="mono">QLayout</span>으로 추가한 뒤 재귀 삭제하면서 널 포인터 호출이 발생했습니다.</p>
+          <div class="result">조치: 이력 항목을 <span class="mono">QWidget</span> 카드로 감싸 안전하게 삭제하도록 변경</div>
+        </div>
+        <div class="issue">
+          <span class="date">2026-08-11</span>
+          <h3>AED 적재 값이 GUI에 실시간 반영되지 않음</h3>
+          <p>홀센서는 상태 변화 때만 1회 전송됐고, payload 토픽만 유독 <span class="mono">transient_local</span> QoS를 써 late-join 실패 가능성이 있었습니다.</p>
+          <div class="result">조치: 1초 주기 재전송 추가, payload QoS를 volatile로 통일</div>
+        </div>
+        <div class="issue">
+          <span class="date">2026-08-11</span>
+          <h3>초기 위치 설정 후 Nav2 상태 배지 깜빡임</h3>
+          <p><span class="mono">/initialpose</span> 이후 lifecycle 응답이 순간 지연될 때 1회 실패만으로 즉시 끊김 처리하던 로직이 원인이었습니다.</p>
+          <div class="result">조치: 3회 연속 실패 시에만 끊김으로 판정하는 디바운스 적용</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Closing Message">
+      <div class="slide-no">12</div>
+      <div class="topline">
+        <div>
+          <div class="kicker">AURIX MediRun</div>
+          <h2>Closing Message</h2>
+        </div>
+        <div class="source-tag">현재 코드와 문서 기준 정리</div>
+      </div>
+      <p class="lead">AURIX MediRun은 문서용 아이디어가 아니라, 버튼 입력, 미션 상태 전이, 운영 대시보드, 센서 안전, 주행 정밀도 시험, 문제 해결 기록까지 한 저장소 안에서 이어지는 응급 운반 로봇 프로젝트입니다.</p>
+      <div class="close-grid">
+        <div class="panel accent-panel">
+          <h3>이번 발표에서 전달할 핵심</h3>
+          <div class="summary-list">
+            <div class="summary-item"><strong>서비스 가치</strong> 현장 호출 직후 AED를 사람이 가지러 가지 않아도 되는 구조를 제안합니다.</div>
+            <div class="summary-item"><strong>구현 근거</strong> ROS 2, Nav2, Qt GUI, DB, 펌웨어, 벤더 패키지까지 워크스페이스에 정리되어 있습니다.</div>
+            <div class="summary-item"><strong>검증 근거</strong> 2026-07-24 정밀도 시험과 2026-08-06~2026-08-11 이슈 해결 기록이 남아 있습니다.</div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>다음 데모 포인트</h3>
+          <div class="summary-list">
+            <div class="summary-item"><strong>브링업 데모</strong> ROS2·DB·CAM 배지 정상 연결 상태를 먼저 보여줍니다.</div>
+            <div class="summary-item"><strong>호출 시연</strong> 버튼 입력 후 미션 관제와 실시간 관제 화면이 동시에 변하는 장면을 보여줍니다.</div>
+            <div class="summary-item"><strong>복귀 시연</strong> AED 반출 감지 또는 timeout 이후 홈 복귀와 도킹 흐름을 마무리로 제시합니다.</div>
+          </div>
+        </div>
+      </div>
+      <div class="tag-row">
+        <span class="pill">SOS → Mission → Navigation → Return → Log</span>
+        <span class="pill">문서 · 코드 · UI · 시험 · 트러블슈팅 일관성 확보</span>
+      </div>
+      <p class="closing-mark">AURIX MediRun은 “응급 상황에서 사람의 시간을 줄여 주는 자율 운반 시스템”입니다.</p>
+    </section>
+  </main>
+  <footer class="footer">
+    <div class="hint">←/→ 이동 · T 목차 · F 전체화면 · P 인쇄/PDF 저장</div>
+    <div class="progress-wrap"><div class="progress"></div></div>
+    <div class="counter"></div>
+  </footer>
+</div>
+<aside class="drawer">
+  <h2>슬라이드 목차</h2>
+  <div class="toc"></div>
+</aside>
+<script>
+const slides = [...document.querySelectorAll('.slide')];
+let idx = 0;
+const progress = document.querySelector('.progress');
+const counter = document.querySelector('.counter');
+const drawer = document.querySelector('.drawer');
+const toc = document.querySelector('.toc');
+
+function show(i) {
+  idx = (i + slides.length) % slides.length;
+  slides.forEach((slide, n) => slide.classList.toggle('active', n === idx));
+  progress.style.width = ((idx + 1) / slides.length * 100) + '%';
+  counter.textContent = (idx + 1) + ' / ' + slides.length;
+  [...toc.children].forEach((button, n) => button.setAttribute('aria-current', n === idx ? 'true' : 'false'));
+}
+
+slides.forEach((slide, n) => {
+  const button = document.createElement('button');
+  button.textContent = String(n + 1).padStart(2, '0') + ' · ' + (slide.dataset.title || 'Slide');
+  button.onclick = () => {
+    show(n);
+    drawer.classList.remove('open');
+  };
+  toc.appendChild(button);
+});
+
+document.querySelector('[data-prev]').onclick = () => show(idx - 1);
+document.querySelector('[data-next]').onclick = () => show(idx + 1);
+document.querySelector('[data-toc]').onclick = () => drawer.classList.toggle('open');
+document.querySelector('[data-full]').onclick = () => document.documentElement.requestFullscreen?.();
+
+window.addEventListener('keydown', event => {
+  if (event.key === 'ArrowRight' || event.key === ' ') show(idx + 1);
+  if (event.key === 'ArrowLeft') show(idx - 1);
+  if (event.key.toLowerCase() === 't') drawer.classList.toggle('open');
+  if (event.key.toLowerCase() === 'f') document.documentElement.requestFullscreen?.();
+  if (event.key.toLowerCase() === 'p') window.print();
+});
+
+show(0);
+</script>
+</body>
+</html>
