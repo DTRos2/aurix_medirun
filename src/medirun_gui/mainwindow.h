@@ -21,6 +21,8 @@ class OperationsOverviewService;
 class RobotService;
 class MissionController;
 class WaypointRepository;
+class SensorTelemetryProvider;
+class DrivingRecordService;
 
 class MainWindow : public QMainWindow
 {
@@ -40,6 +42,8 @@ public:
     void setCameraFeedProvider(CameraFeedProvider *provider);
     void setMissionController(MissionController *controller);
     void setWaypointRepository(WaypointRepository *repository);
+    void setSensorTelemetryProvider(SensorTelemetryProvider *provider);
+    void setDrivingRecordService(DrivingRecordService *service);
 
 signals:
     void logoutRequested();

@@ -67,6 +67,9 @@ signals:
     void waypointProgress(int currentIndex, int total);
     void logEvent(const QString &level, const QString &message);
     void amclPoseUpdated(double x, double y, double yawRad);
+    // /odom 그대로: linearMps는 base_link 전방 기준 선속도(m/s), angularRadps는
+    // z축 각속도(rad/s). 로봇 상태 패널의 "속도" 표시와 driving_record 적재용.
+    void odomVelocityUpdated(double linearMps, double angularRadps);
     void navigationGoalAccepted();
     void navigationGoalRejected(const QString &reason);
     void navigationResult(const QString &resultCode, const QString &detail);

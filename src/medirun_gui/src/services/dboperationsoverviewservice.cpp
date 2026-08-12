@@ -378,6 +378,38 @@ bool DbOperationsOverviewService::fetchRecentEvents(int limit, QVector<Operation
         "         r.name AS robot_name "
         "  FROM connection_status_log csl "
         "  LEFT JOIN robot r ON r.id = csl.robot_id "
+        "  UNION ALL "
+        // mission_cancel/mission_return_home/mission_retry/mission_accept는
+        // MissionStorageService가 system_event에도 같이 남기므로(위 첫 번째
+        // SELECT), 여기서 또 넣으면 같은 이벤트가 두 번 뜬다 — 제외한다.
+        "  SELECT ual.created_at AS created_at, 'info' AS severity, "
+        "         (CASE ual.action_type "
+        "            WHEN 'recording_start' THEN '녹화 시작' "
+        "            WHEN 'recording_stop' THEN '녹화 종료' "
+        "            WHEN 'slam_start' THEN 'SLAM 매핑 시작' "
+        "            WHEN 'slam_stop' THEN 'SLAM 매핑 종료' "
+        "            WHEN 'map_save' THEN '지도 저장' "
+        "            WHEN 'map_load' THEN '지도 불러오기' "
+        "            WHEN 'waypoint_set_create' THEN '웨이포인트 세트 생성' "
+        "            WHEN 'waypoint_set_delete' THEN '웨이포인트 세트 삭제' "
+        "            WHEN 'waypoint_set_run' THEN '웨이포인트 경로 주행' "
+        "            WHEN 'mode_change' THEN '모드 변경' "
+        "            ELSE ual.action_type "
+        "          END || COALESCE(' · ' || NULLIF(ual.issued_by, ''), '')) AS message, "
+        "         r.name AS robot_name "
+        "  FROM user_action_log ual "
+        "  LEFT JOIN robot r ON r.id = ual.robot_id "
+        "  WHERE ual.action_type NOT IN ('mission_cancel', 'mission_return_home', 'mission_retry', 'mission_accept') "
+        "  UNION ALL "
+        "  SELECT f.created_at AS created_at, 'info' AS severity, "
+        "         (CASE f.file_category "
+        "            WHEN 'snapshot' THEN '스냅샷 저장' "
+        "            WHEN 'video' THEN '녹화 영상 저장' "
+        "            ELSE COALESCE(f.file_category, '파일 저장') "
+        "          END || ' · ' || f.original_filename "
+        "          || COALESCE(' · ' || NULLIF(f.uploaded_by, ''), '')) AS message, "
+        "         NULL AS robot_name "
+        "  FROM files f "
         ") combined_events "
         // DB에는 계속 다 쌓이지만(삭제 안 함), 화면에는 미션 관제 "오늘 처리
         // 이력"과 동일하게 최근 24시간 안의 것만 보여준다.
@@ -857,6 +889,195 @@ bool DbOperationsOverviewService::saveWaypointLibrary(
     query.bindValue(QStringLiteral(":waypoints"), json);
     if (!query.exec()) {
         errorMessage = QStringLiteral("웨이포인트 라이브러리 저장 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::startDrivingSession(int robotId, int &drivingSessionId, int &robotSessionId, QString &errorMessage)
+{
+    drivingSessionId = -1;
+    robotSessionId = -1;
+
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery sessionLookup;
+    sessionLookup.prepare(QStringLiteral(
+        "SELECT id FROM robot_session WHERE robot_id = :robotId AND status = 'running' "
+        "ORDER BY started_at DESC LIMIT 1"));
+    sessionLookup.bindValue(QStringLiteral(":robotId"), robotId);
+    if (!sessionLookup.exec()) {
+        errorMessage = QStringLiteral("진행 중인 세션 조회 실패: %1").arg(sessionLookup.lastError().text());
+        return false;
+    }
+
+    int sessionId = -1;
+    if (sessionLookup.next()) {
+        sessionId = sessionLookup.value(0).toInt();
+    } else {
+        // 진행 중인 주행 세션이 없으면(로봇이 유휴 상태) 녹화 전용 수동 세션을
+        // 새로 만든다 — 미션 주행 중이 아니어도 녹화만 따로 시작할 수 있어야 함.
+        QSqlQuery createSession;
+        createSession.prepare(QStringLiteral(
+            "INSERT INTO robot_session (robot_id, session_name, mode, status) "
+            "VALUES (:robotId, '실시간 관제 녹화', 'manual', 'running') RETURNING id"));
+        createSession.bindValue(QStringLiteral(":robotId"), robotId);
+        if (!createSession.exec() || !createSession.next()) {
+            errorMessage = QStringLiteral("녹화용 세션 생성 실패: %1").arg(createSession.lastError().text());
+            return false;
+        }
+        sessionId = createSession.value(0).toInt();
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "INSERT INTO driving_session (robot_id, session_id) VALUES (:robotId, :sessionId) RETURNING id"));
+    query.bindValue(QStringLiteral(":robotId"), robotId);
+    query.bindValue(QStringLiteral(":sessionId"), sessionId);
+    if (!query.exec() || !query.next()) {
+        errorMessage = QStringLiteral("주행 녹화 세션 생성 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    drivingSessionId = query.value(0).toInt();
+    robotSessionId = sessionId;
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::appendDrivingRecord(
+    int drivingSessionId, double x, double y, double yaw, double linearVel, double angularVel,
+    double batteryPercent, QString &errorMessage)
+{
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "INSERT INTO driving_record "
+        "(driving_session_id, recorded_at, pos_x, pos_y, yaw, linear_vel, angular_vel, battery_percent) "
+        "VALUES (:drivingSessionId, NOW(), :x, :y, :yaw, :linearVel, :angularVel, :batteryPercent)"));
+    query.bindValue(QStringLiteral(":drivingSessionId"), drivingSessionId);
+    query.bindValue(QStringLiteral(":x"), x);
+    query.bindValue(QStringLiteral(":y"), y);
+    query.bindValue(QStringLiteral(":yaw"), yaw);
+    query.bindValue(QStringLiteral(":linearVel"), linearVel);
+    query.bindValue(QStringLiteral(":angularVel"), angularVel);
+    query.bindValue(QStringLiteral(":batteryPercent"), batteryPercent);
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("주행 기록 저장 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::finishDrivingSession(int drivingSessionId, QString &errorMessage)
+{
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "UPDATE driving_session SET ended_at = NOW() WHERE id = :drivingSessionId"));
+    query.bindValue(QStringLiteral(":drivingSessionId"), drivingSessionId);
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("주행 녹화 세션 마감 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::startCameraSession(
+    int robotSessionId, int drivingSessionId, const QString &cameraName, const QString &topicName,
+    int &cameraSessionId, QString &errorMessage)
+{
+    cameraSessionId = -1;
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "INSERT INTO camera_session (session_id, driving_session_id, camera_name, topic_name, stream_status) "
+        "VALUES (:sessionId, :drivingSessionId, :cameraName, :topicName, 'recording') RETURNING id"));
+    query.bindValue(QStringLiteral(":sessionId"), robotSessionId);
+    query.bindValue(QStringLiteral(":drivingSessionId"), drivingSessionId);
+    query.bindValue(QStringLiteral(":cameraName"), cameraName);
+    query.bindValue(QStringLiteral(":topicName"), topicName);
+    if (!query.exec() || !query.next()) {
+        errorMessage = QStringLiteral("카메라 세션 생성 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    cameraSessionId = query.value(0).toInt();
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::recordCameraRecording(
+    int robotSessionId, int cameraSessionId, int durationSec, int width, int height, double fps,
+    const QString &codec, int &cameraRecordingId, QString &errorMessage)
+{
+    cameraRecordingId = -1;
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "INSERT INTO camera_recording "
+        "(session_id, camera_session_id, duration_sec, resolution_width, resolution_height, fps, codec) "
+        "VALUES (:sessionId, :cameraSessionId, :durationSec, :width, :height, :fps, :codec) RETURNING id"));
+    query.bindValue(QStringLiteral(":sessionId"), robotSessionId);
+    query.bindValue(QStringLiteral(":cameraSessionId"), cameraSessionId);
+    query.bindValue(QStringLiteral(":durationSec"), durationSec);
+    query.bindValue(QStringLiteral(":width"), width);
+    query.bindValue(QStringLiteral(":height"), height);
+    query.bindValue(QStringLiteral(":fps"), fps);
+    query.bindValue(QStringLiteral(":codec"), codec);
+    if (!query.exec() || !query.next()) {
+        errorMessage = QStringLiteral("카메라 녹화 기록 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    cameraRecordingId = query.value(0).toInt();
+    errorMessage.clear();
+    return true;
+}
+
+bool DbOperationsOverviewService::recordFile(
+    const QString &entityType, const QString &entityId, const QString &fileCategory, const QString &storagePath,
+    const QString &originalFilename, const QString &mimeType, const QString &uploadedBy,
+    QString &errorMessage)
+{
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "INSERT INTO files "
+        "(entity_type, entity_id, file_category, storage_backend, storage_path, original_filename, mime_type, uploaded_by) "
+        "VALUES (:entityType, :entityId, :fileCategory, 'local', :storagePath, :originalFilename, :mimeType, :uploadedBy)"));
+    query.bindValue(QStringLiteral(":entityType"), entityType);
+    query.bindValue(QStringLiteral(":entityId"), entityId);
+    query.bindValue(QStringLiteral(":fileCategory"), fileCategory);
+    query.bindValue(QStringLiteral(":storagePath"), storagePath);
+    query.bindValue(QStringLiteral(":originalFilename"), originalFilename);
+    query.bindValue(QStringLiteral(":mimeType"), mimeType);
+    query.bindValue(QStringLiteral(":uploadedBy"), uploadedBy.isEmpty() ? QVariant() : QVariant(uploadedBy));
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("파일 기록 실패: %1").arg(query.lastError().text());
         return false;
     }
 
