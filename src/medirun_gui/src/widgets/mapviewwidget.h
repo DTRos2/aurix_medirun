@@ -6,6 +6,7 @@
 #include <QPixmap>
 #include <QPointF>
 #include <QSize>
+#include <QStringList>
 #include <QVector>
 
 class QLabel;
@@ -55,6 +56,10 @@ public:
     void setPlaybackPath(const QVector<QPointF> &traveled, const QVector<QPointF> &remaining);
 
     void setWaypoints(const QVector<QPointF> &normalizedPoints);
+    // 콜존(call_button) 전용 마커 — setWaypoints()의 무채색 점과 달리
+    // WaypointManagementPage의 콜존 글리프(채워진 원)를 재사용해 구분되게
+    // 그린다. labels가 비어있지 않으면 마커 밑에 존 이름을 표시한다.
+    void setCallZones(const QVector<QPointF> &normalizedPoints, const QStringList &labels = QStringList());
     void setDestination(const QPointF &normalizedPos, bool visible = true);
     void setHome(const QPointF &normalizedPos, bool visible = true);
 
@@ -101,6 +106,8 @@ private:
     QSize m_backgroundPixmapTargetSize;
 
     QVector<QPointF> m_waypoints;
+    QVector<QPointF> m_callZones;
+    QStringList m_callZoneLabels;
     QPointF m_destination;
     bool m_hasDestination;
     QPointF m_home;

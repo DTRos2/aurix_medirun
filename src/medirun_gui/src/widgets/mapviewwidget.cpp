@@ -317,15 +317,41 @@ void paintDestinationMarker(QPainter &painter, const QPointF &center)
 
 void paintHomeMarker(QPainter &painter, const QPointF &center)
 {
-    painter.setPen(QPen(DashboardPalette::TextMuted, 1.5));
+    // WaypointManagementPage의 Home 글리프(원 + 지붕선)를 재사용하되, 원격
+    // 제어 지도는 배경 이미지 위라 대비가 약해 눈에 띄도록 Green으로 키웠다.
+    painter.setPen(QPen(DashboardPalette::Green, 2.2));
     painter.setBrush(Qt::NoBrush);
-    painter.drawEllipse(center, 7, 7);
+    painter.drawEllipse(center, 9, 9);
+    painter.drawLine(QPointF(center.x() - 5, center.y() + 2), QPointF(center.x(), center.y() - 4));
+    painter.drawLine(QPointF(center.x(), center.y() - 4), QPointF(center.x() + 5, center.y() + 2));
 
     QFont font = painter.font();
-    font.setPixelSize(9);
+    font.setPixelSize(10);
+    font.setBold(true);
     painter.setFont(font);
-    painter.setPen(DashboardPalette::TextTertiary);
-    painter.drawText(QRectF(center.x() - 22, center.y() + 8, 44, 12), Qt::AlignCenter, QStringLiteral("HOME"));
+    painter.setPen(DashboardPalette::Green);
+    painter.drawText(QRectF(center.x() - 24, center.y() + 10, 48, 13), Qt::AlignCenter, QStringLiteral("HOME"));
+}
+
+void paintCallZoneMarker(QPainter &painter, const QPointF &center, const QString &label)
+{
+    // WaypointManagementPage의 CallZone 글리프(채워진 원)를 재사용하되, Amber로
+    // 색을 바꿔 Home(Green)과 한눈에 구분되고 배경 위에서도 잘 보이게 했다.
+    painter.setPen(QPen(DashboardPalette::Amber, 2));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawEllipse(center, 10, 10);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(DashboardPalette::Amber);
+    painter.drawEllipse(center, 3.5, 3.5);
+
+    if (!label.isEmpty()) {
+        QFont font = painter.font();
+        font.setPixelSize(10);
+        font.setBold(true);
+        painter.setFont(font);
+        painter.setPen(DashboardPalette::Amber);
+        painter.drawText(QRectF(center.x() - 30, center.y() + 11, 60, 13), Qt::AlignCenter, label);
+    }
 }
 
 } // namespace
@@ -470,6 +496,13 @@ void MapViewWidget::setPlaybackPath(const QVector<QPointF> &traveled, const QVec
 void MapViewWidget::setWaypoints(const QVector<QPointF> &normalizedPoints)
 {
     m_waypoints = normalizedPoints;
+    update();
+}
+
+void MapViewWidget::setCallZones(const QVector<QPointF> &normalizedPoints, const QStringList &labels)
+{
+    m_callZones = normalizedPoints;
+    m_callZoneLabels = labels;
     update();
 }
 
@@ -667,13 +700,20 @@ void MapViewWidget::paintEvent(QPaintEvent *event)
             painter.drawPath(path);
         }
 
-        for (const QPointF &waypoint : m_waypoints) {
-            paintWaypointMarker(painter, toCanvas(waypoint, imgRect));
-        }
-
         if (m_hasDestination) {
             paintDestinationMarker(painter, toCanvas(m_destination, imgRect));
         }
+    }
+
+    // 웨이포인트/콜존/홈 마커는 Reference 모드(RemoteControlPage 미니맵)에서도
+    // 상시 표시 — 주행 경로/목적지만 Live/Playback 전용.
+    for (const QPointF &waypoint : m_waypoints) {
+        paintWaypointMarker(painter, toCanvas(waypoint, imgRect));
+    }
+
+    for (int i = 0; i < m_callZones.size(); ++i) {
+        const QString label = i < m_callZoneLabels.size() ? m_callZoneLabels.at(i) : QString();
+        paintCallZoneMarker(painter, toCanvas(m_callZones.at(i), imgRect), label);
     }
 
     if (m_hasHome) {

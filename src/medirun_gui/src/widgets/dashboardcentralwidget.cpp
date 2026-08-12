@@ -83,7 +83,7 @@ DashboardCentralWidget::DashboardCentralWidget(
 
     m_operationsOverviewPage = new OperationsOverviewPage(operationsOverviewService, m_stack);
     addPage(PageId::OperationsOverview, m_operationsOverviewPage);
-    m_remoteControlPage = new RemoteControlPage(m_stack);
+    m_remoteControlPage = new RemoteControlPage(robotService, operationsOverviewService, m_stack);
     addPage(PageId::RemoteControl, m_remoteControlPage);
 
     if (m_session.role == UserRole::Admin) {
