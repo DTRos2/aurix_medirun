@@ -1,22 +1,5 @@
 frame_id: map
 waypoints:
-  BTN_01:
-    x: 0.81000000000000005
-    y: -7.5599999999999996
-    yaw: -0.034906585039886591
-    kind: call_zone
-    label: third
-  W-01:
-    x: 0.75
-    y: -3.0099999999999998
-    yaw: -1.6406094968746698
-    kind: waypoint
-    label: first
-  W-02:
-    x: 0.52000000000000002
-    y: -4.6100000000000003
-    yaw: -1.6231562043547265
-    kind: waypoint
-    label: second
+  {}
 trajectories:
   {}
