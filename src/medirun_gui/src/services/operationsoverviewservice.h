@@ -165,6 +165,35 @@ public:
         int robotId, const QString &name, const QString &frameId, const WaypointMap &waypoints,
         const TrajectoryMap &trajectories, QString &errorMessage) = 0;
 
+    // driving_session 시작. 현재 진행 중인(status='running') 가장 최근
+    // robot_session을 찾아 연결하고, 없으면 mode='manual'인 녹화 전용 세션을
+    // 새로 만든다. robotSessionId로 실제 연결된 robot_session.id를 돌려준다
+    // (camera_session/camera_recording도 같은 세션에 묶기 위함).
+    virtual bool startDrivingSession(int robotId, int &drivingSessionId, int &robotSessionId, QString &errorMessage) = 0;
+    // driving_record 1행 추가 (재생용 경로 포인트).
+    virtual bool appendDrivingRecord(
+        int drivingSessionId, double x, double y, double yaw, double linearVel, double angularVel,
+        double batteryPercent, QString &errorMessage) = 0;
+    // driving_session.ended_at을 채워 녹화를 마감한다.
+    virtual bool finishDrivingSession(int drivingSessionId, QString &errorMessage) = 0;
+
+    // camera_session 시작 (녹화 시작 시 driving_session과 같은 robot_session에 묶어서).
+    virtual bool startCameraSession(
+        int robotSessionId, int drivingSessionId, const QString &cameraName, const QString &topicName,
+        int &cameraSessionId, QString &errorMessage) = 0;
+    // 녹화 중지 시 실제 인코딩된 영상의 길이/해상도/fps로 camera_recording 1행 기록.
+    virtual bool recordCameraRecording(
+        int robotSessionId, int cameraSessionId, int durationSec, int width, int height, double fps,
+        const QString &codec, int &cameraRecordingId, QString &errorMessage) = 0;
+
+    // files 테이블에 1행 기록 (스냅샷 사진, 녹화 영상 등). storagePath는 호출자가
+    // 이미 로컬에 저장한 실제 경로를 그대로 넘긴다 (계정 경로 하드코딩 금지 —
+    // CONVENTIONS.md 3.2절). fileCategory 예: "snapshot", "video".
+    virtual bool recordFile(
+        const QString &entityType, const QString &entityId, const QString &fileCategory, const QString &storagePath,
+        const QString &originalFilename, const QString &mimeType, const QString &uploadedBy,
+        QString &errorMessage) = 0;
+
     // 등록 해제되지 않은(deregistered_at IS NULL) call_button 전부를 읽어온다.
     // GUI 시작 시 웨이포인트 파일(second.yaml 등)이 재부팅 등으로 구버전이어도
     // 실제 등록된 콜존 좌표를 덮어쓰는 데 쓴다.

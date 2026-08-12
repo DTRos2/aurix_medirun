@@ -84,6 +84,7 @@ void MainWindow::setTelemetryProvider(TelemetryProvider *provider)
             m_dashboardWidget,
             &DashboardCentralWidget::applySnapshot,
             Qt::QueuedConnection);
+    m_dashboardWidget->setTelemetryProvider(provider);
 }
 
 void MainWindow::setNavigationService(NavigationService *service)
@@ -108,6 +109,16 @@ void MainWindow::setMissionController(MissionController *controller)
 void MainWindow::setWaypointRepository(WaypointRepository *repository)
 {
     m_dashboardWidget->setWaypointRepository(repository);
+}
+
+void MainWindow::setSensorTelemetryProvider(SensorTelemetryProvider *provider)
+{
+    m_dashboardWidget->setSensorTelemetryProvider(provider);
+}
+
+void MainWindow::setDrivingRecordService(DrivingRecordService *service)
+{
+    m_dashboardWidget->setDrivingRecordService(service);
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)

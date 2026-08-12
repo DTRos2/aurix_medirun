@@ -23,6 +23,8 @@ class WaypointRepository;
 class MissionStorageService;
 class MissionRosInterface;
 class MissionController;
+class SensorTelemetryProvider;
+class DrivingRecordService;
 
 class GuiApplicationController : public QObject
 {
@@ -68,6 +70,8 @@ private:
     TelemetryLogRecorder *m_telemetryLogRecorder;
     NavGoalLogRecorder *m_navGoalLogRecorder;
     CameraFeedProvider *m_cameraFeedProvider;
+    SensorTelemetryProvider *m_sensorTelemetryProvider {nullptr};
+    DrivingRecordService *m_drivingRecordService {nullptr};
     SplashScreenWidget *m_splashScreen;
     LoginDialog *m_loginDialog;
     MainWindow *m_mainWindow;
