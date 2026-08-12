@@ -3,6 +3,7 @@
 
 #include "../models/waypointtypes.h"
 
+#include <QDate>
 #include <QDateTime>
 #include <QString>
 #include <QStringList>
@@ -65,6 +66,13 @@ public:
     virtual bool fetchRobotStatus(QVector<RobotStatusRow> &rows, QString &errorMessage) = 0;
     virtual bool fetchSystemHealth(QVector<SystemHealthRow> &rows, QString &errorMessage) = 0;
     virtual bool fetchRecentEvents(int limit, QVector<OperationsEventRow> &rows, QString &errorMessage) = 0;
+
+    // 시스템 설정 페이지의 로그 조회용. system_event에서 [startDate 00:00,
+    // endDate+1일 00:00) 구간만 조회하고, keyword가 비어있지 않으면
+    // event_type/message에 대소문자 무시 부분일치(ILIKE) 검색을 추가로 건다.
+    virtual bool fetchSystemEvents(
+        const QDate &startDate, const QDate &endDate, const QString &keyword, QVector<OperationsEventRow> &rows,
+        QString &errorMessage) = 0;
 
     // target: "ros_bridge" | "database" | "serial" | "camera" | "unity"
     // status: "connected" | "disconnected" | "reconnecting" | "error"

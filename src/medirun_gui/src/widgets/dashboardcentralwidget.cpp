@@ -93,7 +93,7 @@ DashboardCentralWidget::DashboardCentralWidget(
         addPage(PageId::WaypointManagement, m_waypointPage);
         addPage(PageId::UserManagement, new UserManagementPage(m_authService, m_stack));
         addPage(PageId::RobotManagement, new RobotManagementPage(robotService, m_stack));
-        addPage(PageId::SystemSettings, new SystemSettingsPage(m_stack));
+        addPage(PageId::SystemSettings, new SystemSettingsPage(operationsOverviewService, m_stack));
     }
 
     navigateTo(PageId::OperationsOverview);
