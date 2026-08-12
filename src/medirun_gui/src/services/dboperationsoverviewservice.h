@@ -13,6 +13,9 @@ public:
     bool fetchRobotStatus(QVector<RobotStatusRow> &rows, QString &errorMessage) override;
     bool fetchSystemHealth(QVector<SystemHealthRow> &rows, QString &errorMessage) override;
     bool fetchRecentEvents(int limit, QVector<OperationsEventRow> &rows, QString &errorMessage) override;
+    bool fetchSystemEvents(
+        const QDate &startDate, const QDate &endDate, const QString &keyword, QVector<OperationsEventRow> &rows,
+        QString &errorMessage) override;
 
     bool recordConnectionStatus(
         int robotId, const QString &target, const QString &status, const QString &detail, QString &errorMessage) override;
