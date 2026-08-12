@@ -184,7 +184,7 @@ void DashboardCentralWidget::setDrivingRecordService(DrivingRecordService *servi
     if (m_liveControlPage != nullptr) {
         m_liveControlPage->setDrivingRecordService(service);
     }
-
+}
 
 bool DashboardCentralWidget::handleManualKeyPress(int key)
 {

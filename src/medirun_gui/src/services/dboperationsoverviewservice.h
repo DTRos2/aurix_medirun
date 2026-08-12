@@ -57,6 +57,24 @@ public:
         int robotId, const QString &name, const QString &frameId, const WaypointMap &waypoints,
         const TrajectoryMap &trajectories, QString &errorMessage) override;
 
+    bool startDrivingSession(int robotId, int &drivingSessionId, int &robotSessionId, QString &errorMessage) override;
+    bool appendDrivingRecord(
+        int drivingSessionId, double x, double y, double yaw, double linearVel, double angularVel,
+        double batteryPercent, QString &errorMessage) override;
+    bool finishDrivingSession(int drivingSessionId, QString &errorMessage) override;
+
+    bool startCameraSession(
+        int robotSessionId, int drivingSessionId, const QString &cameraName, const QString &topicName,
+        int &cameraSessionId, QString &errorMessage) override;
+    bool recordCameraRecording(
+        int robotSessionId, int cameraSessionId, int durationSec, int width, int height, double fps,
+        const QString &codec, int &cameraRecordingId, QString &errorMessage) override;
+
+    bool recordFile(
+        const QString &entityType, const QString &entityId, const QString &fileCategory, const QString &storagePath,
+        const QString &originalFilename, const QString &mimeType, const QString &uploadedBy,
+        QString &errorMessage) override;
+
     bool loadActiveCallButtons(QVector<CallButtonRow> &rows, QString &errorMessage) override;
     bool upsertCallButton(
         const QString &code, const QString &zoneName, double x, double y, double yaw, QString &errorMessage) override;
