@@ -29,6 +29,7 @@ public slots:
     void retryConnections() override;
     void publishInitialPose(double x, double y, double yawRad, const QString &frameId) override;
     void setSpeedLimit(int percent) override;
+    void driveManual(double linearX, double angularZ) override;
 
 private:
     struct Impl;

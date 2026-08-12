@@ -5,6 +5,7 @@
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+#include <geometry_msgs/msg/twist.hpp>
 #include <lifecycle_msgs/msg/state.hpp>
 #include <lifecycle_msgs/srv/get_state.hpp>
 #include <nav2_msgs/action/follow_waypoints.hpp>
@@ -92,6 +93,7 @@ public:
         m_followClient = rclcpp_action::create_client<FollowWaypoints>(this, "follow_waypoints");
         m_initialPosePub = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("initialpose", 10);
         m_speedLimitPub = create_publisher<nav2_msgs::msg::SpeedLimit>("speed_limit", 10);
+        m_cmdVelPub = create_publisher<geometry_msgs::msg::Twist>("cmd_vel", rclcpp::QoS(10));
 
         m_amclSub = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
             "amcl_pose", rclcpp::QoS(10),
@@ -341,6 +343,16 @@ public:
         m_bridge->logEvent(QStringLiteral("INFO"), QStringLiteral("주행 속도를 %1%로 설정했습니다.").arg(percent));
     }
 
+    // teleop 재발행 타이머(100ms)에서 반복 호출되므로 매번 logEvent를 보내지
+    // 않는다 — publishInitialPose/setSpeedLimit과 달리 1회성 호출이 아니다.
+    void driveManual(double linearX, double angularZ)
+    {
+        geometry_msgs::msg::Twist msg;
+        msg.linear.x = linearX;
+        msg.angular.z = angularZ;
+        m_cmdVelPub->publish(msg);
+    }
+
     // bt_navigator/waypoint_follower 둘 다 GetState 서비스가 응답 가능하고
     // active여야 "연결됨"으로 본다. 두 서비스 응답이 비동기로 따로 도착하므로
     // 라운드마다(m_connectionCheckRound) 결과를 모아서 마지막에 한 번만 판정한다
@@ -411,6 +423,7 @@ private:
     FollowClient::SharedPtr m_followClient;
     rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr m_initialPosePub;
     rclcpp::Publisher<nav2_msgs::msg::SpeedLimit>::SharedPtr m_speedLimitPub;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr m_cmdVelPub;
     rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr m_amclSub;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr m_scanSub;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr m_odomSub;
@@ -500,6 +513,11 @@ void Nav2NavigationService::retryConnections()
 void Nav2NavigationService::publishInitialPose(double x, double y, double yawRad, const QString &frameId)
 {
     m_impl->node->publishInitialPose(x, y, yawRad, frameId);
+}
+
+void Nav2NavigationService::driveManual(double linearX, double angularZ)
+{
+    m_impl->node->driveManual(linearX, angularZ);
 }
 
 void Nav2NavigationService::setSpeedLimit(int percent)

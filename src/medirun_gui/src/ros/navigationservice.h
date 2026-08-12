@@ -45,6 +45,9 @@ public slots:
     // speed (Nav2's dynamic speed-limit mechanism — nav2_msgs/SpeedLimit on
     // the "speed_limit" topic, no launch/param changes needed).
     virtual void setSpeedLimit(int percent) = 0;
+    // 원격제어 페이지의 teleop(수동 주행)용 — /cmd_vel에 직접 Twist를 발행한다.
+    // Nav2 액션(navigateToPose 등)과 별개 경로이므로 goal 진행 중에도 호출 가능.
+    virtual void driveManual(double linearX, double angularZ) = 0;
 
 signals:
     // navigate_to_pose/follow_waypoints 액션 서버가 실제로 goal을 받을 수 있는

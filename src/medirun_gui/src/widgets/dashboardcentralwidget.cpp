@@ -191,6 +191,9 @@ bool DashboardCentralWidget::handleManualKeyPress(int key)
     if (m_slamMappingPage != nullptr && m_stack->currentWidget() == m_slamMappingPage) {
         return m_slamMappingPage->handleManualKeyPress(key);
     }
+    if (m_remoteControlPage != nullptr && m_stack->currentWidget() == m_remoteControlPage) {
+        return m_remoteControlPage->handleManualKeyPress(key);
+    }
     return false;
 }
 
@@ -198,6 +201,9 @@ bool DashboardCentralWidget::handleManualKeyRelease(int key)
 {
     if (m_slamMappingPage != nullptr && m_stack->currentWidget() == m_slamMappingPage) {
         return m_slamMappingPage->handleManualKeyRelease(key);
+    }
+    if (m_remoteControlPage != nullptr && m_stack->currentWidget() == m_remoteControlPage) {
+        return m_remoteControlPage->handleManualKeyRelease(key);
     }
     return false;
 }
