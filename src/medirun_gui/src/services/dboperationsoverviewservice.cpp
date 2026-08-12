@@ -392,7 +392,7 @@ bool DbOperationsOverviewService::fetchRecentEvents(int limit, QVector<Operation
 
     while (query.next()) {
         OperationsEventRow row;
-        row.occurredAt = query.value(QStringLiteral("created_at")).toDateTime();
+        row.occurredAt = dbTimestampToLocal(query.value(QStringLiteral("created_at")));
         severityLabelAndKind(query.value(QStringLiteral("severity")).toString(), row.severityLabel, row.kind);
 
         const QString robotName = query.value(QStringLiteral("robot_name")).toString();

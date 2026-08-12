@@ -166,7 +166,7 @@ QVector<MissionQueueItem> MissionStorageService::loadQueue()
                 item.missionId = missionId;
                 item.waypointId = query.value(1).toString();
                 item.waypointName = query.value(2).toString();
-                item.requestedAt = query.value(3).toDateTime();
+                item.requestedAt = dbTimestampToLocal(query.value(3));
                 item.enqueueOrder = order++;
                 item.status = queueStatusFromMissionStatus(query.value(4).toString());
                 item.requestSource = QStringLiteral("db");
@@ -202,7 +202,7 @@ QVector<MissionHistoryEntry> MissionStorageService::loadTodayHistory()
         if (query.exec()) {
             while (query.next()) {
                 m_historyCache.append(historyEntryFromPayload(query.value(0).toString(),
-                                                              query.value(1).toDateTime(),
+                                                              dbTimestampToLocal(query.value(1)),
                                                               query.value(2).toString()));
             }
         } else {

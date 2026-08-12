@@ -25,7 +25,7 @@ QVector<RobotRecord> DbRobotService::listRobots(bool includeDeregistered)
         record.id = query.value(QStringLiteral("id")).toInt();
         record.name = query.value(QStringLiteral("name")).toString();
         record.model = query.value(QStringLiteral("model")).toString();
-        record.createdAt = query.value(QStringLiteral("created_at")).toDateTime();
+        record.createdAt = dbTimestampToLocal(query.value(QStringLiteral("created_at")));
         record.active = query.value(QStringLiteral("deregistered_at")).isNull();
         results.push_back(record);
     }
