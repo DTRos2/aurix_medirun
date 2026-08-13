@@ -13,14 +13,9 @@
 // "config/db.yaml"을 찾는다.
 bool openDbConnection(QString &errorMessage);
 
-// DB 스키마의 TIMESTAMP(시간대 없음) 컬럼은 서버 SHOW timezone이 Asia/Seoul로
-// 정상 설정돼 있어도, Qt QPSQL 드라이버가 연결을 맺을 때 세션을 UTC로 돌려버려
-// NOW()/바인딩된 QDateTime 둘 다 UTC 벽시계 값으로 저장된다(실측: 실제
-// 18시대에 쓴 행이 09시대로 저장됨, 정확히 9시간 차이). DB 자체를 고치는 대신
-// — 이미 쌓인 행도 있고 모든 쓰기 경로가 같은 어긋남을 겪으므로 — 읽어올
-// 때마다 "저장된 값은 사실 UTC였다"고 재해석해서 로컬 시간대로 변환한다.
-// QSqlQuery::value(...).toDateTime()으로 시간 컬럼을 읽는 모든 곳에서 이 함수를
-// 대신 써야 한다.
+// DB는 TIMESTAMPTZ를 사용하고, 연결 직후 세션 timezone을 Asia/Seoul로 고정한다.
+// 시간 컬럼을 읽을 때 QSqlQuery::value(...).toDateTime() 결과를 로컬(KST) 기준으로
+// 일관되게 다루기 위해 이 함수를 사용한다.
 QDateTime dbTimestampToLocal(const QVariant &value);
 
 #endif // DBCONNECTION_H
