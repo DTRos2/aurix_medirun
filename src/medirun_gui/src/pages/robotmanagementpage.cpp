@@ -74,8 +74,15 @@ RobotManagementPage::RobotManagementPage(RobotService &robotService, QWidget *pa
     m_robotTable->setColumnCount(3);
     m_robotTable->setHorizontalHeaderLabels({QStringLiteral("이름"), QStringLiteral("모델"), QStringLiteral("")});
     m_robotTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    m_robotTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    // ResizeToContents는 setCellWidget()으로 넣은 버튼의 sizeHint를 제대로
+    // 못 읽어서 칸이 버튼 글자보다 좁아지는 경우가 있었다 — 고정 폭으로 넉넉히 준다.
+    m_robotTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Fixed);
+    m_robotTable->setColumnWidth(2, 104);
     m_robotTable->verticalHeader()->setVisible(false);
+    // 기본 행 높이가 등록 해제 버튼(여백 포함 32px)보다 작아서, 버튼을 여백
+    // 컨테이너로 감싸자 오히려 그 안에서 짜부라져 글자가 안 보였다 —
+    // 버튼이 여유 있게 들어갈 만큼 행 높이를 명시적으로 키운다.
+    m_robotTable->verticalHeader()->setDefaultSectionSize(42);
     m_robotTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_robotTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_robotTable->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -128,12 +135,24 @@ void RobotManagementPage::refreshRobotTable()
         m_robotTable->setItem(row, 0, new QTableWidgetItem(robot.name));
         m_robotTable->setItem(row, 1, new QTableWidgetItem(robot.model));
 
-        auto *deleteButton = new QPushButton(QStringLiteral("등록 해제"), m_robotTable);
-        deleteButton->setObjectName(QStringLiteral("dangerFilledButton"));
+        auto *deleteButton = new QPushButton(QStringLiteral("등록 해제"));
+        deleteButton->setObjectName(QStringLiteral("tableRowDangerButton"));
+        deleteButton->setFixedHeight(26);                  // 행 높이보다 확실히 작게
+        deleteButton->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        deleteButton->setMinimumWidth(64);
         connect(deleteButton, &QPushButton::clicked, this, [this, id = robot.id, name = robot.name]() {
             handleDeregisterRobot(id, name);
         });
-        m_robotTable->setCellWidget(row, 2, deleteButton);
+        // setCellWidget()은 위젯을 셀 크기 그대로 채워버려서, 버튼을 아무리
+        // 작게 잡아도 행 경계까지 꽉 차 옆/위아래 행과 거의 붙어 보인다 —
+        // 여백을 가진 컨테이너로 한 번 감싸서 셀 안에 숨 쉴 틈을 준다.
+        auto *cell = new QWidget(m_robotTable);
+        auto *cellLayout = new QHBoxLayout(cell);
+        cellLayout->setContentsMargins(0, 0, 0, 0);
+        cellLayout->setSpacing(0);
+        // cellLayout->setContentsMargins(2, 1, 2, 1);
+        cellLayout->addWidget(deleteButton);
+        m_robotTable->setCellWidget(row, 2, cell);
     }
 }
 

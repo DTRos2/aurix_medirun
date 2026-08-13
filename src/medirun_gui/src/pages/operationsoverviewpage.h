@@ -50,7 +50,7 @@ private:
     };
 
     QWidget *buildHeader();
-    QWidget *buildMetricCard(const QString &title, const QString &kind, MetricCardWidgets &widgetsOut);
+    QWidget *buildMetricCard(const QString &title, MetricCardWidgets &widgetsOut);
     QWidget *buildRobotStatusPanel();
     QWidget *buildHealthPanel();
     QWidget *buildEventsPanel();
@@ -65,7 +65,6 @@ private:
 
     OperationsOverviewService &m_service;
 
-    QLabel *m_statusBadge {nullptr};
     QVector<MetricCardWidgets> m_metricCards;
     QTableWidget *m_robotTable {nullptr};
     QVBoxLayout *m_healthLayout {nullptr};
