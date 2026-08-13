@@ -323,10 +323,15 @@ void MissionController::handleNavigationResult(const QString &resultCode, const 
             return;
         }
 
-        // 미션 취소(그 자리에서 정지) — Nav2가 취소를 확인해준 시점. 대기하던
-        // 진행 중 호출을 큐에서 완전히 삭제하고 Cancelled로 종료 처리한다.
+        // 미션 취소(그 자리에서 정지) — Nav2가 취소를 확인해준 시점. finishMission이
+        // activeQueueItem()으로 이 항목을 찾아 Cancelled로 표시하고 DB에도 반영한다
+        // (Completed/Failed와 동일한 패턴). 예전에는 여기서 removeQueueItem()을 먼저
+        // 불러 큐에서 지워버린 뒤 finishMission을 호출했는데, 그러면 activeQueueItem()이
+        // 이미 사라진 항목을 못 찾아 상태를 못 바꾸고 DB에는 마지막으로 저장된
+        // "navigating"이 그대로 남는 버그가 있었다 — 취소해도 DB만 계속 주행 중으로
+        // 보였다. Waiting/Active만 화면에 보여주는 필터(queueSummaryText 등) 덕분에
+        // 큐에서 안 지워도 목록에서는 정상적으로 사라진다.
         // 다음 대기 호출로 바로 주행하지 않고, 운영자에게 확인을 받는다.
-        removeQueueItem(m_snapshot.queueId);
         finishMission(MissionState::Cancelled, m_pendingReason.isEmpty() ? QStringLiteral("운영자 미션 취소 요청") : m_pendingReason,
                       QStringLiteral("MISSION_CANCELLED"), QStringLiteral("CANCELLED"), true);
         return;
@@ -664,14 +669,6 @@ void MissionController::markQueueStatus(const QString &queueId, MissionQueueStat
     const int index = queueIndex(queueId);
     if (index >= 0) {
         m_queueItems[index].status = status;
-    }
-}
-
-void MissionController::removeQueueItem(const QString &queueId)
-{
-    const int index = queueIndex(queueId);
-    if (index >= 0) {
-        m_queueItems.removeAt(index);
     }
 }
 
