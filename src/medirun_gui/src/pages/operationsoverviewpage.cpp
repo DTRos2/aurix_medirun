@@ -125,6 +125,22 @@ QString shortNavStatusLabel(const QString &text)
     return QStringLiteral("대기");
 }
 
+SystemHealthRow liveRos2HealthRow(bool hasSnapshot, ConnectionState rosState)
+{
+    if (!hasSnapshot) {
+        return {QStringLiteral("ROS2 통신"), 0, QStringLiteral("muted")};
+    }
+    switch (rosState) {
+    case ConnectionState::Connected:
+        return {QStringLiteral("ROS2 통신"), 100, QStringLiteral("green")};
+    case ConnectionState::Warning:
+        return {QStringLiteral("ROS2 통신"), 50, QStringLiteral("amber")};
+    case ConnectionState::Disconnected:
+        return {QStringLiteral("ROS2 통신"), 0, QStringLiteral("red")};
+    }
+    return {QStringLiteral("ROS2 통신"), 0, QStringLiteral("muted")};
+}
+
 QWidget *buildHealthRow(const SystemHealthRow &row)
 {
     auto *rowWidget = new QWidget;
@@ -309,8 +325,18 @@ void OperationsOverviewPage::refreshSummary()
         return;
     }
 
-    m_metricCards[0].valueLabel->setText(QString::number(metrics.connectedRobots));
-    m_metricCards[0].captionLabel->setText(QStringLiteral("등록 %1대 중 온라인").arg(metrics.registeredRobots));
+    int connectedRobots = metrics.connectedRobots;
+    QString connectedCaption = QStringLiteral("등록 %1대 중 온라인").arg(metrics.registeredRobots);
+    // 헤더와 같은 실시간 ROS 텔레메트리 기준으로 연결 로봇 수를 보정한다.
+    // 현재 GUI는 단일 로봇 운영이 기본이라 활성 로봇이 1대일 때는 DB 로그보다
+    // 라이브 신호가 더 정확하다.
+    if (metrics.registeredRobots == 1 && m_hasSnapshot) {
+        connectedRobots = (m_latestSnapshot.rosState == ConnectionState::Connected) ? 1 : 0;
+        connectedCaption = QStringLiteral("등록 %1대 중 실시간 상태").arg(metrics.registeredRobots);
+    }
+
+    m_metricCards[0].valueLabel->setText(QString::number(connectedRobots));
+    m_metricCards[0].captionLabel->setText(connectedCaption);
 
     m_metricCards[1].valueLabel->setText(QString::number(metrics.activeMissions));
     m_metricCards[1].captionLabel->setText(
@@ -403,9 +429,7 @@ void OperationsOverviewPage::refreshHealth()
 void OperationsOverviewPage::renderHealthPanel()
 {
     QVector<SystemHealthRow> rows;
-    if (m_lastHealthDbRows.size() >= 1) {
-        rows.push_back(m_lastHealthDbRows.at(0));
-    }
+    rows.push_back(liveRos2HealthRow(m_hasSnapshot, m_latestSnapshot.rosState));
     rows.push_back(nav2HealthRow(m_hasNav2Signal, m_nav2Connected, m_hasAmclPose));
     if (m_lastHealthDbRows.size() >= 2) {
         rows.push_back(m_lastHealthDbRows.at(1));
