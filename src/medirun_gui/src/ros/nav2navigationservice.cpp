@@ -196,6 +196,7 @@ public:
             };
         options.goal_response_callback = [this](NavClient::GoalHandle::SharedPtr handle) {
             if (!handle) {
+                m_cancelRequestedBeforeHandle = false;
                 m_bridge->logEvent(QStringLiteral("ERROR"), QStringLiteral("목적지 요청이 거부되었습니다."));
                 m_bridge->statusChanged(QStringLiteral("대기 중"));
                 m_navigationInProgress = false;
@@ -204,6 +205,11 @@ public:
                 return;
             }
             m_navGoalHandle = handle;
+            if (m_cancelRequestedBeforeHandle) {
+                m_cancelRequestedBeforeHandle = false;
+                m_navClient->async_cancel_goal(handle);
+                return;
+            }
             m_bridge->navigationGoalAccepted();
         };
         options.result_callback = [this](const NavClient::GoalHandle::WrappedResult &result) {
@@ -264,6 +270,7 @@ public:
             };
         options.goal_response_callback = [this](FollowClient::GoalHandle::SharedPtr handle) {
             if (!handle) {
+                m_cancelRequestedBeforeHandle = false;
                 m_bridge->logEvent(QStringLiteral("ERROR"), QStringLiteral("경로 주행 요청이 거부되었습니다."));
                 m_bridge->statusChanged(QStringLiteral("대기 중"));
                 m_navigationInProgress = false;
@@ -272,6 +279,11 @@ public:
                 return;
             }
             m_followGoalHandle = handle;
+            if (m_cancelRequestedBeforeHandle) {
+                m_cancelRequestedBeforeHandle = false;
+                m_followClient->async_cancel_goal(handle);
+                return;
+            }
             m_bridge->navigationGoalAccepted();
         };
         options.result_callback = [this](const FollowClient::GoalHandle::WrappedResult &result) {
@@ -312,6 +324,16 @@ public:
         if (m_followGoalHandle) {
             m_followClient->async_cancel_goal(m_followGoalHandle);
             m_bridge->logEvent(QStringLiteral("WARN"), QStringLiteral("주행 취소를 요청했습니다."));
+            m_bridge->statusChanged(QStringLiteral("취소 요청됨..."));
+            return;
+        }
+        if (m_navigationInProgress) {
+            // navigateToPose/followWaypoints를 호출한 직후 goal_response_callback이
+            // 아직 안 와서(accept 대기 중) 핸들이 잠깐 비어 있는 순간이 있다. 여기서
+            // 그냥 무시하면 취소 요청이 통째로 씹혀서 "전환"을 눌러도 로봇이 원래
+            // 목적지로 계속 가버린다.
+            m_cancelRequestedBeforeHandle = true;
+            m_bridge->logEvent(QStringLiteral("WARN"), QStringLiteral("주행 취소를 요청했습니다. (다음 목표 수신 즉시 취소)"));
             m_bridge->statusChanged(QStringLiteral("취소 요청됨..."));
             return;
         }
@@ -485,6 +507,10 @@ private:
     std::shared_ptr<tf2_ros::TransformListener> m_tfListener;
     NavClient::GoalHandle::SharedPtr m_navGoalHandle;
     FollowClient::GoalHandle::SharedPtr m_followGoalHandle;
+    // goal 핸들이 아직 없는 순간에 cancelGoal()이 호출되면(예: 대기 호출 "전환"
+    // 버튼) 취소할 대상이 없어 요청이 그냥 씹혔다. 이 플래그를 세워두면 다음
+    // goal이 accept되는 즉시 취소를 적용한다.
+    bool m_cancelRequestedBeforeHandle {false};
     int m_followTotal {0};
     rclcpp::TimerBase::SharedPtr m_connectionCheckTimer;
     rclcpp::Client<lifecycle_msgs::srv::GetState>::SharedPtr m_btNavigatorStateClient;
