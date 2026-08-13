@@ -5,7 +5,7 @@
 -- 최종 ERD 반영 사항 (원안 유지)
 -- - PK id 컬럼: INTEGER GENERATED ALWAYS AS IDENTITY
 -- - *_id 논리 연결 컬럼: INTEGER
--- - 시간 컬럼: TIMESTAMP
+-- - 시간 컬럼: TIMESTAMPTZ
 -- - waypoint_set.waypoints: JSONB
 -- - 실제 FK 제약조건은 생성하지 않음 (애플리케이션 코드에서 관리)
 -- - 제거된 컬럼: system_event.source / driving_session.label /
@@ -48,9 +48,9 @@ CREATE TABLE aurix_user (
     role           VARCHAR(16) NOT NULL CHECK (
         role IN ('admin', 'staff')
     ),
-    created_at     TIMESTAMP NOT NULL DEFAULT NOW(),
-    last_login_at  TIMESTAMP,
-    deleted_at     TIMESTAMP,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_login_at  TIMESTAMPTZ,
+    deleted_at     TIMESTAMPTZ,
     CHECK (deleted_at IS NULL OR deleted_at >= created_at)
 );
 
@@ -76,8 +76,8 @@ CREATE TABLE robot (
     id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name            VARCHAR(64) NOT NULL,
     model           VARCHAR(64) NOT NULL DEFAULT 'turtlebot3_burger',
-    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
-    deregistered_at TIMESTAMP,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deregistered_at TIMESTAMPTZ,
     CHECK (deregistered_at IS NULL OR deregistered_at >= created_at)
 );
 
@@ -98,8 +98,8 @@ CREATE TABLE robot_session (
     status       VARCHAR(32) NOT NULL CHECK (
         status IN ('planned', 'running', 'paused', 'completed', 'failed', 'aborted')
     ),
-    started_at   TIMESTAMP NOT NULL DEFAULT NOW(),
-    ended_at     TIMESTAMP,
+    started_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ended_at     TIMESTAMPTZ,
     CHECK (ended_at IS NULL OR ended_at >= started_at)
 );
 
@@ -122,7 +122,7 @@ ON robot_session (robot_id, started_at DESC);
 CREATE TABLE system_event (
     id          INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     session_id  INTEGER,
-    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     event_type  VARCHAR(64) NOT NULL,
     severity    VARCHAR(16) NOT NULL CHECK (
         severity IN ('info', 'warn', 'error', 'critical')
@@ -152,7 +152,7 @@ CREATE TABLE connection_status_log (
         status IN ('connected', 'disconnected', 'reconnecting', 'error')
     ),
     detail     TEXT,
-    changed_at TIMESTAMP NOT NULL DEFAULT NOW()
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE connection_status_log IS '외부 연결 상태 변화 로그';
@@ -193,8 +193,8 @@ CREATE TABLE user_action_log (
     ),
     payload     JSONB,
     issued_by   VARCHAR(64),
-    occurred_at TIMESTAMP,
-    created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+    occurred_at TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE user_action_log IS 'Qt GUI 사용자 조작 로그';
@@ -231,7 +231,7 @@ CREATE TABLE control_command_log (
     linear_speed          DOUBLE PRECISION NOT NULL DEFAULT 0,
     angular_speed         DOUBLE PRECISION NOT NULL DEFAULT 0,
     emergency_stop_active BOOLEAN NOT NULL DEFAULT FALSE,
-    issued_at             TIMESTAMP NOT NULL DEFAULT NOW()
+    issued_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE control_command_log IS '제어 명령 감사 로그';
@@ -261,8 +261,8 @@ CREATE TABLE call_button (
     pos_x           DOUBLE PRECISION,
     pos_y           DOUBLE PRECISION,
     yaw             DOUBLE PRECISION,
-    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
-    deregistered_at TIMESTAMP,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deregistered_at TIMESTAMPTZ,
     CHECK (deregistered_at IS NULL OR deregistered_at >= created_at)
 );
 
@@ -289,11 +289,11 @@ CREATE TABLE mission (
             'arrived', 'dispensing', 'completed', 'cancelled', 'failed'
         )
     ),
-    dispensed_at   TIMESTAMP,
-    created_at     TIMESTAMP NOT NULL DEFAULT NOW(),
-    dispatched_at  TIMESTAMP,
-    arrived_at     TIMESTAMP,
-    ended_at       TIMESTAMP,
+    dispensed_at   TIMESTAMPTZ,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    dispatched_at  TIMESTAMPTZ,
+    arrived_at     TIMESTAMPTZ,
+    ended_at       TIMESTAMPTZ,
     CHECK (dispatched_at IS NULL OR dispatched_at >= created_at),
     CHECK (arrived_at IS NULL OR dispatched_at IS NULL OR arrived_at >= dispatched_at),
     CHECK (ended_at IS NULL OR ended_at >= created_at)
@@ -336,7 +336,7 @@ CREATE TABLE map (
     origin_yaw  DOUBLE PRECISION NOT NULL DEFAULT 0,
     width_px    INTEGER CHECK (width_px > 0),
     height_px   INTEGER CHECK (height_px > 0),
-    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (robot_id, name)
 );
 
@@ -365,8 +365,8 @@ CREATE TABLE slam_job (
     status       VARCHAR(32) NOT NULL CHECK (
         status IN ('queued', 'running', 'saved', 'failed', 'cancelled')
     ),
-    started_at   TIMESTAMP NOT NULL DEFAULT NOW(),
-    ended_at     TIMESTAMP,
+    started_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ended_at     TIMESTAMPTZ,
     CHECK (ended_at IS NULL OR ended_at >= started_at)
 );
 
@@ -390,7 +390,7 @@ CREATE TABLE waypoint_set (
     name        VARCHAR(120) NOT NULL,
     description TEXT,
     waypoints   JSONB NOT NULL DEFAULT '[]'::jsonb,
-    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (robot_id, name),
     CHECK (jsonb_typeof(waypoints) IN ('array', 'object'))
 );
@@ -423,8 +423,8 @@ CREATE TABLE nav_goal_log (
     status              VARCHAR(32) NOT NULL CHECK (
         status IN ('queued', 'accepted', 'navigating', 'arrived', 'failed', 'cancelled')
     ),
-    sent_at             TIMESTAMP NOT NULL DEFAULT NOW(),
-    finished_at         TIMESTAMP,
+    sent_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at         TIMESTAMPTZ,
     CHECK (finished_at IS NULL OR finished_at >= sent_at)
 );
 
@@ -465,7 +465,7 @@ CREATE TABLE camera_session (
     stream_status     VARCHAR(16) NOT NULL DEFAULT 'ready' CHECK (
         stream_status IN ('ready', 'live', 'recording', 'offline', 'error')
     ),
-    created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (session_id, camera_name)
 );
 
@@ -494,7 +494,7 @@ CREATE TABLE camera_recording (
     resolution_height INTEGER CHECK (resolution_height IS NULL OR resolution_height > 0),
     fps               REAL CHECK (fps IS NULL OR fps > 0),
     codec             VARCHAR(32),
-    recorded_at       TIMESTAMP NOT NULL DEFAULT NOW()
+    recorded_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE camera_recording IS '카메라 녹화 메타데이터';
@@ -516,7 +516,7 @@ CREATE TABLE object_detection (
     session_id        INTEGER NOT NULL,
     camera_session_id INTEGER NOT NULL,
     recording_id      INTEGER,
-    detected_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+    detected_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     label             VARCHAR(64) NOT NULL,
     confidence        REAL NOT NULL CHECK (confidence BETWEEN 0 AND 1),
     bbox_x            INTEGER NOT NULL CHECK (bbox_x >= 0),
@@ -563,9 +563,9 @@ CREATE TABLE files (
     uploaded_by       VARCHAR(100),
     display_order     INTEGER DEFAULT 0,
     is_public         BOOLEAN DEFAULT FALSE,
-    created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at        TIMESTAMP,
-    deleted_at        TIMESTAMP
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ,
+    deleted_at        TIMESTAMPTZ
 );
 
 COMMENT ON TABLE files IS '통합 파일 관리 테이블';
@@ -598,8 +598,8 @@ CREATE TABLE driving_session (
     robot_id        INTEGER NOT NULL,
     session_id      INTEGER NOT NULL,
     waypoint_set_id INTEGER,
-    started_at      TIMESTAMP NOT NULL DEFAULT NOW(),
-    ended_at        TIMESTAMP,
+    started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ended_at        TIMESTAMPTZ,
     CHECK (ended_at IS NULL OR ended_at >= started_at)
 );
 
@@ -617,7 +617,7 @@ ON driving_session (robot_id, started_at DESC);
 CREATE TABLE driving_record (
     id                 INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     driving_session_id INTEGER NOT NULL,
-    recorded_at        TIMESTAMP NOT NULL,
+    recorded_at        TIMESTAMPTZ NOT NULL,
     pos_x              DOUBLE PRECISION,
     pos_y              DOUBLE PRECISION,
     yaw                DOUBLE PRECISION,
