@@ -67,6 +67,7 @@ DashboardCentralWidget::DashboardCentralWidget(
     m_liveControlPage->setOperationsOverviewService(&operationsOverviewService);
     connect(m_liveControlPage, &LiveControlPage::missionCancelRequested, this, &DashboardCentralWidget::missionCancelRequested);
     connect(m_liveControlPage, &LiveControlPage::returnHomeRequested, this, &DashboardCentralWidget::returnHomeRequested);
+    connect(m_liveControlPage, &LiveControlPage::missionOpsRequested, this, [this]() { navigateTo(PageId::MissionOps); });
     addPage(PageId::LiveControl, m_liveControlPage);
 
     m_missionOpsPage = new MissionOpsPage(m_stack);

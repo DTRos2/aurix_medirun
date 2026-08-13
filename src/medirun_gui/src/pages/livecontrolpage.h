@@ -44,6 +44,7 @@ public:
 signals:
     void missionCancelRequested();
     void returnHomeRequested();
+    void missionOpsRequested();
 
 private slots:
     void refreshMissionStepper();
