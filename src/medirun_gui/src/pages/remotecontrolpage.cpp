@@ -55,6 +55,14 @@ QPushButton *directionButton(const QString &text, bool danger = false)
     button->setFixedSize(38, 38);
     return button;
 }
+
+// 로봇이 정지 상태여도 /odom 노이즈가 0 근처에서 부호만 미세하게 흔들려
+// "-0.00"/"0.00"이 번갈아 표시되는 문제를 막는다 — EMA로 다듬은 값이라도
+// 이 정도 잔류 노이즈는 남는다.
+double snapNearZero(double value, double threshold)
+{
+    return qAbs(value) < threshold ? 0.0 : value;
+}
 } // namespace
 
 RemoteControlPage::RemoteControlPage(RobotService &robotService, OperationsOverviewService &overviewService, QWidget *parent)
@@ -189,15 +197,42 @@ void RemoteControlPage::setNavigationService(NavigationService *service)
     }
 
     connect(m_navigationService, &NavigationService::amclPoseUpdated, this, &RemoteControlPage::handleAmclPoseUpdated);
+    connect(m_navigationService, &NavigationService::odomVelocityUpdated, this, &RemoteControlPage::handleOdomVelocityUpdated);
+    // 웨이포인트 관리 페이지 등 다른 페이지에서 시작한 주행이라도 같은
+    // NavigationService를 공유하므로 여기서도 감지된다.
+    connect(m_navigationService, &NavigationService::navSessionStarted, this, &RemoteControlPage::handleNavSessionStarted);
+    connect(m_navigationService, &NavigationService::navSessionFinished, this, &RemoteControlPage::handleNavSessionFinished);
+    // navSessionStarted를 놓친 뒤늦은 연결(이 페이지가 열리기 전에 이미
+    // 주행이 시작된 경우)이라도, 즉시 현재 상태로 동기화해서 배너/방향
+    // 패드를 맞춰준다.
+    if (m_navigationService->isNavigating()) {
+        handleNavSessionStarted({}, QString());
+    }
+    // amcl_pose는 TRANSIENT_LOCAL이라 앱 시작 직후(로그인 전) 이미 한 번
+    // 와버렸을 수 있어, 이 페이지가 연결하기 전 시그널을 놓쳤을 수 있다.
+    if (double x, y, yaw; m_navigationService->lastKnownAmclPose(x, y, yaw)) {
+        handleAmclPoseUpdated(x, y, yaw);
+    }
+}
+
+void RemoteControlPage::setSession(const AppSession &session)
+{
+    m_session = session;
 }
 
 bool RemoteControlPage::handleManualKeyPress(int key)
 {
+    if (m_navigationInProgress) {
+        return false;
+    }
     return m_teleop->consumeKey(key);
 }
 
 bool RemoteControlPage::handleManualKeyRelease(int key)
 {
+    if (m_navigationInProgress) {
+        return false;
+    }
     return m_teleop->releaseKey(key);
 }
 
@@ -232,8 +267,36 @@ void RemoteControlPage::handleTeleopVelocityChanged(double linearX, double angul
     }
 }
 
+void RemoteControlPage::handleOdomVelocityUpdated(double linearMps, double angularRadps)
+{
+    // teleop이 조작 중이면 그쪽이 명령한 값을 즉시 그대로 보여주는 기존
+    // 경로가 더 정확하고 실기 검증도 끝나 있으므로, 실측 /odom 값으로
+    // 덮어쓰지 않는다 — 여기서는 웨이포인트 자동주행 중이거나 완전히
+    // 대기 중일 때만 실제 속도를 반영한다.
+    if (m_teleopActive) {
+        return;
+    }
+    // LiveControlPage와 동일한 alpha=0.25 지수이동평균 — 특히 angular.z가
+    // raw로 보면 부호가 계속 뒤집힐 정도로 흔들려서 그대로 표시하면 안 된다.
+    m_lastOdomLinearVel = m_lastOdomLinearVel * 0.75 + linearMps * 0.25;
+    m_lastOdomAngularVel = m_lastOdomAngularVel * 0.75 + angularRadps * 0.25;
+    if (m_cmdVelLinearValueLabel != nullptr) {
+        m_cmdVelLinearValueLabel->setText(
+            QStringLiteral("%1 m/s").arg(snapNearZero(m_lastOdomLinearVel, 0.01), 0, 'f', 2));
+    }
+    if (m_cmdVelAngularValueLabel != nullptr) {
+        m_cmdVelAngularValueLabel->setText(
+            QStringLiteral("%1 rad/s").arg(snapNearZero(m_lastOdomAngularVel, 0.01), 0, 'f', 2));
+    }
+    if (m_cmdVelTitleLabel != nullptr) {
+        m_cmdVelTitleLabel->setText(m_navigationInProgress ? QStringLiteral("자동주행 중 · /odom")
+                                                             : QStringLiteral("대기 · /cmd_vel"));
+    }
+}
+
 void RemoteControlPage::handleTeleopActiveChanged(bool active)
 {
+    m_teleopActive = active;
     if (m_manualBannerTitleLabel != nullptr) {
         m_manualBannerTitleLabel->setText(active ? QStringLiteral("🎮  수동 제어 활성") : QStringLiteral("수동 제어 대기"));
         m_manualBannerTitleLabel->setStyleSheet(
@@ -243,12 +306,54 @@ void RemoteControlPage::handleTeleopActiveChanged(bool active)
     if (m_cmdVelTitleLabel != nullptr) {
         m_cmdVelTitleLabel->setText(active ? QStringLiteral("발행 중 · /cmd_vel") : QStringLiteral("대기 · /cmd_vel"));
     }
+    if (m_manualBannerCaptionLabel != nullptr) {
+        // 여러 PC 동시 조작을 막는 제어권 락은 아직 없다(추후 별도 기능) —
+        // 지금은 실제로 이 PC에서 조작 중일 때만, 하드코딩이 아니라 로그인한
+        // 계정을 그대로 보여준다.
+        m_manualBannerCaptionLabel->setText(
+            active ? QStringLiteral("방향 버튼/WASD로 조작 · 제어권 qt / %1").arg(m_session.username)
+                   : QStringLiteral("방향 버튼/WASD로 조작"));
+    }
 }
 
 void RemoteControlPage::handleTeleopSpeedPresetChanged(TeleopController::SpeedPreset preset)
 {
     Q_UNUSED(preset);
     updateSpeedPresetButtons();
+}
+
+void RemoteControlPage::handleNavSessionStarted(const QVector<NavPose> &goals, const QString &label)
+{
+    Q_UNUSED(goals);
+    Q_UNUSED(label);
+    m_navigationInProgress = true;
+    // 자동주행이 시작됐는데 방향 버튼/키가 눌려있던 상태로 남아있으면
+    // teleop과 Nav2가 동시에 /cmd_vel을 발행해 충돌한다 — 즉시 정지.
+    m_teleop->stop();
+    if (m_directionPad != nullptr) {
+        m_directionPad->setEnabled(false);
+    }
+    if (m_manualBannerTitleLabel != nullptr) {
+        m_manualBannerTitleLabel->setText(QStringLiteral("🧭  웨이포인트 이동 중"));
+        m_manualBannerTitleLabel->setStyleSheet(
+            QStringLiteral("color: %1; font-size: 12px; font-weight: 600;").arg(DashboardPalette::Amber.name()));
+    }
+    if (m_manualBannerCaptionLabel != nullptr) {
+        m_manualBannerCaptionLabel->setText(QStringLiteral("이동이 끝날 때까지 수동 제어를 할 수 없습니다"));
+    }
+}
+
+void RemoteControlPage::handleNavSessionFinished(bool success, bool cancelled)
+{
+    Q_UNUSED(success);
+    Q_UNUSED(cancelled);
+    m_navigationInProgress = false;
+    if (m_directionPad != nullptr) {
+        m_directionPad->setEnabled(true);
+    }
+    // 배너 문구/색을 "수동 제어 대기" 상태로 되돌린다 — teleop은 이동 중
+    // stop()된 채로 남아있으므로 active=false가 맞다.
+    handleTeleopActiveChanged(false);
 }
 
 void RemoteControlPage::updateSpeedPresetButtons()
@@ -329,7 +434,7 @@ QWidget *RemoteControlPage::buildManualControlBanner()
     m_manualBannerTitleLabel->setStyleSheet(
         QStringLiteral("color: %1; font-size: 12px; font-weight: 600;").arg(DashboardPalette::TextTertiary.name()));
     layout->addWidget(m_manualBannerTitleLabel);
-    m_manualBannerCaptionLabel = makeLabel(QStringLiteral("방향 버튼/WASD로 조작 · 제어권 qt / admin_lee"), QStringLiteral("metricCaption"));
+    m_manualBannerCaptionLabel = makeLabel(QStringLiteral("방향 버튼/WASD로 조작"), QStringLiteral("metricCaption"));
     m_manualBannerCaptionLabel->setWordWrap(false);
     layout->addWidget(m_manualBannerCaptionLabel);
     layout->addStretch();
@@ -680,6 +785,10 @@ QWidget *RemoteControlPage::buildDirectionPad()
     auto *forwardButton = directionButton(QStringLiteral("▲"));
     auto *leftButton = directionButton(QStringLiteral("↺"));
     auto *stopButton = directionButton(QStringLiteral("정지"), true);
+    // dangerFilledButton은 전역 QPushButton의 padding: 0 12px를 물려받는데,
+    // 38x38 고정 크기 방향패드 버튼 안에 "정지" 두 글자가 들어가면 잘린다.
+    // 방향패드 전용 스타일(directionPadStopButton)로 여백/폰트를 다시 잡는다.
+    stopButton->setObjectName(QStringLiteral("directionPadStopButton"));
     auto *rightButton = directionButton(QStringLiteral("↻"));
     auto *backwardButton = directionButton(QStringLiteral("▼"));
 
@@ -702,6 +811,7 @@ QWidget *RemoteControlPage::buildDirectionPad()
     layout->addWidget(stopButton, 1, 1);
     layout->addWidget(rightButton, 1, 2);
     layout->addWidget(backwardButton, 2, 1);
+    m_directionPad = panel;
     return panel;
 }
 

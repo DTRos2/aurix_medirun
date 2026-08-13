@@ -84,6 +84,7 @@ DashboardCentralWidget::DashboardCentralWidget(
     m_operationsOverviewPage = new OperationsOverviewPage(operationsOverviewService, m_stack);
     addPage(PageId::OperationsOverview, m_operationsOverviewPage);
     m_remoteControlPage = new RemoteControlPage(robotService, operationsOverviewService, m_stack);
+    m_remoteControlPage->setSession(m_session);
     addPage(PageId::RemoteControl, m_remoteControlPage);
 
     if (m_session.role == UserRole::Admin) {
@@ -122,6 +123,13 @@ void DashboardCentralWidget::setNavigationService(NavigationService *service)
         connect(service, &NavigationService::nav2ConnectionChanged, m_operationsOverviewPage, &OperationsOverviewPage::applyNav2Connection);
         connect(service, &NavigationService::amclPoseUpdated, m_operationsOverviewPage, &OperationsOverviewPage::applyAmclPose);
         connect(service, &NavigationService::statusChanged, m_operationsOverviewPage, &OperationsOverviewPage::applyNavStatus);
+        // Nav2가 이 페이지보다 먼저 연결된 상태였다면 nav2ConnectionChanged를
+        // 놓쳤을 수 있어 현재 상태로 한 번 동기화한다. amcl_pose는
+        // TRANSIENT_LOCAL이라 amclPoseUpdated도 같은 문제가 있다.
+        m_operationsOverviewPage->applyNav2Connection(service->isNav2Connected());
+        if (double x, y, yaw; service->lastKnownAmclPose(x, y, yaw)) {
+            m_operationsOverviewPage->applyAmclPose(x, y, yaw);
+        }
     }
 }
 

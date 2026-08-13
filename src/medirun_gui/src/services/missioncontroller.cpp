@@ -67,6 +67,13 @@ MissionController::MissionController(const AppSession &session,
     connect(m_navigationService, &NavigationService::nav2ConnectionChanged, this, &MissionController::handleNav2ConnectionChanged);
     connect(m_navigationService, &NavigationService::feedbackDistanceRemaining, this, &MissionController::handleNavigationFeedback);
     connect(m_navigationService, &NavigationService::amclPoseUpdated, this, &MissionController::handleAmclPoseUpdated);
+    // Nav2가 이 컨트롤러보다 먼저 연결된 상태였다면 nav2ConnectionChanged를
+    // 놓쳤을 수 있어 현재 상태로 한 번 동기화한다. amcl_pose는
+    // TRANSIENT_LOCAL이라 amclPoseUpdated도 같은 문제가 있다.
+    handleNav2ConnectionChanged(m_navigationService->isNav2Connected());
+    if (double x, y, yaw; m_navigationService->lastKnownAmclPose(x, y, yaw)) {
+        handleAmclPoseUpdated(x, y, yaw);
+    }
 
     connect(m_rosInterface, &MissionRosInterface::dispatchRequested, this, &MissionController::handleDispatchRequested);
     connect(m_rosInterface, &MissionRosInterface::missionHeartbeat, this, &MissionController::handleRosHeartbeat);

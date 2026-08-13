@@ -17,6 +17,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <atomic>
 #include <cmath>
 #include <mutex>
 #include <thread>
@@ -95,10 +96,24 @@ public:
         m_speedLimitPub = create_publisher<nav2_msgs::msg::SpeedLimit>("speed_limit", 10);
         m_cmdVelPub = create_publisher<geometry_msgs::msg::Twist>("cmd_vel", rclcpp::QoS(10));
 
+        // amcl은 /amcl_pose를 TRANSIENT_LOCAL(KEEP_LAST 1)로 발행 — 마지막
+        // 포즈를 래치해뒀다가 나중에 붙는 구독자에게도 즉시 준다. 여기서
+        // VOLATILE(rclcpp::QoS 기본값)로 구독하면 QoS가 안 맞아 그 래치된
+        // 과거 메시지를 못 받고, 로봇이 실제로 움직여 amcl이 "새로" 발행할
+        // 때까지 로봇 마커가 하나도 안 뜨는 문제가 있었다(Nav2가 이미 초기
+        // 위치까지 다 설정된 뒤에 GUI를 나중에 켠 경우 특히). 발행자와 같은
+        // QoS로 맞춰서 늦게 켜도 즉시 마지막 위치를 받도록 한다.
         m_amclSub = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
-            "amcl_pose", rclcpp::QoS(10),
+            "amcl_pose", rclcpp::QoS(1).transient_local(),
             [this](const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg) {
                 const double yaw = yawFromQuaternion(msg->pose.pose.orientation);
+                {
+                    std::lock_guard<std::mutex> lock(m_lastAmclPoseMutex);
+                    m_lastAmclPoseX = msg->pose.pose.position.x;
+                    m_lastAmclPoseY = msg->pose.pose.position.y;
+                    m_lastAmclPoseYaw = yaw;
+                    m_hasAmclPose = true;
+                }
                 m_bridge->amclPoseUpdated(msg->pose.pose.position.x, msg->pose.pose.position.y, yaw);
             });
 
@@ -171,6 +186,7 @@ public:
         m_bridge->logEvent(QStringLiteral("INFO"),
                             QStringLiteral("단일 목적지 주행 요청: (%1, %2)").arg(x, 0, 'f', 2).arg(y, 0, 'f', 2));
         m_bridge->statusChanged(QStringLiteral("목적지 (%1, %2)로 이동 중...").arg(x, 0, 'f', 2).arg(y, 0, 'f', 2));
+        m_navigationInProgress = true;
         m_bridge->navSessionStarted({NavPose{x, y, yaw}}, label);
 
         NavClient::SendGoalOptions options;
@@ -182,6 +198,7 @@ public:
             if (!handle) {
                 m_bridge->logEvent(QStringLiteral("ERROR"), QStringLiteral("목적지 요청이 거부되었습니다."));
                 m_bridge->statusChanged(QStringLiteral("대기 중"));
+                m_navigationInProgress = false;
                 m_bridge->navSessionFinished(false, false);
                 m_bridge->navigationGoalRejected(QStringLiteral("navigate_to_pose goal rejected"));
                 return;
@@ -197,6 +214,7 @@ public:
                                        : QStringLiteral("WARN");
             m_bridge->logEvent(level, QStringLiteral("단일 목적지 주행 결과: %1").arg(text));
             m_bridge->statusChanged(QStringLiteral("대기 중 (마지막 결과: %1)").arg(text));
+            m_navigationInProgress = false;
             m_bridge->navSessionFinished(
                 result.code == rclcpp_action::ResultCode::SUCCEEDED, result.code == rclcpp_action::ResultCode::CANCELED);
             QString resultCode = QStringLiteral("UNKNOWN");
@@ -236,6 +254,7 @@ public:
         m_bridge->logEvent(QStringLiteral("INFO"), QStringLiteral("경로 주행 요청: waypoint %1개").arg(m_followTotal));
         m_bridge->waypointProgress(0, m_followTotal);
         m_bridge->statusChanged(QStringLiteral("경로 주행 중 (0/%1)").arg(m_followTotal));
+        m_navigationInProgress = true;
         m_bridge->navSessionStarted(poses, label);
 
         FollowClient::SendGoalOptions options;
@@ -247,6 +266,7 @@ public:
             if (!handle) {
                 m_bridge->logEvent(QStringLiteral("ERROR"), QStringLiteral("경로 주행 요청이 거부되었습니다."));
                 m_bridge->statusChanged(QStringLiteral("대기 중"));
+                m_navigationInProgress = false;
                 m_bridge->navSessionFinished(false, false);
                 m_bridge->navigationGoalRejected(QStringLiteral("follow_waypoints goal rejected"));
                 return;
@@ -274,6 +294,7 @@ public:
                                                : QStringLiteral("FAILED");
                 m_bridge->navigationResult(resultCode, text + detail);
             }
+            m_navigationInProgress = false;
             m_bridge->navSessionFinished(succeeded, result.code == rclcpp_action::ResultCode::CANCELED);
         };
 
@@ -353,6 +374,32 @@ public:
         m_cmdVelPub->publish(msg);
     }
 
+    // GUI 스레드에서 직접 호출 — m_nav2Connected가 atomic이라 락 없이 안전하다.
+    bool isConnected() const
+    {
+        return m_nav2Connected;
+    }
+
+    // GUI 스레드에서 직접 호출 — m_navigationInProgress가 atomic이라 락 없이
+    // 안전하다. navSessionStarted/navSessionFinished 시그널을 놓친 뒤늦은
+    // 구독자(주행 도중에 페이지가 열린 경우)를 위한 현재 상태 조회.
+    bool isNavigating() const
+    {
+        return m_navigationInProgress;
+    }
+
+    bool lastKnownAmclPose(double &x, double &y, double &yawRad) const
+    {
+        std::lock_guard<std::mutex> lock(m_lastAmclPoseMutex);
+        if (!m_hasAmclPose) {
+            return false;
+        }
+        x = m_lastAmclPoseX;
+        y = m_lastAmclPoseY;
+        yawRad = m_lastAmclPoseYaw;
+        return true;
+    }
+
     // bt_navigator/waypoint_follower 둘 다 GetState 서비스가 응답 가능하고
     // active여야 "연결됨"으로 본다. 두 서비스 응답이 비동기로 따로 도착하므로
     // 라운드마다(m_connectionCheckRound) 결과를 모아서 마지막에 한 번만 판정한다
@@ -425,6 +472,13 @@ private:
     rclcpp::Publisher<nav2_msgs::msg::SpeedLimit>::SharedPtr m_speedLimitPub;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr m_cmdVelPub;
     rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr m_amclSub;
+    // GUI 스레드의 lastKnownAmclPose() 조회와 ROS 스핀 스레드의 구독 콜백이
+    // 동시에 접근하므로 mutex로 보호한다.
+    mutable std::mutex m_lastAmclPoseMutex;
+    double m_lastAmclPoseX {0.0};
+    double m_lastAmclPoseY {0.0};
+    double m_lastAmclPoseYaw {0.0};
+    bool m_hasAmclPose {false};
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr m_scanSub;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr m_odomSub;
     std::unique_ptr<tf2_ros::Buffer> m_tfBuffer;
@@ -440,7 +494,14 @@ private:
     // m_connectionCheckRound와 다르면 아직 이번 라운드 응답이 안 온 것.
     std::pair<uint64_t, bool> m_btNavigatorActiveForRound {0, false};
     std::pair<uint64_t, bool> m_waypointFollowerActiveForRound {0, false};
-    bool m_nav2Connected {false};
+    // ROS 스핀 스레드에서 쓰고, isNav2Connected()로 GUI 스레드에서 읽으므로
+    // atomic — 시그널을 놓친 뒤늦은 구독자가 현재 상태를 안전하게 조회할 수
+    // 있어야 한다(setNavigationService()가 연결이 이미 성사된 뒤에 불리는
+    // 경우의 레이스 컨디션 대응).
+    std::atomic<bool> m_nav2Connected {false};
+    // navSessionStarted()/navSessionFinished() 발행 시점에 맞춰 같이
+    // 갱신한다 — isNavigating()으로 GUI 스레드에서 안전하게 조회.
+    std::atomic<bool> m_navigationInProgress {false};
     // checkNav2Connection()이 1초마다 도니 3회 연속 실패 ≈ 3초 미수신을 뜻한다.
     // 03번 설계서 1.5절 통신 규칙과 같은 "일정 시간 미수신 시 단절" 취지.
     static constexpr int kDisconnectDebounceRounds = 3;
@@ -523,4 +584,19 @@ void Nav2NavigationService::driveManual(double linearX, double angularZ)
 void Nav2NavigationService::setSpeedLimit(int percent)
 {
     m_impl->node->setSpeedLimit(percent);
+}
+
+bool Nav2NavigationService::isNav2Connected() const
+{
+    return m_impl->node->isConnected();
+}
+
+bool Nav2NavigationService::lastKnownAmclPose(double &x, double &y, double &yawRad) const
+{
+    return m_impl->node->lastKnownAmclPose(x, y, yawRad);
+}
+
+bool Nav2NavigationService::isNavigating() const
+{
+    return m_impl->node->isNavigating();
 }
