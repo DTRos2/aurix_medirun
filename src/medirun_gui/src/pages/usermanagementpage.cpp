@@ -76,8 +76,15 @@ UserManagementPage::UserManagementPage(AuthService &authService, QWidget *parent
     m_userTable->setColumnCount(3);
     m_userTable->setHorizontalHeaderLabels({QStringLiteral("이메일/아이디"), QStringLiteral("권한"), QStringLiteral("")});
     m_userTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    m_userTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    // ResizeToContents는 setCellWidget()으로 넣은 버튼의 sizeHint를 제대로
+    // 못 읽어서 칸이 버튼 글자보다 좁아지는 경우가 있었다 — 고정 폭으로 넉넉히 준다.
+    m_userTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Fixed);
+    m_userTable->setColumnWidth(2, 104);
     m_userTable->verticalHeader()->setVisible(false);
+    // 기본 행 높이가 삭제 버튼(여백 포함 32px)보다 작아서, 버튼을 여백
+    // 컨테이너로 감싸자 오히려 그 안에서 짜부라져 글자가 안 보였다 —
+    // 버튼이 여유 있게 들어갈 만큼 행 높이를 명시적으로 키운다.
+    m_userTable->verticalHeader()->setDefaultSectionSize(42);
     m_userTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_userTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_userTable->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -136,12 +143,26 @@ void UserManagementPage::refreshUserTable()
         m_userTable->setItem(row, 0, new QTableWidgetItem(user.loginId));
         m_userTable->setItem(row, 1, new QTableWidgetItem(roleDisplayName(user.role)));
 
-        auto *deleteButton = new QPushButton(QStringLiteral("삭제"), m_userTable);
-        deleteButton->setObjectName(QStringLiteral("dangerFilledButton"));
+        // auto *deleteButton = new QPushButton(QStringLiteral("삭제"));
+        // deleteButton->setObjectName(QStringLiteral("tableRowDangerButton"));
+        auto *deleteButton = new QPushButton(QStringLiteral("삭제"));
+        deleteButton->setObjectName(QStringLiteral("tableRowDangerButton"));
+        deleteButton->setFixedHeight(26);                  // 행 높이보다 확실히 작게
+        deleteButton->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        deleteButton->setMinimumWidth(64);
         connect(deleteButton, &QPushButton::clicked, this, [this, loginId = user.loginId]() {
             handleDeleteUser(loginId);
         });
-        m_userTable->setCellWidget(row, 2, deleteButton);
+        // setCellWidget()은 위젯을 셀 크기 그대로 채워버려서, 버튼을 아무리
+        // 작게 잡아도 행 경계까지 꽉 차 옆/위아래 행과 거의 붙어 보인다 —
+        // 여백을 가진 컨테이너로 한 번 감싸서 셀 안에 숨 쉴 틈을 준다.
+        auto *cell = new QWidget(m_userTable);
+        auto *cellLayout = new QHBoxLayout(cell);
+        cellLayout->setContentsMargins(0, 0, 0, 0);
+        cellLayout->setSpacing(0);
+        cellLayout->addWidget(deleteButton);
+        // cellLayout->addWidget(deleteButton, 0, Qt::AlignCenter);
+        m_userTable->setCellWidget(row, 2, cell);
     }
 }
 

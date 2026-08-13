@@ -70,6 +70,8 @@ qt_add_executable(medirun_gui
     src/services/navgoallogrecorder.h
     src/services/missioncontroller.cpp
     src/services/missioncontroller.h
+    src/services/teleopcontroller.cpp
+    src/services/teleopcontroller.h
     src/services/missionrosinterface.cpp
     src/services/missionrosinterface.h
     src/services/missionstorageservice.cpp

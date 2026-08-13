@@ -29,6 +29,12 @@ public slots:
     void retryConnections() override;
     void publishInitialPose(double x, double y, double yawRad, const QString &frameId) override;
     void setSpeedLimit(int percent) override;
+    void driveManual(double linearX, double angularZ) override;
+
+public:
+    bool isNav2Connected() const override;
+    bool lastKnownAmclPose(double &x, double &y, double &yawRad) const override;
+    bool isNavigating() const override;
 
 private:
     struct Impl;

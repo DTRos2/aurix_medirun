@@ -18,6 +18,9 @@ struct WaypointMapMarker
     QString label;
     QPointF normalizedPos;
     WaypointMarkerKind kind {WaypointMarkerKind::Waypoint};
+    // radians, world/map frame (WaypointDef::yaw 그대로) — 지도에 방향 화살표로
+    // 표시해 사용자가 이 웨이포인트에서 로봇이 어느 쪽을 보게 되는지 알 수 있게 한다.
+    double yaw {0.0};
 };
 
 // A waypoint definition in map (world) coordinates. x/y are meters in the

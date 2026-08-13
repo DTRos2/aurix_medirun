@@ -19,7 +19,33 @@ constexpr qreal kRobotMarkerRadiusPx = 6.0;
 constexpr qreal kRobotArrowLengthPx = 18.0;
 constexpr qreal kScanPointRadiusPx = 1.4;
 
-void paintMarkerGlyph(QPainter &painter, const QPointF &center, WaypointMarkerKind kind, bool selected)
+// 웨이포인트 도착 시 로봇이 바라보게 될 방향(yaw, map 프레임) — 중심에서
+// 그 방향으로 짧은 화살표를 그린다. 이미지 행(row) 축은 world y축과 반대
+// 방향이라(WaypointMapWidget의 드래그-요 계산과 동일 규칙) dy 부호를 뒤집는다.
+void paintYawIndicator(QPainter &painter, const QPointF &center, double yawRadians, const QColor &color)
+{
+    const double dx = std::cos(yawRadians) * kArrowLengthPx;
+    const double dy = -std::sin(yawRadians) * kArrowLengthPx;
+    const double len = std::hypot(dx, dy);
+    if (len < 1e-6) {
+        return;
+    }
+    const QPointF tip(center.x() + dx, center.y() + dy);
+    painter.setPen(QPen(color, 1.6));
+    painter.drawLine(center, tip);
+
+    const double ux = dx / len;
+    const double uy = dy / len;
+    constexpr double kHeadLen = 4.5;
+    constexpr double kSpread = 0.55; // radians
+    auto rotate = [](double x, double y, double angle) {
+        return QPointF(x * std::cos(angle) - y * std::sin(angle), x * std::sin(angle) + y * std::cos(angle));
+    };
+    painter.drawLine(tip, tip + rotate(-ux, -uy, kSpread) * kHeadLen);
+    painter.drawLine(tip, tip + rotate(-ux, -uy, -kSpread) * kHeadLen);
+}
+
+void paintMarkerGlyph(QPainter &painter, const QPointF &center, WaypointMarkerKind kind, bool selected, double yawRadians)
 {
     if (selected) {
         painter.setPen(QPen(DashboardPalette::Cyan, 1.5, Qt::DashLine));
@@ -28,6 +54,7 @@ void paintMarkerGlyph(QPainter &painter, const QPointF &center, WaypointMarkerKi
         painter.setPen(Qt::NoPen);
         painter.setBrush(DashboardPalette::Cyan);
         painter.drawEllipse(center, 8, 8);
+        paintYawIndicator(painter, center, yawRadians, DashboardPalette::Cyan);
         return;
     }
 
@@ -39,11 +66,13 @@ void paintMarkerGlyph(QPainter &painter, const QPointF &center, WaypointMarkerKi
         painter.setPen(Qt::NoPen);
         painter.setBrush(DashboardPalette::TextPrimary);
         painter.drawEllipse(center, 3, 3);
+        paintYawIndicator(painter, center, yawRadians, DashboardPalette::TextPrimary);
         break;
     case WaypointMarkerKind::Waypoint:
         painter.setPen(QPen(DashboardPalette::TextMuted, 1.5));
         painter.setBrush(Qt::NoBrush);
         painter.drawEllipse(center, 7, 7);
+        paintYawIndicator(painter, center, yawRadians, DashboardPalette::TextMuted);
         break;
     case WaypointMarkerKind::Home:
         painter.setPen(QPen(DashboardPalette::TextMuted, 1.3));
@@ -51,8 +80,26 @@ void paintMarkerGlyph(QPainter &painter, const QPointF &center, WaypointMarkerKi
         painter.drawEllipse(center, 8, 8);
         painter.drawLine(QPointF(center.x() - 5, center.y() + 2), QPointF(center.x(), center.y() - 4));
         painter.drawLine(QPointF(center.x(), center.y() - 4), QPointF(center.x() + 5, center.y() + 2));
+        paintYawIndicator(painter, center, yawRadians, DashboardPalette::TextMuted);
         break;
     }
+}
+
+// 로봇이 지금 실제로 향하고 있는 목표 — "선택됨(편집 중)"의 얇은 시안 점선
+// 링과는 확실히 구분되도록 Amber 이중 링 + 크로스헤어(조준경 느낌)로 그려서
+// "그냥 선택된 것"과 "지금 실제로 주행 중인 목표"를 한눈에 구별할 수 있게 한다.
+void paintNavigationTargetMarker(QPainter &painter, const QPointF &center)
+{
+    painter.setPen(QPen(DashboardPalette::Amber, 2));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawEllipse(center, 20, 20);
+    painter.setPen(QPen(DashboardPalette::Amber, 1.3, Qt::DashLine));
+    painter.drawEllipse(center, 14, 14);
+    painter.setPen(QPen(DashboardPalette::Amber, 1.5));
+    painter.drawLine(QPointF(center.x() - 24, center.y()), QPointF(center.x() - 10, center.y()));
+    painter.drawLine(QPointF(center.x() + 10, center.y()), QPointF(center.x() + 24, center.y()));
+    painter.drawLine(QPointF(center.x(), center.y() - 24), QPointF(center.x(), center.y() - 10));
+    painter.drawLine(QPointF(center.x(), center.y() + 10), QPointF(center.x(), center.y() + 24));
 }
 } // namespace
 
@@ -118,6 +165,15 @@ void WaypointMapWidget::setSelectedId(const QString &id)
 void WaypointMapWidget::setRouteOrder(const QVector<QString> &orderedIds)
 {
     m_routeOrder = orderedIds;
+    update();
+}
+
+void WaypointMapWidget::setNavigationTargetId(const QString &id)
+{
+    if (m_navigationTargetId == id) {
+        return;
+    }
+    m_navigationTargetId = id;
     update();
 }
 
@@ -277,6 +333,18 @@ void WaypointMapWidget::paintEvent(QPaintEvent *event)
         painter.drawEllipse(m_dragStartPos, 3, 3);
     }
 
+    // 로봇 위치 -> 현재 주행 목표 웨이포인트까지 점선 안내선. 목표 링/라벨보다
+    // 먼저 그려서 마커들 아래로 깔리게 한다.
+    if (m_hasRobotPose && !m_navigationTargetId.isEmpty()) {
+        for (const WaypointMapMarker &marker : m_markers) {
+            if (marker.id == m_navigationTargetId) {
+                painter.setPen(QPen(DashboardPalette::Amber, 1.6, Qt::DashLine));
+                painter.drawLine(toCanvas(m_robotNormalizedPos, imgRect), toCanvas(marker.normalizedPos, imgRect));
+                break;
+            }
+        }
+    }
+
     if (!m_routeOrder.isEmpty()) {
         QHash<QString, WaypointMapMarker> byId;
         for (const WaypointMapMarker &marker : m_markers) {
@@ -304,13 +372,14 @@ void WaypointMapWidget::paintEvent(QPaintEvent *event)
             const QPointF center = toCanvas(marker.normalizedPos, imgRect);
             const int order = m_routeOrder.indexOf(marker.id);
             if (order < 0) {
-                paintMarkerGlyph(painter, center, marker.kind, false);
+                paintMarkerGlyph(painter, center, marker.kind, false, marker.yaw);
                 continue;
             }
 
             painter.setPen(Qt::NoPen);
             painter.setBrush(DashboardPalette::Cyan);
             painter.drawEllipse(center, 11, 11);
+            paintYawIndicator(painter, center, marker.yaw, DashboardPalette::Cyan);
             painter.setPen(QPen(DashboardPalette::CyanOn));
             QFont numberFont = painter.font();
             numberFont.setPixelSize(10);
@@ -325,21 +394,35 @@ void WaypointMapWidget::paintEvent(QPaintEvent *event)
             painter.setFont(labelFont);
             painter.setPen(DashboardPalette::TextSecondary);
             painter.drawText(QRectF(center.x() - 30, center.y() - 27, 60, 12), Qt::AlignCenter, marker.label);
+
+            if (marker.id == m_navigationTargetId) {
+                paintNavigationTargetMarker(painter, center);
+            }
         }
     } else {
         for (const WaypointMapMarker &marker : m_markers) {
             const QPointF center = toCanvas(marker.normalizedPos, imgRect);
+            const bool isNavTarget = (marker.id == m_navigationTargetId);
             const bool selected = (marker.id == m_selectedId);
-            paintMarkerGlyph(painter, center, marker.kind, selected);
+            paintMarkerGlyph(painter, center, marker.kind, selected, marker.yaw);
+            if (isNavTarget) {
+                paintNavigationTargetMarker(painter, center);
+            }
 
             QFont labelFont = painter.font();
             labelFont.setPixelSize(9);
+            labelFont.setBold(isNavTarget);
             painter.setFont(labelFont);
-            painter.setPen(selected ? DashboardPalette::Cyan : DashboardPalette::TextSecondary);
-            const QString text = selected ? QStringLiteral("%1 (편집 중)").arg(marker.label) : marker.label;
+            painter.setPen(isNavTarget ? DashboardPalette::Amber : (selected ? DashboardPalette::Cyan : DashboardPalette::TextSecondary));
+            // 실제로 로봇이 향하는 중이면 "편집 중"이라고 잘못 말하면 안 되므로
+            // 목표 표시를 우선한다 — 주행 시작 시점엔 선택된 항목과 목표가
+            // 같아서 이 둘이 항상 같이 켜진다.
+            const QString text = isNavTarget ? QStringLiteral("🎯 %1로 주행 중").arg(marker.label)
+                : selected             ? QStringLiteral("%1 (편집 중)").arg(marker.label)
+                                        : marker.label;
             const QFontMetrics metrics(labelFont);
             const int textWidth = metrics.horizontalAdvance(text) + 12;
-            painter.drawText(QRectF(center.x() - textWidth / 2.0, center.y() - (selected ? 30 : 24), textWidth, 12),
+            painter.drawText(QRectF(center.x() - textWidth / 2.0, center.y() - (isNavTarget ? 34 : (selected ? 30 : 24)), textWidth, 12),
                               Qt::AlignCenter, text);
         }
     }

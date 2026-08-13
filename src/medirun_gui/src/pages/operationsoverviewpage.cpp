@@ -14,7 +14,6 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QLayoutItem>
-#include <QStyle>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTimer>
@@ -40,14 +39,6 @@ QFrame *panelFrame(const QString &objectName)
     frame->setObjectName(objectName);
     frame->setFrameShape(QFrame::NoFrame);
     return frame;
-}
-
-void applyBadgeKind(QLabel *label, const QString &kind, const QString &text)
-{
-    label->setText(text);
-    label->setProperty("badgeKind", kind);
-    label->style()->unpolish(label);
-    label->style()->polish(label);
 }
 
 QColor colorForKind(const QString &kind)
@@ -142,7 +133,11 @@ QWidget *buildHealthRow(const SystemHealthRow &row)
     rowLayout->setSpacing(6);
 
     auto *labelRow = new QHBoxLayout;
-    labelRow->addWidget(makeLabel(row.label, QStringLiteral("healthLabel")));
+    auto *nameLabel = makeLabel(row.label, QStringLiteral("healthLabel"));
+    // makeLabel() 기본값(wordWrap=true) 때문에 "Nav2 — 위치 설정 필요"처럼 긴
+    // 라벨은 "필요"만 다음 줄로 넘어갔다 — 한 줄로 고정한다.
+    nameLabel->setWordWrap(false);
+    labelRow->addWidget(nameLabel);
     labelRow->addStretch();
     labelRow->addWidget(makeLabel(QStringLiteral("%1%").arg(row.percent), QStringLiteral("healthValue")));
     rowLayout->addLayout(labelRow);
@@ -188,10 +183,10 @@ OperationsOverviewPage::OperationsOverviewPage(OperationsOverviewService &servic
     metricRow->setVerticalSpacing(12);
 
     m_metricCards.resize(4);
-    metricRow->addWidget(buildMetricCard(QStringLiteral("연결 로봇"), QStringLiteral("cyan"), m_metricCards[0]), 0, 0);
-    metricRow->addWidget(buildMetricCard(QStringLiteral("진행 미션"), QStringLiteral("cyan"), m_metricCards[1]), 0, 1);
-    metricRow->addWidget(buildMetricCard(QStringLiteral("오늘 호출"), QStringLiteral("muted"), m_metricCards[2]), 0, 2);
-    metricRow->addWidget(buildMetricCard(QStringLiteral("안전 이벤트"), QStringLiteral("amber"), m_metricCards[3]), 0, 3);
+    metricRow->addWidget(buildMetricCard(QStringLiteral("연결 로봇"), m_metricCards[0]), 0, 0);
+    metricRow->addWidget(buildMetricCard(QStringLiteral("진행 미션"), m_metricCards[1]), 0, 1);
+    metricRow->addWidget(buildMetricCard(QStringLiteral("오늘 호출"), m_metricCards[2]), 0, 2);
+    metricRow->addWidget(buildMetricCard(QStringLiteral("안전 이벤트"), m_metricCards[3]), 0, 3);
     layout->addLayout(metricRow);
 
     auto *midRow = new QHBoxLayout;
@@ -223,25 +218,17 @@ QWidget *OperationsOverviewPage::buildHeader()
         QStringLiteral("%1 · AURIX MEDIRUN NETWORK").arg(QDate::currentDate().toString(QStringLiteral("yyyy.MM.dd"))),
         QStringLiteral("pageSubtitle")));
     layout->addLayout(titleCol);
-    layout->addStretch();
-
-    m_statusBadge = makeBadgeLabel(QStringLiteral("확인 중"), QStringLiteral("muted"), header);
-    layout->addWidget(m_statusBadge);
     return header;
 }
 
-QWidget *OperationsOverviewPage::buildMetricCard(const QString &title, const QString &kind, MetricCardWidgets &widgetsOut)
+QWidget *OperationsOverviewPage::buildMetricCard(const QString &title, MetricCardWidgets &widgetsOut)
 {
     auto *card = panelFrame(QStringLiteral("metricCard"));
     auto *layout = new QVBoxLayout(card);
     layout->setContentsMargins(16, 16, 16, 16);
     layout->setSpacing(8);
 
-    auto *topRow = new QHBoxLayout;
-    topRow->addWidget(makeLabel(title, QStringLiteral("metricTitle")));
-    topRow->addStretch();
-    topRow->addWidget(makeBadgeLabel(QString(), kind, card));
-    layout->addLayout(topRow);
+    layout->addWidget(makeLabel(title, QStringLiteral("metricTitle")));
 
     widgetsOut.valueLabel = makeLabel(QStringLiteral("-"), QStringLiteral("metricValue"));
     widgetsOut.captionLabel = makeLabel(QString(), QStringLiteral("metricCaption"));
@@ -339,12 +326,6 @@ void OperationsOverviewPage::refreshSummary()
 
     m_metricCards[3].valueLabel->setText(QString::number(metrics.safetyEventsLast24h));
     m_metricCards[3].captionLabel->setText(QStringLiteral("최근 24시간"));
-
-    const bool normal = metrics.safetyEventsLast24h == 0;
-    applyBadgeKind(
-        m_statusBadge,
-        normal ? QStringLiteral("green") : QStringLiteral("amber"),
-        normal ? QStringLiteral("전체 시스템 정상") : QStringLiteral("주의 필요"));
 }
 
 void OperationsOverviewPage::refreshRobotStatus()

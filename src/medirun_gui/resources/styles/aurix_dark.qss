@@ -491,6 +491,25 @@ QPushButton#dangerFilledButton:hover {
     background-color: #93293f;
 }
 
+/* 사용자/로봇 관리 테이블 행 안에 들어가는 삭제류 버튼 전용 — 기본
+   QPushButton의 min-height:38px를 그대로 물려받으면 테이블 행 높이보다
+   버튼이 커져버려서, 테이블 행에 맞는 낮은 높이로 따로 잡는다. */
+QPushButton#tableRowDangerButton {
+    min-height: 20px;
+    max-height: 20px;
+    padding: 0 10px;
+    background-color: #7c2438;
+    border: none;
+    border-radius: 6px;
+    color: #fecdd3;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+QPushButton#tableRowDangerButton:hover {
+    background-color: #93293f;
+}
+
 QPushButton#amberFilledButton {
     background-color: #332508;
     border: 1px solid #6b4e12;
@@ -705,17 +724,52 @@ QFrame#callQueueCard {
     border-radius: 10px;
 }
 
+/* Qt 스타일시트가 적용된 QPushButton은 setFixedSize()를 줘도 내부적으로
+   글자 폭(sizeFromContents)에 따라 다시 커질 수 있다 — "↺"/"↻"는 원형
+   화살표라 "▲"/"▼" 삼각형보다 글리프 자체가 넓어서 좌우 버튼만 실제로
+   더 넓게 렌더링되던 원인이 이것. min/max-width를 양쪽 다 못박아 글자
+   내용과 무관하게 4방향 버튼이 항상 같은 38px 정사각형이 되게 한다.
+   (아이콘은 그대로 유지)
+*/
 QPushButton#directionPadButton {
+    min-width: 38px;
+    max-width: 38px;
     min-height: 38px;
-    max-width: 40px;
+    max-height: 38px;
+    padding: 0;
     background-color: #0d1f30;
     border: 1px solid #2a4a66;
-    border-radius: 8px;
-    font-size: 15px;
+    border-radius: 9px;
+    color: #dceefc;
+    font-size: 16px;
+    font-weight: 600;
 }
 
 QPushButton#directionPadButton:hover {
+    background-color: #12283c;
     border-color: #39c5e0;
+    color: #7fe3f4;
+}
+
+/* 정지는 방향 버튼과 같은 사각형이면 "네모 4개 사이에 낀 또 다른 네모"로
+   묻혀 보인다. 원형 + 빨강으로 눌러야 할 때 한눈에 띄게 분리한다. */
+QPushButton#directionPadStopButton {
+    min-width: 38px;
+    max-width: 38px;
+    min-height: 38px;
+    max-height: 38px;
+    padding: 0;
+    background-color: #7c2438;
+    border: 1px solid #93293f;
+    border-radius: 19px;
+    color: #fecdd3;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+QPushButton#directionPadStopButton:hover {
+    background-color: #93293f;
+    border-color: #f87171;
 }
 
 /* ---- Timeline / progress tracks ---- */
