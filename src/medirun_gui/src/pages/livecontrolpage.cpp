@@ -540,9 +540,11 @@ QWidget *LiveControlPage::buildWaitingCallBanner()
     m_waitingCallLabel->setStyleSheet(QStringLiteral("color: %1;").arg(DashboardPalette::Cyan.name()));
     layout->addWidget(m_waitingCallLabel);
     layout->addStretch();
-    auto *linkLabel = makeLabel(QStringLiteral("미션 관제 →"), QStringLiteral("metricCaption"));
-    linkLabel->setWordWrap(false);
-    layout->addWidget(linkLabel);
+    auto *linkButton = new QPushButton(QStringLiteral("미션 관제 →"), panel);
+    linkButton->setObjectName(QStringLiteral("linkChipButton"));
+    linkButton->setCursor(Qt::PointingHandCursor);
+    connect(linkButton, &QPushButton::clicked, this, &LiveControlPage::missionOpsRequested);
+    layout->addWidget(linkButton);
     return panel;
 }
 
@@ -649,7 +651,16 @@ void LiveControlPage::refreshWaitingCallBanner()
     if (m_waitingCallLabel == nullptr) {
         return;
     }
-    const int count = m_missionController == nullptr ? 0 : m_missionController->waitingQueue().size();
+    // waitingQueue()는 Completed/Cancelled 등 종료된 항목도 그대로 담고 있어서
+    // (미션 관제 페이지의 큐 요약과 동일하게) Waiting/Active 상태만 센다.
+    int count = 0;
+    if (m_missionController != nullptr) {
+        for (const MissionQueueItem &item : m_missionController->waitingQueue()) {
+            if (item.status == MissionQueueStatus::Waiting || item.status == MissionQueueStatus::Active) {
+                ++count;
+            }
+        }
+    }
     m_waitingCallLabel->setText(QStringLiteral("대기 호출 %1건").arg(count));
 }
 

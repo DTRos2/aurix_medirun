@@ -48,6 +48,8 @@ private:
     QLabel *m_missionDetailLabel {nullptr};
     QLabel *m_missionMetaLabel {nullptr};
     QVBoxLayout *m_historyListLayout {nullptr};
+    QString m_progressBarMissionId;
+    int m_lastRenderedProgress {-1};
 };
 
 #endif // MISSIONOPSPAGE_H

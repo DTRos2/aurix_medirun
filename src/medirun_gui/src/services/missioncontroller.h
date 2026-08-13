@@ -87,7 +87,6 @@ private:
                        bool requiresQueueConfirmation = false);
     void resetToIdleSnapshot();
     void markQueueStatus(const QString &queueId, MissionQueueStatus status);
-    void removeQueueItem(const QString &queueId);
     int queueIndex(const QString &queueId) const;
     MissionQueueItem *activeQueueItem();
     const MissionQueueItem *activeQueueItem() const;
