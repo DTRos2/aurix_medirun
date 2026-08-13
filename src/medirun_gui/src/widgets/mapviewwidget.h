@@ -55,7 +55,10 @@ public:
     // Playback mode: solid cyan "traveled" + dashed muted "remaining".
     void setPlaybackPath(const QVector<QPointF> &traveled, const QVector<QPointF> &remaining);
 
-    void setWaypoints(const QVector<QPointF> &normalizedPoints);
+    // yawRadians가 비어있지 않으면(normalizedPoints와 같은 길이) 각 웨이포인트에
+    // 방향 화살표를 같이 그린다 — 웨이포인트 관리 페이지와 동일한 정보를 실시간
+    // 관제에서도 볼 수 있게 한다.
+    void setWaypoints(const QVector<QPointF> &normalizedPoints, const QVector<double> &yawRadians = QVector<double>());
     // 콜존(call_button) 전용 마커 — setWaypoints()의 무채색 점과 달리
     // WaypointManagementPage의 콜존 글리프(채워진 원)를 재사용해 구분되게
     // 그린다. labels가 비어있지 않으면 마커 밑에 존 이름을 표시한다.
@@ -106,6 +109,7 @@ private:
     QSize m_backgroundPixmapTargetSize;
 
     QVector<QPointF> m_waypoints;
+    QVector<double> m_waypointYaws;
     QVector<QPointF> m_callZones;
     QStringList m_callZoneLabels;
     QPointF m_destination;

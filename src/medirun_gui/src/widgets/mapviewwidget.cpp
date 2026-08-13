@@ -294,25 +294,55 @@ void paintRobotMarker(QPainter &painter, const QPointF &center, RobotMarkerState
     painter.restore();
 }
 
-void paintWaypointMarker(QPainter &painter, const QPointF &center)
+// 웨이포인트가 도착 시 로봇이 바라보게 될 방향(yaw, map 프레임)을 짧은
+// 화살표로 표시 — WaypointMapWidget::paintYawIndicator와 동일 규칙(이미지
+// 행(row) 축은 world y축과 반대 방향이라 dy 부호를 뒤집는다).
+void paintYawIndicator(QPainter &painter, const QPointF &center, double yawRadians, const QColor &color)
+{
+    constexpr double kArrowLengthPx = 12.0;
+    const double dx = std::cos(yawRadians) * kArrowLengthPx;
+    const double dy = -std::sin(yawRadians) * kArrowLengthPx;
+    const double len = std::hypot(dx, dy);
+    if (len < 1e-6) {
+        return;
+    }
+    const QPointF tip(center.x() + dx, center.y() + dy);
+    painter.setPen(QPen(color, 1.6));
+    painter.drawLine(center, tip);
+
+    const double ux = dx / len;
+    const double uy = dy / len;
+    constexpr double kHeadLen = 4.0;
+    constexpr double kSpread = 0.55;
+    auto rotate = [](double x, double y, double angle) {
+        return QPointF(x * std::cos(angle) - y * std::sin(angle), x * std::sin(angle) + y * std::cos(angle));
+    };
+    painter.drawLine(tip, tip + rotate(-ux, -uy, kSpread) * kHeadLen);
+    painter.drawLine(tip, tip + rotate(-ux, -uy, -kSpread) * kHeadLen);
+}
+
+void paintWaypointMarker(QPainter &painter, const QPointF &center, double yawRadians)
 {
     painter.setPen(QPen(DashboardPalette::TextMuted, 1.5));
     painter.setBrush(Qt::NoBrush);
     painter.drawEllipse(center, 7, 7);
+    paintYawIndicator(painter, center, yawRadians, DashboardPalette::TextMuted);
 }
 
+// 웨이포인트 관리 페이지의 목표 마커(Amber 이중 링 + 크로스헤어)와 같은
+// 스타일 — 다만 여기서는 로봇 위치까지의 점선 안내선은 그리지 않는다.
 void paintDestinationMarker(QPainter &painter, const QPointF &center)
 {
-    painter.setPen(QPen(DashboardPalette::TextPrimary, 2));
+    painter.setPen(QPen(DashboardPalette::Amber, 2));
     painter.setBrush(Qt::NoBrush);
-    painter.drawEllipse(center, 9, 9);
-    painter.drawLine(QPointF(center.x(), center.y() - 13), QPointF(center.x(), center.y() - 6));
-    painter.drawLine(QPointF(center.x(), center.y() + 6), QPointF(center.x(), center.y() + 13));
-    painter.drawLine(QPointF(center.x() - 13, center.y()), QPointF(center.x() - 6, center.y()));
-    painter.drawLine(QPointF(center.x() + 13, center.y()), QPointF(center.x() + 6, center.y()));
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(DashboardPalette::TextPrimary);
-    painter.drawEllipse(center, 3, 3);
+    painter.drawEllipse(center, 20, 20);
+    painter.setPen(QPen(DashboardPalette::Amber, 1.3, Qt::DashLine));
+    painter.drawEllipse(center, 14, 14);
+    painter.setPen(QPen(DashboardPalette::Amber, 1.5));
+    painter.drawLine(QPointF(center.x() - 24, center.y()), QPointF(center.x() - 10, center.y()));
+    painter.drawLine(QPointF(center.x() + 10, center.y()), QPointF(center.x() + 24, center.y()));
+    painter.drawLine(QPointF(center.x(), center.y() - 24), QPointF(center.x(), center.y() - 10));
+    painter.drawLine(QPointF(center.x(), center.y() + 10), QPointF(center.x(), center.y() + 24));
 }
 
 void paintHomeMarker(QPainter &painter, const QPointF &center)
@@ -493,9 +523,10 @@ void MapViewWidget::setPlaybackPath(const QVector<QPointF> &traveled, const QVec
     update();
 }
 
-void MapViewWidget::setWaypoints(const QVector<QPointF> &normalizedPoints)
+void MapViewWidget::setWaypoints(const QVector<QPointF> &normalizedPoints, const QVector<double> &yawRadians)
 {
     m_waypoints = normalizedPoints;
+    m_waypointYaws = yawRadians;
     update();
 }
 
@@ -707,8 +738,9 @@ void MapViewWidget::paintEvent(QPaintEvent *event)
 
     // 웨이포인트/콜존/홈 마커는 Reference 모드(RemoteControlPage 미니맵)에서도
     // 상시 표시 — 주행 경로/목적지만 Live/Playback 전용.
-    for (const QPointF &waypoint : m_waypoints) {
-        paintWaypointMarker(painter, toCanvas(waypoint, imgRect));
+    for (int i = 0; i < m_waypoints.size(); ++i) {
+        const double yaw = i < m_waypointYaws.size() ? m_waypointYaws.at(i) : 0.0;
+        paintWaypointMarker(painter, toCanvas(m_waypoints.at(i), imgRect), yaw);
     }
 
     for (int i = 0; i < m_callZones.size(); ++i) {

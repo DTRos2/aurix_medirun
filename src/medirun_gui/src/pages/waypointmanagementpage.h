@@ -165,6 +165,11 @@ private:
     // 움직이고 DB 세션 기록도 꼬이는 문제가 있어, 주행 중엔 새 주행 시작
     // 버튼을 잠근다.
     bool m_navigating {false};
+    // followWaypoints로 경로 주행 중일 때만 채워지는, 목표 순서 그대로의
+    // 웨이포인트 id 목록 — waypointProgress(currentIndex)가 오면 이 목록에서
+    // 찾아 지도의 목표 마커를 그 지점으로 옮긴다. 단일 웨이포인트 주행일 땐
+    // 비워두고 m_selectedWaypointId를 그대로 목표로 쓴다.
+    QVector<QString> m_activeRouteWaypointIds;
 
     // shell
     QPushButton *m_waypointTabButton;
