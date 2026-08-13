@@ -46,6 +46,10 @@ public:
     // Non-empty to render numbered route markers + connecting path instead
     // of the plain marker glyphs.
     void setRouteOrder(const QVector<QString> &orderedIds);
+    // 로봇이 지금 실제로 navigateToPose/followWaypoints로 향하고 있는 웨이포인트
+    // id — setSelectedId()(단순 편집용 선택)와 별개로, 로봇 위치에서 이 마커까지
+    // 안내선을 긋고 눈에 띄는 목표 링을 덧그린다. 빈 문자열이면 표시 안 함.
+    void setNavigationTargetId(const QString &id);
 
     // Robot's live pose (AMCL), normalized to the same image-uv space as
     // markers. valid=false hides the marker (e.g. AMCL not running yet).
@@ -80,6 +84,7 @@ private:
 
     QVector<WaypointMapMarker> m_markers;
     QString m_selectedId;
+    QString m_navigationTargetId;
     QVector<QString> m_routeOrder;
     QPixmap m_backgroundPixmap;
     MapMeta m_mapMeta;

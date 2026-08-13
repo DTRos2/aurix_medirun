@@ -1407,9 +1407,9 @@ SlamMappingPage::SlamMappingPage(QWidget *parent)
     rightCol->setContentsMargins(0, 0, 0, 0);
     rightCol->setSpacing(8);
     rightCol->addWidget(buildMappingStatusPanel());
-    rightCol->addWidget(buildLogPanel(), 1);
     rightCol->addWidget(buildDirectionPad());
     rightCol->addWidget(buildSpeedLimitPanel());
+    rightCol->addWidget(buildLogPanel(), 1);
 
     auto *rightColWidget = new QWidget(canvas);
     rightColWidget->setFixedWidth(200);
@@ -1543,11 +1543,13 @@ QWidget *SlamMappingPage::buildStatusBanner()
     layout->setSpacing(8);
 
     m_statusBannerTitleLabel = makeLabel(QStringLiteral("🗺  Cartographer 대기 중"));
+    m_statusBannerTitleLabel->setWordWrap(false);
     m_statusBannerTitleLabel->setStyleSheet(
         QStringLiteral("color: %1; font-size: 12px; font-weight: 600;").arg(DashboardPalette::Cyan.name()));
     layout->addWidget(m_statusBannerTitleLabel);
     m_statusBannerDetailLabel = makeLabel(QStringLiteral("TurtleBot3 bringup 후 매핑 시작 버튼으로 Cartographer를 실행합니다."),
                                           QStringLiteral("metricCaption"));
+    m_statusBannerDetailLabel->setWordWrap(false);
     layout->addWidget(m_statusBannerDetailLabel);
     layout->addStretch();
     layout->addWidget(makeBadgeLabel(QStringLiteral("Cartographer 활성"), QStringLiteral("cyan"), panel));
@@ -1625,6 +1627,10 @@ QWidget *SlamMappingPage::buildDirectionPad()
     auto *forwardButton = directionButton(QStringLiteral("▲"));
     auto *leftButton = directionButton(QStringLiteral("↺"));
     auto *stopButton = directionButton(QStringLiteral("정지"), true);
+    // dangerFilledButton은 전역 QPushButton의 padding: 0 12px를 물려받는데,
+    // 38x38 고정 크기 방향패드 버튼 안에 "정지" 두 글자가 들어가면 잘린다.
+    // 원격제어 페이지와 동일한 방향패드 전용 스타일로 여백/폰트를 다시 잡는다.
+    stopButton->setObjectName(QStringLiteral("directionPadStopButton"));
     auto *rightButton = directionButton(QStringLiteral("↻"));
     auto *backwardButton = directionButton(QStringLiteral("▼"));
 

@@ -1,23 +1,31 @@
 #include "remotecontrolpage.h"
 
+#include "../models/waypointtypes.h"
 #include "../ros/navigationservice.h"
 #include "../services/camerafeedprovider.h"
 #include "../services/mapfile.h"
+#include "../services/operationsoverviewservice.h"
+#include "../services/robotservice.h"
 #include "../theme/dashboardpalette.h"
 #include "../widgets/badgelabel.h"
 #include "../widgets/mapviewwidget.h"
 #include "../widgets/proportionalbar.h"
 
+#include <QCoreApplication>
+#include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QHideEvent>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QSizePolicy>
+#include <QStyle>
 #include <QVBoxLayout>
 #include <QtMath>
 
@@ -47,11 +55,26 @@ QPushButton *directionButton(const QString &text, bool danger = false)
     button->setFixedSize(38, 38);
     return button;
 }
+
+// 로봇이 정지 상태여도 /odom 노이즈가 0 근처에서 부호만 미세하게 흔들려
+// "-0.00"/"0.00"이 번갈아 표시되는 문제를 막는다 — EMA로 다듬은 값이라도
+// 이 정도 잔류 노이즈는 남는다.
+double snapNearZero(double value, double threshold)
+{
+    return qAbs(value) < threshold ? 0.0 : value;
+}
 } // namespace
 
-RemoteControlPage::RemoteControlPage(QWidget *parent)
+RemoteControlPage::RemoteControlPage(RobotService &robotService, OperationsOverviewService &overviewService, QWidget *parent)
     : QWidget(parent)
+    , m_robotService(robotService)
+    , m_overviewService(overviewService)
 {
+    m_teleop = new TeleopController(this);
+    connect(m_teleop, &TeleopController::velocityCommandChanged, this, &RemoteControlPage::handleTeleopVelocityChanged);
+    connect(m_teleop, &TeleopController::activeChanged, this, &RemoteControlPage::handleTeleopActiveChanged);
+    connect(m_teleop, &TeleopController::speedPresetChanged, this, &RemoteControlPage::handleTeleopSpeedPresetChanged);
+
     auto *outerLayout = new QVBoxLayout(this);
     outerLayout->setContentsMargins(0, 0, 0, 0);
     auto *canvas = panelFrame(QStringLiteral("pageCanvas"));
@@ -89,6 +112,10 @@ RemoteControlPage::RemoteControlPage(QWidget *parent)
     auto *loadMapButton = buildLoadMapButton();
     loadMapButton->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     rightCol->addWidget(loadMapButton);
+
+    auto *refreshMarkersButton = buildRefreshMarkersButton();
+    refreshMarkersButton->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    rightCol->addWidget(refreshMarkersButton);
 
     m_cameraPanel = buildCameraPanel();
     m_minimapPanel = buildMinimapPanel();
@@ -132,6 +159,10 @@ RemoteControlPage::RemoteControlPage(QWidget *parent)
     // 확인할 수 있도록 한다. swapCameraAndMap()이 이미 큰/작은 슬롯 크기·오버레이
     // 가시성을 전부 처리하므로 그대로 재사용.
     swapCameraAndMap();
+
+    // 페이지 진입 시 지도가 비어 있지 않도록 기본 지도를 자동으로 불러온다
+    // (WaypointManagementPage::autoLoadDefaultMap()과 동일한 방식).
+    autoLoadDefaultMap();
 }
 
 void RemoteControlPage::setCameraFeedProvider(CameraFeedProvider *provider)
@@ -166,6 +197,187 @@ void RemoteControlPage::setNavigationService(NavigationService *service)
     }
 
     connect(m_navigationService, &NavigationService::amclPoseUpdated, this, &RemoteControlPage::handleAmclPoseUpdated);
+    connect(m_navigationService, &NavigationService::odomVelocityUpdated, this, &RemoteControlPage::handleOdomVelocityUpdated);
+    // 웨이포인트 관리 페이지 등 다른 페이지에서 시작한 주행이라도 같은
+    // NavigationService를 공유하므로 여기서도 감지된다.
+    connect(m_navigationService, &NavigationService::navSessionStarted, this, &RemoteControlPage::handleNavSessionStarted);
+    connect(m_navigationService, &NavigationService::navSessionFinished, this, &RemoteControlPage::handleNavSessionFinished);
+    // navSessionStarted를 놓친 뒤늦은 연결(이 페이지가 열리기 전에 이미
+    // 주행이 시작된 경우)이라도, 즉시 현재 상태로 동기화해서 배너/방향
+    // 패드를 맞춰준다.
+    if (m_navigationService->isNavigating()) {
+        handleNavSessionStarted({}, QString());
+    }
+    // amcl_pose는 TRANSIENT_LOCAL이라 앱 시작 직후(로그인 전) 이미 한 번
+    // 와버렸을 수 있어, 이 페이지가 연결하기 전 시그널을 놓쳤을 수 있다.
+    if (double x, y, yaw; m_navigationService->lastKnownAmclPose(x, y, yaw)) {
+        handleAmclPoseUpdated(x, y, yaw);
+    }
+}
+
+void RemoteControlPage::setSession(const AppSession &session)
+{
+    m_session = session;
+}
+
+bool RemoteControlPage::handleManualKeyPress(int key)
+{
+    if (m_navigationInProgress) {
+        return false;
+    }
+    return m_teleop->consumeKey(key);
+}
+
+bool RemoteControlPage::handleManualKeyRelease(int key)
+{
+    if (m_navigationInProgress) {
+        return false;
+    }
+    return m_teleop->releaseKey(key);
+}
+
+void RemoteControlPage::hideEvent(QHideEvent *event)
+{
+    // 다른 페이지로 전환될 때 눌려있던 키/버튼이 있어도 즉시 정지 —
+    // 화면을 보고 있지 않은 상태에서 로봇이 계속 움직이면 안 된다.
+    m_teleop->stop();
+    QWidget::hideEvent(event);
+}
+
+void RemoteControlPage::showEvent(QShowEvent *event)
+{
+    // 웨이포인트 관리 페이지에서 콜존/홈을 추가·수정하고 돌아왔을 때 바로
+    // 반영되도록, 페이지가 다시 보일 때마다 DB 마커를 새로 읽어온다.
+    // 읽기 전용 조회라 teleop처럼 안전 문제(hideEvent와 비대칭)는 없다.
+    refreshDbMarkers();
+    QWidget::showEvent(event);
+}
+
+void RemoteControlPage::handleTeleopVelocityChanged(double linearX, double angularZ)
+{
+    if (m_navigationService != nullptr) {
+        m_navigationService->driveManual(linearX, angularZ);
+    }
+
+    if (m_cmdVelLinearValueLabel != nullptr) {
+        m_cmdVelLinearValueLabel->setText(QStringLiteral("%1 m/s").arg(linearX, 0, 'f', 2));
+    }
+    if (m_cmdVelAngularValueLabel != nullptr) {
+        m_cmdVelAngularValueLabel->setText(QStringLiteral("%1 rad/s").arg(angularZ, 0, 'f', 2));
+    }
+}
+
+void RemoteControlPage::handleOdomVelocityUpdated(double linearMps, double angularRadps)
+{
+    // teleop이 조작 중이면 그쪽이 명령한 값을 즉시 그대로 보여주는 기존
+    // 경로가 더 정확하고 실기 검증도 끝나 있으므로, 실측 /odom 값으로
+    // 덮어쓰지 않는다 — 여기서는 웨이포인트 자동주행 중이거나 완전히
+    // 대기 중일 때만 실제 속도를 반영한다.
+    if (m_teleopActive) {
+        return;
+    }
+    // LiveControlPage와 동일한 alpha=0.25 지수이동평균 — 특히 angular.z가
+    // raw로 보면 부호가 계속 뒤집힐 정도로 흔들려서 그대로 표시하면 안 된다.
+    m_lastOdomLinearVel = m_lastOdomLinearVel * 0.75 + linearMps * 0.25;
+    m_lastOdomAngularVel = m_lastOdomAngularVel * 0.75 + angularRadps * 0.25;
+    if (m_cmdVelLinearValueLabel != nullptr) {
+        m_cmdVelLinearValueLabel->setText(
+            QStringLiteral("%1 m/s").arg(snapNearZero(m_lastOdomLinearVel, 0.01), 0, 'f', 2));
+    }
+    if (m_cmdVelAngularValueLabel != nullptr) {
+        m_cmdVelAngularValueLabel->setText(
+            QStringLiteral("%1 rad/s").arg(snapNearZero(m_lastOdomAngularVel, 0.01), 0, 'f', 2));
+    }
+    if (m_cmdVelTitleLabel != nullptr) {
+        m_cmdVelTitleLabel->setText(m_navigationInProgress ? QStringLiteral("자동주행 중 · /odom")
+                                                             : QStringLiteral("대기 · /cmd_vel"));
+    }
+}
+
+void RemoteControlPage::handleTeleopActiveChanged(bool active)
+{
+    m_teleopActive = active;
+    if (m_manualBannerTitleLabel != nullptr) {
+        m_manualBannerTitleLabel->setText(active ? QStringLiteral("🎮  수동 제어 활성") : QStringLiteral("수동 제어 대기"));
+        m_manualBannerTitleLabel->setStyleSheet(
+            QStringLiteral("color: %1; font-size: 12px; font-weight: 600;")
+                .arg(active ? DashboardPalette::Red.name() : DashboardPalette::TextTertiary.name()));
+    }
+    if (m_cmdVelTitleLabel != nullptr) {
+        m_cmdVelTitleLabel->setText(active ? QStringLiteral("발행 중 · /cmd_vel") : QStringLiteral("대기 · /cmd_vel"));
+    }
+    if (m_manualBannerCaptionLabel != nullptr) {
+        // 여러 PC 동시 조작을 막는 제어권 락은 아직 없다(추후 별도 기능) —
+        // 지금은 실제로 이 PC에서 조작 중일 때만, 하드코딩이 아니라 로그인한
+        // 계정을 그대로 보여준다.
+        m_manualBannerCaptionLabel->setText(
+            active ? QStringLiteral("방향 버튼/WASD로 조작 · 제어권 qt / %1").arg(m_session.username)
+                   : QStringLiteral("방향 버튼/WASD로 조작"));
+    }
+}
+
+void RemoteControlPage::handleTeleopSpeedPresetChanged(TeleopController::SpeedPreset preset)
+{
+    Q_UNUSED(preset);
+    updateSpeedPresetButtons();
+}
+
+void RemoteControlPage::handleNavSessionStarted(const QVector<NavPose> &goals, const QString &label)
+{
+    Q_UNUSED(goals);
+    Q_UNUSED(label);
+    m_navigationInProgress = true;
+    // 자동주행이 시작됐는데 방향 버튼/키가 눌려있던 상태로 남아있으면
+    // teleop과 Nav2가 동시에 /cmd_vel을 발행해 충돌한다 — 즉시 정지.
+    m_teleop->stop();
+    if (m_directionPad != nullptr) {
+        m_directionPad->setEnabled(false);
+    }
+    if (m_manualBannerTitleLabel != nullptr) {
+        m_manualBannerTitleLabel->setText(QStringLiteral("🧭  웨이포인트 이동 중"));
+        m_manualBannerTitleLabel->setStyleSheet(
+            QStringLiteral("color: %1; font-size: 12px; font-weight: 600;").arg(DashboardPalette::Amber.name()));
+    }
+    if (m_manualBannerCaptionLabel != nullptr) {
+        m_manualBannerCaptionLabel->setText(QStringLiteral("이동이 끝날 때까지 수동 제어를 할 수 없습니다"));
+    }
+}
+
+void RemoteControlPage::handleNavSessionFinished(bool success, bool cancelled)
+{
+    Q_UNUSED(success);
+    Q_UNUSED(cancelled);
+    m_navigationInProgress = false;
+    if (m_directionPad != nullptr) {
+        m_directionPad->setEnabled(true);
+    }
+    // 배너 문구/색을 "수동 제어 대기" 상태로 되돌린다 — teleop은 이동 중
+    // stop()된 채로 남아있으므로 active=false가 맞다.
+    handleTeleopActiveChanged(false);
+}
+
+void RemoteControlPage::updateSpeedPresetButtons()
+{
+    if (m_speedFineButton == nullptr || m_speedNormalButton == nullptr || m_speedFastButton == nullptr) {
+        return;
+    }
+
+    const TeleopController::SpeedPreset preset = m_teleop->speedPreset();
+    auto applyStyle = [](QPushButton *button, bool selected) {
+        button->setObjectName(selected ? QStringLiteral("cyanChipButton") : QStringLiteral("ghostChipButton"));
+        button->style()->unpolish(button);
+        button->style()->polish(button);
+    };
+    applyStyle(m_speedFineButton, preset == TeleopController::SpeedPreset::Fine);
+    applyStyle(m_speedNormalButton, preset == TeleopController::SpeedPreset::Normal);
+    applyStyle(m_speedFastButton, preset == TeleopController::SpeedPreset::Fast);
+
+    if (m_linearSpeedValueLabel != nullptr) {
+        m_linearSpeedValueLabel->setText(QStringLiteral("%1").arg(TeleopController::linearSpeedForPreset(preset), 0, 'f', 2));
+    }
+    if (m_angularSpeedValueLabel != nullptr) {
+        m_angularSpeedValueLabel->setText(QStringLiteral("%1").arg(TeleopController::angularSpeedForPreset(preset), 0, 'f', 2));
+    }
 }
 
 void RemoteControlPage::handleAmclPoseUpdated(double x, double y, double yawRad)
@@ -217,13 +429,14 @@ QWidget *RemoteControlPage::buildManualControlBanner()
     layout->setContentsMargins(12, 9, 12, 9);
     layout->setSpacing(8);
 
-    auto *title = makeLabel(QStringLiteral("🎮  수동 제어 활성"));
-    title->setWordWrap(false);
-    title->setStyleSheet(QStringLiteral("color: %1; font-size: 12px; font-weight: 600;").arg(DashboardPalette::Red.name()));
-    layout->addWidget(title);
-    auto *caption = makeLabel(QStringLiteral("자율 목표 취소됨 · 제어권 qt / admin_lee"), QStringLiteral("metricCaption"));
-    caption->setWordWrap(false);
-    layout->addWidget(caption);
+    m_manualBannerTitleLabel = makeLabel(QStringLiteral("수동 제어 대기"));
+    m_manualBannerTitleLabel->setWordWrap(false);
+    m_manualBannerTitleLabel->setStyleSheet(
+        QStringLiteral("color: %1; font-size: 12px; font-weight: 600;").arg(DashboardPalette::TextTertiary.name()));
+    layout->addWidget(m_manualBannerTitleLabel);
+    m_manualBannerCaptionLabel = makeLabel(QStringLiteral("방향 버튼/WASD로 조작"), QStringLiteral("metricCaption"));
+    m_manualBannerCaptionLabel->setWordWrap(false);
+    layout->addWidget(m_manualBannerCaptionLabel);
     layout->addStretch();
     return panel;
 }
@@ -295,7 +508,6 @@ QWidget *RemoteControlPage::buildMinimapPanel()
     m_mapView->setCaption(QStringLiteral("미니맵 · 방향 참조용"));
     m_mapView->setRobotPose(QPointF(0.35, 0.65), 0.0);
     m_mapView->setRobotState(RobotMarkerState::Warning);
-    m_mapView->setHome(QPointF(0.78, 0.3));
     connect(m_mapView, &MapViewWidget::posePickRequested, this, &RemoteControlPage::handlePosePickRequested);
     layout->addWidget(m_mapView, 1);
 
@@ -345,6 +557,17 @@ QWidget *RemoteControlPage::buildLoadMapButton()
     return button;
 }
 
+QWidget *RemoteControlPage::buildRefreshMarkersButton()
+{
+    // 웨이포인트 관리 페이지에서 콜존/홈을 바꾼 뒤 페이지 재진입 없이도
+    // 바로 반영하고 싶을 때 수동으로 다시 불러오는 용도(showEvent 자동
+    // 갱신과 별개).
+    auto *button = new QPushButton(QStringLiteral("🔄  마커 새로고침"));
+    button->setObjectName(QStringLiteral("ghostChipButton"));
+    connect(button, &QPushButton::clicked, this, &RemoteControlPage::refreshDbMarkers);
+    return button;
+}
+
 void RemoteControlPage::handleLoadMap()
 {
     const QString path = QFileDialog::getOpenFileName(
@@ -354,21 +577,109 @@ void RemoteControlPage::handleLoadMap()
         return;
     }
 
-    MapMeta meta;
     QString errorMessage;
-    if (!loadMapYaml(path, meta, errorMessage)) {
+    if (!loadMapFromFile(path, errorMessage)) {
         QMessageBox::warning(this, QStringLiteral("지도 불러오기 실패"), errorMessage);
         return;
     }
-
-    m_currentMapMeta = meta;
-    m_mapView->setBackgroundImage(meta.image);
-    updateInitialPoseButtonEnabled();
 
     if (!errorMessage.isEmpty()) {
         // 회전(origin theta) 경고 등 — 실패는 아니므로 로드는 이미 적용된 상태.
         QMessageBox::information(this, QStringLiteral("지도 불러오기"), errorMessage);
     }
+}
+
+bool RemoteControlPage::loadMapFromFile(const QString &path, QString &errorMessage)
+{
+    MapMeta meta;
+    if (!loadMapYaml(path, meta, errorMessage)) {
+        return false;
+    }
+
+    m_currentMapMeta = meta;
+    m_mapView->setBackgroundImage(meta.image);
+    updateInitialPoseButtonEnabled();
+    refreshDbMarkers();
+    return true;
+}
+
+void RemoteControlPage::refreshDbMarkers()
+{
+    if (!m_currentMapMeta.valid) {
+        return;
+    }
+
+    // 홈 — waypoint_set.name="home"(kind=Home). 로봇이 정확히 1대일 때만
+    // 조회한다(WaypointManagementPage::mergeHomeWaypointInto와 동일 규칙).
+    bool hasHome = false;
+    QPointF homeNormalized;
+    const QVector<RobotRecord> robots = m_robotService.listRobots(false);
+    if (robots.size() == 1) {
+        QString frameId;
+        WaypointMap homeWaypoints;
+        TrajectoryMap trajectories;
+        QString homeErrorMessage;
+        if (m_overviewService.loadWaypointLibraryByName(
+                robots.first().id, QStringLiteral("home"), frameId, homeWaypoints, trajectories, homeErrorMessage)) {
+            for (auto it = homeWaypoints.cbegin(); it != homeWaypoints.cend(); ++it) {
+                if (it.value().kind == WaypointMarkerKind::Home) {
+                    homeNormalized = worldToNormalized(it.value().x, it.value().y);
+                    hasHome = true;
+                    break;
+                }
+            }
+        }
+    }
+    m_mapView->setHome(homeNormalized, hasHome);
+
+    // 콜존 — call_button 테이블(현재 활성 항목). WaypointManagementPage의
+    // 콜존 글리프를 재사용하는 MapViewWidget::setCallZones()로 홈과 구분되게 표시.
+    QVector<CallButtonRow> callButtons;
+    QString callButtonErrorMessage;
+    QVector<QPointF> callZonePoints;
+    QStringList callZoneLabels;
+    if (m_overviewService.loadActiveCallButtons(callButtons, callButtonErrorMessage)) {
+        callZonePoints.reserve(callButtons.size());
+        callZoneLabels.reserve(callButtons.size());
+        for (const CallButtonRow &row : std::as_const(callButtons)) {
+            callZonePoints.append(worldToNormalized(row.x, row.y));
+            callZoneLabels.append(row.zoneName.isEmpty() ? row.code : row.zoneName);
+        }
+    }
+    m_mapView->setCallZones(callZonePoints, callZoneLabels);
+}
+
+QString RemoteControlPage::workspaceRootPath() const
+{
+    // WaypointManagementPage::workspaceRootPath()와 동일한 방식 — 실행 경로
+    // 깊이는 --symlink-install 여부에 따라 달라지므로, maps/ 디렉터리가
+    // 나올 때까지 상위로 탐색한다.
+    QDir dir(QCoreApplication::applicationDirPath());
+    for (int i = 0; i < 8; ++i) {
+        if (QFileInfo::exists(dir.filePath(QStringLiteral("maps")))) {
+            return dir.absolutePath();
+        }
+        if (!dir.cdUp()) {
+            break;
+        }
+    }
+    return QString();
+}
+
+void RemoteControlPage::autoLoadDefaultMap()
+{
+    const QString workspaceRoot = workspaceRootPath();
+    if (workspaceRoot.isEmpty()) {
+        return;
+    }
+
+    const QString defaultMapPath = QDir(workspaceRoot).filePath(QStringLiteral("maps/last_class_map_modi.yaml"));
+    if (!QFileInfo::exists(defaultMapPath)) {
+        return;
+    }
+
+    QString errorMessage;
+    loadMapFromFile(defaultMapPath, errorMessage);
 }
 
 void RemoteControlPage::handleSetInitialPoseToggled(bool checked)
@@ -471,11 +782,36 @@ QWidget *RemoteControlPage::buildDirectionPad()
     layout->setContentsMargins(9, 10, 9, 10);
     layout->setSpacing(5);
 
-    layout->addWidget(directionButton(QStringLiteral("▲")), 0, 1);
-    layout->addWidget(directionButton(QStringLiteral("↺")), 1, 0);
-    layout->addWidget(directionButton(QStringLiteral("정지"), true), 1, 1);
-    layout->addWidget(directionButton(QStringLiteral("↻")), 1, 2);
-    layout->addWidget(directionButton(QStringLiteral("▼")), 2, 1);
+    auto *forwardButton = directionButton(QStringLiteral("▲"));
+    auto *leftButton = directionButton(QStringLiteral("↺"));
+    auto *stopButton = directionButton(QStringLiteral("정지"), true);
+    // dangerFilledButton은 전역 QPushButton의 padding: 0 12px를 물려받는데,
+    // 38x38 고정 크기 방향패드 버튼 안에 "정지" 두 글자가 들어가면 잘린다.
+    // 방향패드 전용 스타일(directionPadStopButton)로 여백/폰트를 다시 잡는다.
+    stopButton->setObjectName(QStringLiteral("directionPadStopButton"));
+    auto *rightButton = directionButton(QStringLiteral("↻"));
+    auto *backwardButton = directionButton(QStringLiteral("▼"));
+
+    for (QPushButton *button : {forwardButton, backwardButton, leftButton, rightButton, stopButton}) {
+        button->setFocusPolicy(Qt::NoFocus);
+    }
+
+    connect(forwardButton, &QPushButton::pressed, this, [this]() { m_teleop->pressDirection(TeleopController::Direction::Forward); });
+    connect(forwardButton, &QPushButton::released, this, [this]() { m_teleop->releaseDirection(TeleopController::Direction::Forward); });
+    connect(backwardButton, &QPushButton::pressed, this, [this]() { m_teleop->pressDirection(TeleopController::Direction::Backward); });
+    connect(backwardButton, &QPushButton::released, this, [this]() { m_teleop->releaseDirection(TeleopController::Direction::Backward); });
+    connect(leftButton, &QPushButton::pressed, this, [this]() { m_teleop->pressDirection(TeleopController::Direction::Left); });
+    connect(leftButton, &QPushButton::released, this, [this]() { m_teleop->releaseDirection(TeleopController::Direction::Left); });
+    connect(rightButton, &QPushButton::pressed, this, [this]() { m_teleop->pressDirection(TeleopController::Direction::Right); });
+    connect(rightButton, &QPushButton::released, this, [this]() { m_teleop->releaseDirection(TeleopController::Direction::Right); });
+    connect(stopButton, &QPushButton::clicked, this, [this]() { m_teleop->stop(); });
+
+    layout->addWidget(forwardButton, 0, 1);
+    layout->addWidget(leftButton, 1, 0);
+    layout->addWidget(stopButton, 1, 1);
+    layout->addWidget(rightButton, 1, 2);
+    layout->addWidget(backwardButton, 2, 1);
+    m_directionPad = panel;
     return panel;
 }
 
@@ -496,24 +832,27 @@ QWidget *RemoteControlPage::buildSpeedPresetPanel()
 
     auto *presetRow = new QHBoxLayout;
     presetRow->setSpacing(5);
-    auto *fineButton = new QPushButton(QStringLiteral("미세"));
-    fineButton->setObjectName(QStringLiteral("ghostChipButton"));
-    auto *normalButton = new QPushButton(QStringLiteral("보통"));
-    normalButton->setObjectName(QStringLiteral("cyanChipButton"));
-    auto *fastButton = new QPushButton(QStringLiteral("빠름"));
-    fastButton->setObjectName(QStringLiteral("ghostChipButton"));
-    presetRow->addWidget(fineButton, 1);
-    presetRow->addWidget(normalButton, 1);
-    presetRow->addWidget(fastButton, 1);
+    m_speedFineButton = new QPushButton(QStringLiteral("미세"));
+    m_speedNormalButton = new QPushButton(QStringLiteral("보통"));
+    m_speedFastButton = new QPushButton(QStringLiteral("빠름"));
+    presetRow->addWidget(m_speedFineButton, 1);
+    presetRow->addWidget(m_speedNormalButton, 1);
+    presetRow->addWidget(m_speedFastButton, 1);
     layout->addLayout(presetRow);
 
-    layout->addWidget(buildSpeedAxisRow(QStringLiteral("▲ 직진"), QStringLiteral("0.12"), QStringLiteral("m/s"), 55));
-    layout->addWidget(buildSpeedAxisRow(QStringLiteral("↻ 회전"), QStringLiteral("0.80"), QStringLiteral("rad/s"), 28));
+    connect(m_speedFineButton, &QPushButton::clicked, this, [this]() { m_teleop->setSpeedPreset(TeleopController::SpeedPreset::Fine); });
+    connect(m_speedNormalButton, &QPushButton::clicked, this, [this]() { m_teleop->setSpeedPreset(TeleopController::SpeedPreset::Normal); });
+    connect(m_speedFastButton, &QPushButton::clicked, this, [this]() { m_teleop->setSpeedPreset(TeleopController::SpeedPreset::Fast); });
+
+    layout->addWidget(buildSpeedAxisRow(QStringLiteral("▲ 직진"), QStringLiteral("m/s"), 55, &m_linearSpeedValueLabel));
+    layout->addWidget(buildSpeedAxisRow(QStringLiteral("↻ 회전"), QStringLiteral("rad/s"), 28, &m_angularSpeedValueLabel));
+
+    updateSpeedPresetButtons();
 
     return panel;
 }
 
-QWidget *RemoteControlPage::buildSpeedAxisRow(const QString &label, const QString &value, const QString &unit, int percent)
+QWidget *RemoteControlPage::buildSpeedAxisRow(const QString &label, const QString &unit, int percent, QLabel **valueLabelOut)
 {
     auto *container = new QWidget;
     auto *layout = new QVBoxLayout(container);
@@ -526,12 +865,15 @@ QWidget *RemoteControlPage::buildSpeedAxisRow(const QString &label, const QStrin
     row->addWidget(labelWidget);
     row->addStretch();
 
-    auto *valueBox = makeLabel(value);
+    auto *valueBox = makeLabel(QString());
     valueBox->setAlignment(Qt::AlignCenter);
     valueBox->setFixedSize(50, 22);
     valueBox->setStyleSheet(QStringLiteral("color: %1; font-size: 10px; background-color: %2; border: 1px solid %3; border-radius: 5px;")
                                  .arg(DashboardPalette::TextPrimary.name(), DashboardPalette::CardBg.name(), DashboardPalette::BorderGuide.name()));
     row->addWidget(valueBox);
+    if (valueLabelOut != nullptr) {
+        *valueLabelOut = valueBox;
+    }
 
     auto *unitLabel = makeLabel(unit);
     unitLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 9px;").arg(DashboardPalette::TextTertiary.name()));
@@ -549,24 +891,24 @@ QWidget *RemoteControlPage::buildCmdVelPanel()
     layout->setContentsMargins(11, 8, 11, 8);
     layout->setSpacing(4);
 
-    auto *title = makeLabel(QStringLiteral("발행 중 · /cmd_vel"));
-    title->setStyleSheet(QStringLiteral("color: %1; font-size: 9px; letter-spacing: 0.5px;").arg(DashboardPalette::Cyan.name()));
-    layout->addWidget(title);
+    m_cmdVelTitleLabel = makeLabel(QStringLiteral("대기 · /cmd_vel"));
+    m_cmdVelTitleLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 9px; letter-spacing: 0.5px;").arg(DashboardPalette::Cyan.name()));
+    layout->addWidget(m_cmdVelTitleLabel);
 
     auto *linearRow = new QHBoxLayout;
     linearRow->addWidget(makeLabel(QStringLiteral("linear.x"), QStringLiteral("metricCaption")));
     linearRow->addStretch();
-    auto *linearValue = makeLabel(QStringLiteral("0.00 m/s"));
-    linearValue->setStyleSheet(QStringLiteral("color: %1; font-size: 11px;").arg(DashboardPalette::TextPrimary.name()));
-    linearRow->addWidget(linearValue);
+    m_cmdVelLinearValueLabel = makeLabel(QStringLiteral("0.00 m/s"));
+    m_cmdVelLinearValueLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 11px;").arg(DashboardPalette::TextPrimary.name()));
+    linearRow->addWidget(m_cmdVelLinearValueLabel);
     layout->addLayout(linearRow);
 
     auto *angularRow = new QHBoxLayout;
     angularRow->addWidget(makeLabel(QStringLiteral("angular.z"), QStringLiteral("metricCaption")));
     angularRow->addStretch();
-    auto *angularValue = makeLabel(QStringLiteral("0.00 rad/s"));
-    angularValue->setStyleSheet(QStringLiteral("color: %1; font-size: 11px;").arg(DashboardPalette::TextPrimary.name()));
-    angularRow->addWidget(angularValue);
+    m_cmdVelAngularValueLabel = makeLabel(QStringLiteral("0.00 rad/s"));
+    m_cmdVelAngularValueLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 11px;").arg(DashboardPalette::TextPrimary.name()));
+    angularRow->addWidget(m_cmdVelAngularValueLabel);
     layout->addLayout(angularRow);
 
     return panel;

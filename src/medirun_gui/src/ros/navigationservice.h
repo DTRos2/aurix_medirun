@@ -45,6 +45,26 @@ public slots:
     // speed (Nav2's dynamic speed-limit mechanism — nav2_msgs/SpeedLimit on
     // the "speed_limit" topic, no launch/param changes needed).
     virtual void setSpeedLimit(int percent) = 0;
+    // 원격제어 페이지의 teleop(수동 주행)용 — /cmd_vel에 직접 Twist를 발행한다.
+    // Nav2 액션(navigateToPose 등)과 별개 경로이므로 goal 진행 중에도 호출 가능.
+    virtual void driveManual(double linearX, double angularZ) = 0;
+
+public:
+    // nav2ConnectionChanged 시그널을 놓친 구독자(연결이 이미 성사된 뒤에
+    // setNavigationService()가 호출된 경우 — Nav2가 GUI보다 먼저 떠 있으면
+    // 흔히 발생)를 위한 현재 상태 조회. 시그널 연결 직후 이 값으로 한 번
+    // 동기화해야 한다.
+    virtual bool isNav2Connected() const = 0;
+    // amclPoseUpdated 시그널을 놓친 구독자를 위한 현재 상태 조회 —
+    // amcl_pose가 TRANSIENT_LOCAL이라 이 서비스는 앱 시작 직후(로그인 전,
+    // 어떤 페이지도 아직 없을 때) 마지막 위치를 즉시 한 번 받는 경우가
+    // 흔한데, 그때는 아무도 구독하고 있지 않아 시그널이 그냥 사라진다.
+    // 아직 한 번도 못 받았으면 false.
+    virtual bool lastKnownAmclPose(double &x, double &y, double &yawRad) const = 0;
+    // navSessionStarted~navSessionFinished 사이인지 조회 — 그 시그널들을
+    // 놓친 뒤늦은 구독자(페이지가 주행 도중에 열린 경우)를 위한 현재 상태
+    // 조회. lastKnownAmclPose()/isNav2Connected()와 동일한 패턴.
+    virtual bool isNavigating() const = 0;
 
 signals:
     // navigate_to_pose/follow_waypoints 액션 서버가 실제로 goal을 받을 수 있는

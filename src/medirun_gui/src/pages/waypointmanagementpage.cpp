@@ -152,6 +152,15 @@ void WaypointManagementPage::setNavigationService(NavigationService *service)
         }
     });
 
+    // Nav2가 이 페이지보다 먼저 연결된 상태였다면(예: 다른 사람이 이미 Nav2를
+    // 띄워둔 뒤 이 GUI를 실행) nav2ConnectionChanged가 우리가 connect하기 전에
+    // 이미 지나갔을 수 있다 — 현재 상태를 한 번 직접 조회해 동기화한다.
+    handleNav2ConnectionChanged(m_navigationService->isNav2Connected());
+    // amcl_pose는 TRANSIENT_LOCAL이라 앱 시작 직후(로그인 전) 이미 한 번
+    // 와버렸을 수 있어 amclPoseUpdated도 같은 문제가 있다 — 마지막 값을 조회해 동기화.
+    if (double x, y, yaw; m_navigationService->lastKnownAmclPose(x, y, yaw)) {
+        handleAmclPoseUpdated(x, y, yaw);
+    }
     updateNavButtonsEnabled();
 }
 
@@ -430,7 +439,10 @@ QWidget *WaypointManagementPage::buildWaypointEditPanel()
     layout->addLayout(actionRow);
 
     auto *navRow = new QHBoxLayout;
-    m_navigateButton = new QPushButton(QStringLiteral("이 웨이포인트로 주행"), panel);
+    // "이 웨이포인트로 주행"은 이 사이드바 폭(230px)에서 "정지" 버튼과
+    // 나눠 쓰면 텍스트가 잘려서(ellipsis) "주행 시작"으로 줄임 — 위에 이미
+    // 선택된 웨이포인트 이름/좌표가 보이므로 어디로 가는지는 문맥상 명확하다.
+    m_navigateButton = new QPushButton(QStringLiteral("주행 시작"), panel);
     m_navigateButton->setObjectName(QStringLiteral("cyanOutlineButton"));
     connect(m_navigateButton, &QPushButton::clicked, this, &WaypointManagementPage::handleNavigateToSelectedWaypoint);
     navRow->addWidget(m_navigateButton, 1);
@@ -631,7 +643,7 @@ void WaypointManagementPage::refreshMapMarkers()
     const QStringList ids = m_waypoints.keys();
     for (const QString &id : ids) {
         const WaypointDef &wp = m_waypoints.value(id);
-        markers.append({id, id, worldToNormalized(wp.x, wp.y), wp.kind});
+        markers.append({id, id, worldToNormalized(wp.x, wp.y), wp.kind, wp.yaw});
     }
     m_waypointMap->setMarkers(markers);
     m_routeMap->setMarkers(markers);
@@ -1469,7 +1481,7 @@ void WaypointManagementPage::updateNavButtonsEnabled()
     if (m_navigateButton != nullptr) {
         m_navigateButton->setEnabled(nav2Ready && !m_navigating && !m_creatingNew && !m_selectedWaypointId.isEmpty());
         m_navigateButton->setText(
-            m_navigating ? QStringLiteral("주행 중...") : (nav2Ready ? QStringLiteral("이 웨이포인트로 주행") : blockedText));
+            m_navigating ? QStringLiteral("주행 중...") : (nav2Ready ? QStringLiteral("주행 시작") : blockedText));
     }
     if (m_cancelNavButton != nullptr) {
         m_cancelNavButton->setEnabled(hasService && m_navigating);
@@ -1533,6 +1545,9 @@ void WaypointManagementPage::handleNavigateToSelectedWaypoint()
 
     const WaypointDef &wp = m_waypoints.value(m_selectedWaypointId);
     const QString label = wp.label.isEmpty() ? wp.name : wp.label;
+    m_activeRouteWaypointIds.clear();
+    m_waypointMap->setNavigationTargetId(m_selectedWaypointId);
+    m_routeMap->setNavigationTargetId(m_selectedWaypointId);
     m_navigationService->navigateToPose(wp.x, wp.y, wp.yaw, m_frameId, label);
 }
 
@@ -1556,17 +1571,26 @@ void WaypointManagementPage::handleNavigateSelectedRoute()
     }
 
     QVector<NavPose> poses;
+    QVector<QString> orderedIds;
     for (const QString &wpId : m_trajectories.value(m_selectedSavedRoute)) {
         if (!m_waypoints.contains(wpId)) {
             continue;
         }
         const WaypointDef &wp = m_waypoints.value(wpId);
         poses.append({wp.x, wp.y, wp.yaw});
+        orderedIds.append(wpId);
     }
     if (poses.isEmpty()) {
         m_trajectoryStatusLabel->setText(QStringLiteral("경로에 유효한 웨이포인트가 없습니다."));
         return;
     }
+
+    // FollowWaypoints 피드백의 current_waypoint(0-based)가 이 목록의 인덱스와
+    // 그대로 대응하도록 poses와 같은 순서로 채운다 — handleNavWaypointProgress에서
+    // 지금 어느 웨이포인트로 가고 있는지 지도에 표시하는 데 쓴다.
+    m_activeRouteWaypointIds = orderedIds;
+    m_waypointMap->setNavigationTargetId(orderedIds.first());
+    m_routeMap->setNavigationTargetId(orderedIds.first());
 
     m_navigationService->followWaypoints(poses, m_frameId, m_selectedSavedRoute);
 }
@@ -1593,6 +1617,9 @@ void WaypointManagementPage::handleNavSessionStarted()
 void WaypointManagementPage::handleNavSessionFinished()
 {
     m_navigating = false;
+    m_activeRouteWaypointIds.clear();
+    m_waypointMap->setNavigationTargetId(QString());
+    m_routeMap->setNavigationTargetId(QString());
     updateNavButtonsEnabled();
 }
 
@@ -1616,6 +1643,14 @@ void WaypointManagementPage::handleNavFeedback(double metersRemaining)
 void WaypointManagementPage::handleNavWaypointProgress(int currentIndex, int total)
 {
     m_navStatusLabel->setText(QStringLiteral("경로 주행 중 (%1/%2)").arg(currentIndex).arg(total));
+
+    // current_waypoint(0-based)가 지금 로봇이 향하는 웨이포인트 인덱스이므로,
+    // 경로 진행에 맞춰 지도의 목표 마커도 같이 옮긴다.
+    if (currentIndex >= 0 && currentIndex < m_activeRouteWaypointIds.size()) {
+        const QString &targetId = m_activeRouteWaypointIds.at(currentIndex);
+        m_waypointMap->setNavigationTargetId(targetId);
+        m_routeMap->setNavigationTargetId(targetId);
+    }
 }
 
 void WaypointManagementPage::handleAmclPoseUpdated(double x, double y, double yawRad)
