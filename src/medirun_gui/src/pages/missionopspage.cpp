@@ -314,7 +314,7 @@ void MissionOpsPage::refreshQueue()
 
         auto *buttonRow = new QHBoxLayout;
         buttonRow->setSpacing(6);
-        auto *acceptButton = new QPushButton(QStringLiteral("확인·전환"));
+        auto *acceptButton = new QPushButton(QStringLiteral("전환"));
         acceptButton->setObjectName(QStringLiteral("primaryCtaButton"));
         auto *cancelButton = new QPushButton(QStringLiteral("취소"));
         buttonRow->addWidget(acceptButton);
