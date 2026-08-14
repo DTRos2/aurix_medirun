@@ -189,6 +189,9 @@ void DashboardCentralWidget::setSensorTelemetryProvider(SensorTelemetryProvider 
     if (m_liveControlPage != nullptr) {
         m_liveControlPage->setSensorTelemetryProvider(provider);
     }
+    if (m_remoteControlPage != nullptr) {
+        m_remoteControlPage->setSensorTelemetryProvider(provider);
+    }
 }
 
 void DashboardCentralWidget::setDrivingRecordService(DrivingRecordService *service)
