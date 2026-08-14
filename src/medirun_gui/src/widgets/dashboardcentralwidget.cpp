@@ -165,6 +165,9 @@ void DashboardCentralWidget::setCameraFeedProvider(CameraFeedProvider *provider)
     if (m_liveControlPage != nullptr) {
         m_liveControlPage->setCameraFeedProvider(provider);
     }
+    if (m_slamMappingPage != nullptr) {
+        m_slamMappingPage->setCameraFeedProvider(provider);
+    }
     if (provider != nullptr && m_operationsOverviewPage != nullptr) {
         connect(provider, &CameraFeedProvider::connectionStateChanged, m_operationsOverviewPage, &OperationsOverviewPage::applyCameraConnection);
     }

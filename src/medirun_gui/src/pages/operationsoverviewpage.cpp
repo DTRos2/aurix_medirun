@@ -403,6 +403,7 @@ void OperationsOverviewPage::applyTelemetrySnapshot(const TelemetrySnapshot &sna
     m_latestSnapshot = snapshot;
     m_hasSnapshot = true;
     renderRobotTable();
+    renderHealthPanel();
 }
 
 void OperationsOverviewPage::applyNavStatus(const QString &text)
@@ -435,6 +436,15 @@ void OperationsOverviewPage::renderHealthPanel()
         rows.push_back(m_lastHealthDbRows.at(1));
     }
     rows.push_back(liveHealthRow(QStringLiteral("카메라 연결"), m_hasCameraSignal, m_cameraConnected));
+
+    // 배터리 텔레메트리는 초당 여러 번 들어올 수 있는데, 매번 여기서 행
+    // 위젯을 통째로 지웠다 새로 만들면(clearLayout + addWidget) 표시값이
+    // 그대로여도 패널 전체가 깜빡였다. 실제로 표시할 값(라벨/퍼센트/색상)이
+    // 바뀐 경우에만 다시 그린다.
+    if (rows == m_lastRenderedHealthRows) {
+        return;
+    }
+    m_lastRenderedHealthRows = rows;
 
     clearLayout(m_healthLayout);
     for (const SystemHealthRow &row : rows) {
