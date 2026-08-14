@@ -314,7 +314,7 @@ void MissionOpsPage::refreshQueue()
 
         auto *buttonRow = new QHBoxLayout;
         buttonRow->setSpacing(6);
-        auto *acceptButton = new QPushButton(QStringLiteral("확인·전환"));
+        auto *acceptButton = new QPushButton(QStringLiteral("전환"));
         acceptButton->setObjectName(QStringLiteral("primaryCtaButton"));
         auto *cancelButton = new QPushButton(QStringLiteral("취소"));
         buttonRow->addWidget(acceptButton);
@@ -364,13 +364,25 @@ void MissionOpsPage::refreshMission()
     m_missionStateLabel->setText(missionStateText(snapshot.state));
     m_missionStateLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 10px;").arg(stateColor(snapshot.state)));
 
-    const int progress = snapshot.progressPercent < 0 ? 0 : snapshot.progressPercent;
-    auto *parentFrame = qobject_cast<QFrame *>(m_missionProgressBar->parentWidget());
-    auto *newBar = makeProportionalBar(progress, snapshot.state == MissionState::Failed ? DashboardPalette::Red : DashboardPalette::Cyan, parentFrame);
-    auto *layout = qobject_cast<QVBoxLayout *>(parentFrame->layout());
-    layout->replaceWidget(m_missionProgressBar, newBar);
-    delete m_missionProgressBar;
-    m_missionProgressBar = newBar;
+    if (snapshot.missionId != m_progressBarMissionId) {
+        m_progressBarMissionId = snapshot.missionId;
+        m_lastRenderedProgress = -1;
+    }
+    // Nav2 feedback은 초당 수십 번 들어오고, 남은 거리도 로컬 플래너가 경로를
+    // 다시 계산할 때마다 살짝 늘었다 줄었다 한다. 그때마다 막대를 새로
+    // 만들면(예전 방식) 매번 다시 그려지면서 파란 선이 심하게 떨려 보였다.
+    // 정수 퍼센트가 실제로 바뀔 때만, 그것도 뒤로 가지 않게만 다시 그린다.
+    const int rawProgress = snapshot.progressPercent < 0 ? 0 : snapshot.progressPercent;
+    const int progress = std::max(rawProgress, m_lastRenderedProgress);
+    if (progress != m_lastRenderedProgress || snapshot.state == MissionState::Failed) {
+        m_lastRenderedProgress = progress;
+        auto *parentFrame = qobject_cast<QFrame *>(m_missionProgressBar->parentWidget());
+        auto *newBar = makeProportionalBar(progress, snapshot.state == MissionState::Failed ? DashboardPalette::Red : DashboardPalette::Cyan, parentFrame);
+        auto *layout = qobject_cast<QVBoxLayout *>(parentFrame->layout());
+        layout->replaceWidget(m_missionProgressBar, newBar);
+        delete m_missionProgressBar;
+        m_missionProgressBar = newBar;
+    }
 
     m_missionDetailLabel->setText(
         QStringLiteral("%1 · 남은 %2m · 경과 %3")
