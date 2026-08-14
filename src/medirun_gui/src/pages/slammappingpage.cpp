@@ -1,5 +1,6 @@
 #include "slammappingpage.h"
 
+#include "../services/camerafeedprovider.h"
 #include "../services/mapfile.h"
 #include "../theme/dashboardpalette.h"
 #include "../widgets/badgelabel.h"
@@ -29,6 +30,8 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QDebug>
+#include <QEvent>
+#include <QPixmap>
 
 #include <algorithm>
 #include <atomic>
@@ -1401,6 +1404,13 @@ SlamMappingPage::SlamMappingPage(QWidget *parent)
     m_mapView->setPlannedPath({});
     leftCol->addWidget(m_mapView, 1);
     leftCol->addWidget(buildActionRow());
+
+    // 카메라 화면을 지도 캔버스 위에 우상단 모서리로 띄운다(원격제어/실시간
+    // 관제 페이지처럼 별도 패널을 두면 지도가 좁아지는데, 매핑 중에는 지도
+    // 캔버스가 화면의 대부분을 차지해야 해서 오버레이 방식을 택했다).
+    // MapViewWidget 자신도 캡션/칩 라벨을 이 방식(자식 위젯 + move())으로
+    // 띄우고 있어 같은 패턴을 그대로 따른다(mapviewwidget.cpp 참고).
+    buildCameraOverlay();
     bodyRow->addLayout(leftCol, 7);
 
     auto *rightCol = new QVBoxLayout;
@@ -1535,6 +1545,54 @@ bool SlamMappingPage::handleManualKeyRelease(int key)
     return releaseManualKey(key);
 }
 
+bool SlamMappingPage::eventFilter(QObject *watched, QEvent *event)
+{
+    // m_mapView가 리사이즈될 때마다(창 크기 변경, 레이아웃 재계산 등) 카메라
+    // 오버레이를 우상단 모서리에 다시 고정한다 — MapViewWidget 자신도 캡션/칩
+    // 라벨을 같은 방식으로 재배치한다(mapviewwidget.cpp의 resizeEvent 참고).
+    if (watched == m_mapView && event->type() == QEvent::Resize) {
+        positionCameraOverlay();
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+void SlamMappingPage::setCameraFeedProvider(CameraFeedProvider *provider)
+{
+    if (m_cameraFeedProvider == provider) {
+        return;
+    }
+    m_cameraFeedProvider = provider;
+    if (m_cameraFeedProvider != nullptr) {
+        connect(m_cameraFeedProvider, &CameraFeedProvider::frameReady, this, &SlamMappingPage::handleCameraFrameReady);
+    }
+}
+
+void SlamMappingPage::handleCameraFrameReady(const QImage &frame)
+{
+    if (m_cameraViewLabel == nullptr || frame.isNull()) {
+        return;
+    }
+
+    if (frame.size() != m_lastCameraFrameSize) {
+        m_lastCameraFrameSize = frame.size();
+        if (QWidget *overlay = m_cameraViewLabel->parentWidget()) {
+            // 오버레이 폭(220)은 고정해두고, 실제 수신한 프레임의 가로세로
+            // 비율에 맞춰 높이만 다시 계산한다 — camera.launch.py에 적어둔
+            // image_size(1280x720)를 v4l2_camera가 그대로 지원 안 하면 다른
+            // 비율로 뜰 수 있어서, KeepAspectRatio가 남기는 여백(좌우 또는
+            // 상하 테두리)이 실제 수신 프레임 기준으로는 생기지 않게 한다.
+            const int width = overlay->width();
+            const int height = std::max(1, static_cast<int>(std::lround(width * static_cast<double>(frame.height()) / frame.width())));
+            overlay->setFixedSize(width, height);
+            positionCameraOverlay();
+        }
+    }
+
+    const QPixmap pixmap = QPixmap::fromImage(frame).scaled(
+        m_cameraViewLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    m_cameraViewLabel->setPixmap(pixmap);
+}
+
 QWidget *SlamMappingPage::buildStatusBanner()
 {
     auto *panel = panelFrame(QStringLiteral("anomalyCard"));
@@ -1580,6 +1638,48 @@ QWidget *SlamMappingPage::buildActionRow()
         layout->addWidget(button);
     }
     return row;
+}
+
+QWidget *SlamMappingPage::buildCameraOverlay()
+{
+    // LiveControlPage::buildCameraPanel()과 동일한 패널/라벨 조합(카메라 없을 때
+    // 안내 문구, 프레임 도착 시 KeepAspectRatio로 스케일)을 재사용한다 — 녹화
+    // 타임라인 등 이 페이지에 필요 없는 부분만 뺐다.
+    auto *panel = panelFrame(QStringLiteral("contentPanel"));
+    panel->setParent(m_mapView);
+    // 폭은 운영자 요청으로 300으로 키웠다(처음엔 220이었음). 높이는 임시로
+    // 카메라.launch.py의 image_size(1280x720, 16:9) 기준으로 잡아두지만,
+    // v4l2_camera가 실제로 그 해상도를 지원 안 해 다른 비율로 뜰 수 있어
+    // (실측: 좌우로 여백이 남았었다) handleCameraFrameReady()에서 첫 프레임이
+    // 도착하면 실제 프레임 비율에 맞게 다시 계산해 덮어쓴다.
+    panel->setFixedSize(300, 169);
+    auto *layout = new QVBoxLayout(panel);
+    layout->setContentsMargins(0, 0, 0, 0);
+
+    m_cameraViewLabel = new QLabel(QStringLiteral("🎥\n카메라 연결 대기 중"), panel);
+    m_cameraViewLabel->setAlignment(Qt::AlignCenter);
+    m_cameraViewLabel->setStyleSheet(QStringLiteral("color: %1;").arg(DashboardPalette::TextMuted.name()));
+    m_cameraViewLabel->setMinimumSize(1, 1);
+    layout->addWidget(m_cameraViewLabel, 1);
+
+    m_mapView->installEventFilter(this);
+    positionCameraOverlay();
+    panel->show();
+    return panel;
+}
+
+void SlamMappingPage::positionCameraOverlay()
+{
+    if (m_cameraViewLabel == nullptr || m_mapView == nullptr) {
+        return;
+    }
+    auto *overlay = m_cameraViewLabel->parentWidget();
+    if (overlay == nullptr) {
+        return;
+    }
+    constexpr int kMargin = 10;
+    overlay->move(std::max(0, m_mapView->width() - overlay->width() - kMargin), kMargin);
+    overlay->raise();
 }
 
 QWidget *SlamMappingPage::buildMappingStatusPanel()

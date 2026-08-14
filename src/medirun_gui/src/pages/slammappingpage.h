@@ -13,6 +13,7 @@
 
 #include <memory>
 
+class CameraFeedProvider;
 class MapViewWidget;
 class QLabel;
 class QPlainTextEdit;
@@ -29,12 +30,14 @@ public:
 
     bool handleManualKeyPress(int key);
     bool handleManualKeyRelease(int key);
+    void setCameraFeedProvider(CameraFeedProvider *provider);
 
 protected:
     void showEvent(QShowEvent *event) override;
     void hideEvent(QHideEvent *event) override;
     void focusInEvent(QFocusEvent *event) override;
     void focusOutEvent(QFocusEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     enum class MappingUiState {
@@ -53,6 +56,8 @@ private:
     QWidget *buildLogPanel();
     QWidget *buildDirectionPad();
     QWidget *buildSpeedLimitPanel();
+    QWidget *buildCameraOverlay();
+    void positionCameraOverlay();
     void attachMapBridgeCallbacks();
     void resetMappingView(const QString &caption, bool mappingRunning);
     void updateSlamUiState();
@@ -89,6 +94,7 @@ private slots:
     void handleManualDriveTick();
     void handleMapRefreshTick();
     void handleMapTimeout();
+    void handleCameraFrameReady(const QImage &frame);
 
 private:
     void applyManualKeyState();
@@ -97,6 +103,14 @@ private:
     bool consumeManualKey(int key);
     bool releaseManualKey(int key);
     MapViewWidget *m_mapView;
+    QLabel *m_cameraViewLabel {nullptr};
+    CameraFeedProvider *m_cameraFeedProvider {nullptr};
+    // 오버레이 폭(220, 고정)에 맞춰 이 프레임 크기 기준으로 계산한 높이를
+    // 한 번 적용했는지 추적 — 실제 카메라 프레임 비율(해상도)을 알기 전엔
+    // buildCameraOverlay()의 임시 높이를 쓰다가, 첫 프레임이 오면 정확한
+    // 비율로 다시 계산한다. 매 프레임 setFixedSize를 반복 호출하지 않도록
+    // 비율이 바뀔 때만 갱신한다.
+    QSize m_lastCameraFrameSize;
     QLabel *m_statusBannerTitleLabel;
     QLabel *m_statusBannerDetailLabel;
     QLabel *m_mappingStatusValueLabel;
