@@ -56,6 +56,18 @@ private:
     void handleLoginAccepted();
     void handleLoginRejected();
     void handleLogout();
+    // "대시보드 종료"/창 X 버튼으로 닫을 때는 MainWindow::close()가 창을
+    // 숨기기만 할 뿐 실제로 delete하지 않는다(WA_DeleteOnClose 없음,
+    // closeEvent 오버라이드 없음) — 그래서 로그아웃 경로에서만 실행되는
+    // handleLogout()의 delete 로직을 이 경로에선 절대 안 타서, MainWindow에
+    // 자식으로 붙은 ROS 프로바이더(RosBatteryTelemetryProvider 등)의
+    // 소멸자(스핀 스레드 cancel()+join())가 한 번도 안 불리고 그대로
+    // 프로세스가 끝나버렸다. QApplication::aboutToQuit는 종료 경로(버튼/
+    // X버튼/시그널 무엇이든)와 무관하게 항상 발생하므로 여기서 한 번에
+    // 정리한다. deleteLater()가 아니라 즉시 delete인 이유: aboutToQuit
+    // 이후엔 이벤트 루프가 곧바로 멈춰서 deleteLater()가 예약한 삭제를
+    // 처리할 기회가 없다.
+    void handleAboutToQuit();
 
     QApplication &m_application;
     std::unique_ptr<AuthService> m_authService;
