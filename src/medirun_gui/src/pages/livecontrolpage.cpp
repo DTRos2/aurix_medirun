@@ -540,9 +540,11 @@ QWidget *LiveControlPage::buildWaitingCallBanner()
     m_waitingCallLabel->setStyleSheet(QStringLiteral("color: %1;").arg(DashboardPalette::Cyan.name()));
     layout->addWidget(m_waitingCallLabel);
     layout->addStretch();
-    auto *linkLabel = makeLabel(QStringLiteral("미션 관제 →"), QStringLiteral("metricCaption"));
-    linkLabel->setWordWrap(false);
-    layout->addWidget(linkLabel);
+    auto *linkButton = new QPushButton(QStringLiteral("미션 관제 →"), panel);
+    linkButton->setObjectName(QStringLiteral("linkChipButton"));
+    linkButton->setCursor(Qt::PointingHandCursor);
+    connect(linkButton, &QPushButton::clicked, this, &LiveControlPage::missionOpsRequested);
+    layout->addWidget(linkButton);
     return panel;
 }
 
