@@ -651,7 +651,16 @@ void LiveControlPage::refreshWaitingCallBanner()
     if (m_waitingCallLabel == nullptr) {
         return;
     }
-    const int count = m_missionController == nullptr ? 0 : m_missionController->waitingQueue().size();
+    // waitingQueue()는 Completed/Cancelled 등 종료된 항목도 그대로 담고 있어서
+    // (미션 관제 페이지의 큐 요약과 동일하게) Waiting/Active 상태만 센다.
+    int count = 0;
+    if (m_missionController != nullptr) {
+        for (const MissionQueueItem &item : m_missionController->waitingQueue()) {
+            if (item.status == MissionQueueStatus::Waiting || item.status == MissionQueueStatus::Active) {
+                ++count;
+            }
+        }
+    }
     m_waitingCallLabel->setText(QStringLiteral("대기 호출 %1건").arg(count));
 }
 
