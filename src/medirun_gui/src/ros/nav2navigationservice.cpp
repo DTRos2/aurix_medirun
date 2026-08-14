@@ -454,6 +454,7 @@ public:
             return;
         }
         if (m_navigationInProgress) {
+
             // approach 목표가 막 끝나고 최종 목표가 아직 accept되지 않은 순간처럼
             // 핸들이 잠깐 비어 있을 수 있다. 여기서 그냥 무시하면 취소 요청이
             // 통째로 씹혀서 "전환"을 눌러도 로봇이 원래 목적지로 계속 가버린다.
@@ -619,6 +620,7 @@ private:
     rclcpp::Publisher<nav2_msgs::msg::SpeedLimit>::SharedPtr m_speedLimitPub;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr m_cmdVelPub;
     rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr m_amclSub;
+
     // GUI 스레드의 lastKnownAmclPose() 조회와 ROS 스핀 스레드의 구독 콜백이
     // 동시에 접근하므로 mutex로 보호한다.
     mutable std::mutex m_lastAmclPoseMutex;
@@ -634,6 +636,7 @@ private:
     std::shared_ptr<tf2_ros::TransformListener> m_tfListener;
     NavClient::GoalHandle::SharedPtr m_navGoalHandle;
     FollowClient::GoalHandle::SharedPtr m_followGoalHandle;
+
     // approach->최종 목표 전환 구간처럼 goal 핸들이 아직 없는 순간에 cancelGoal()이
     // 호출되면(예: 대기 호출 "전환" 버튼) 취소할 대상이 없어 요청이 그냥 씹혔다.
     // 이 플래그를 세워두면 다음 goal이 accept되는 즉시 취소를 적용한다.
