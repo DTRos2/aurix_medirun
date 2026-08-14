@@ -67,6 +67,18 @@ public:
 
     void ensureInterfaces()
     {
+        // retryCommunication()이 "재시도" 버튼을 누를 때마다 이 함수를 무조건
+        // 다시 호출하는데, 예전엔 매번 create_subscription()을 새로 불러
+        // m_dispatchSub를 덮어썼다. 이 노드는 별도 스레드에서 executor가 계속
+        // spin 중이라, 기존 구독이 실제로 정리되기 전에 새 구독이 등록되면
+        // 같은 /medirun/mission/dispatch_request 메시지 하나에 콜백이 두 번
+        // 걸려 호출 버튼 하나로 미션이 두 개 시작되는 문제가 있었다(실측:
+        // 대기 큐 대신 서로를 밀어내며 즉시 실패). 한 번 구독을 만든 뒤로는
+        // 다시 만들지 않고 그대로 재사용한다 — DDS 구독은 발행자가 재시작돼도
+        // 자동으로 재발견되므로 재시도 시 다시 만들 필요가 없다.
+        if (m_dispatchSub) {
+            return;
+        }
         m_dispatchSub = create_subscription<std_msgs::msg::String>(
             "/medirun/mission/dispatch_request", 10,
             [this](const std_msgs::msg::String &msg) {

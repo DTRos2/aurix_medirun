@@ -11,6 +11,7 @@
 #include <nav2_msgs/action/follow_waypoints.hpp>
 #include <nav2_msgs/action/navigate_to_pose.hpp>
 #include <nav2_msgs/msg/speed_limit.hpp>
+#include <nav_msgs/msg/occupancy_grid.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <tf2/exceptions.h>
@@ -18,12 +19,36 @@
 #include <tf2_ros/transform_listener.h>
 
 #include <atomic>
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <functional>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace {
+
+// 트레일러 정렬용 접근(approach) 지점 거리(L)의 기본값과 축소 폭.
+// 이 두 값만 바꾸면 전체 접근거리 후보 목록이 같이 바뀐다. 기본값이
+// 장애물/미탐색 영역에 걸리면 한 단계씩 줄여가며 시도한다.
+constexpr double kDefaultApproachDistanceMeters = 0.50;
+constexpr double kApproachDistanceStepMeters = 0.10;
+constexpr int kApproachDistanceFallbackSteps = 2; // 0.50 -> 0.40 -> 0.30
+// OccupancyGrid 셀 비용(0~100, -1=미탐색) 중 이 값 이상이면 장애물에 가까운
+// 영역으로 보고 approach pose 후보에서 제외한다.
+constexpr int8_t kApproachLethalCostThreshold = 90;
+
+std::vector<double> approachDistanceCandidatesMeters()
+{
+    std::vector<double> candidates;
+    for (int i = 0; i <= kApproachDistanceFallbackSteps; ++i) {
+        candidates.push_back(kDefaultApproachDistanceMeters - i * kApproachDistanceStepMeters);
+    }
+    return candidates;
+}
 
 double yawFromQuaternion(const geometry_msgs::msg::Quaternion &q)
 {
@@ -49,6 +74,15 @@ geometry_msgs::msg::PoseStamped makePoseStamped(double x, double y, double yaw,
     ps.pose.position.y = y;
     quaternionFromYaw(yaw, ps.pose.orientation.z, ps.pose.orientation.w);
     return ps;
+}
+
+geometry_msgs::msg::PoseStamped makeApproachPoseStamped(double goalX, double goalY, double goalYaw,
+                                                        double distance, const std::string &frameId,
+                                                        const rclcpp::Time &stamp)
+{
+    const double approachX = goalX - distance * std::cos(goalYaw);
+    const double approachY = goalY - distance * std::sin(goalYaw);
+    return makePoseStamped(approachX, approachY, goalYaw, frameId, stamp);
 }
 
 QString resultCodeText(rclcpp_action::ResultCode code)
@@ -117,6 +151,10 @@ public:
                 m_bridge->amclPoseUpdated(msg->pose.pose.position.x, msg->pose.pose.position.y, yaw);
             });
 
+        m_costmapSub = create_subscription<nav_msgs::msg::OccupancyGrid>(
+            "global_costmap/costmap", rclcpp::QoS(1).transient_local(),
+            [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) { m_latestCostmap = msg; });
+
         m_tfBuffer = std::make_unique<tf2_ros::Buffer>(get_clock());
         m_tfListener = std::make_shared<tf2_ros::TransformListener>(*m_tfBuffer);
 
@@ -168,9 +206,58 @@ public:
         m_bridge->scanPointsUpdated(points);
     }
 
+    bool isApproachPoseTraversable(double x, double y) const
+    {
+        if (!m_latestCostmap) {
+            return true;
+        }
+        const auto &info = m_latestCostmap->info;
+        const int mx = static_cast<int>(std::floor((x - info.origin.position.x) / info.resolution));
+        const int my = static_cast<int>(std::floor((y - info.origin.position.y) / info.resolution));
+        if (mx < 0 || my < 0 || mx >= static_cast<int>(info.width) || my >= static_cast<int>(info.height)) {
+            return false;
+        }
+        const int8_t cost = m_latestCostmap->data[static_cast<size_t>(my) * info.width + static_cast<size_t>(mx)];
+        return cost >= 0 && cost < kApproachLethalCostThreshold;
+    }
+
+    std::optional<geometry_msgs::msg::PoseStamped> findApproachPose(
+        double goalX, double goalY, double goalYaw, const std::string &frameId, const rclcpp::Time &stamp,
+        const QString &labelForLog)
+    {
+        for (const double candidate : approachDistanceCandidatesMeters()) {
+            const double ax = goalX - candidate * std::cos(goalYaw);
+            const double ay = goalY - candidate * std::sin(goalYaw);
+            if (isApproachPoseTraversable(ax, ay)) {
+                if (candidate < kDefaultApproachDistanceMeters) {
+                    m_bridge->logEvent(
+                        QStringLiteral("WARN"),
+                        QStringLiteral("%1: 기본 접근거리 %2m가 장애물/미탐색 영역에 걸려 %3m로 줄였습니다.")
+                            .arg(labelForLog)
+                            .arg(kDefaultApproachDistanceMeters, 0, 'f', 2)
+                            .arg(candidate, 0, 'f', 2));
+                }
+                return makeApproachPoseStamped(goalX, goalY, goalYaw, candidate, frameId, stamp);
+            }
+        }
+        m_bridge->logEvent(QStringLiteral("WARN"),
+                           QStringLiteral("%1: 트레일러 정렬용 접근 지점을 찾지 못해 최종 목표로 바로 이동합니다.")
+                               .arg(labelForLog));
+        return std::nullopt;
+    }
+
     void navigateToPose(double x, double y, double yaw, const QString &frameId, const QString &label)
     {
-        if (m_navGoalHandle || m_followGoalHandle) {
+        // m_navGoalHandle만 보면 안 된다 — 트레일러 접근(approach) 지점을 먼저
+        // 들렀다 최종 목표로 가는 2단계 주행 중, 1단계 goal이 성공해
+        // sendNavGoalLeg()의 result_callback이 m_navGoalHandle.reset()을 부른
+        // 뒤 2단계 goal의 goal_response_callback이 도착하기 전까지는
+        // m_navGoalHandle이 잠깐 비어 있다. 그 틈에 새 navigateToPose 호출이
+        // 들어오면 이 가드를 통과해 같은 로봇에 두 번째 goal을 보내버리고,
+        // Nav2가 새 goal을 받아들이며 기존 1건을 preempt해서 "먼저 누른 호출이
+        // 사라지고 나중 호출이 바로 실행된다"처럼 보인다. m_navigationInProgress는
+        // 이 2단계 전체가 끝날 때만 false가 되는 atomic 플래그라 그 틈을 덮는다.
+        if (m_navGoalHandle || m_followGoalHandle || m_navigationInProgress) {
             m_bridge->navigationGoalRejected(QStringLiteral("이미 진행 중인 goal이 있습니다."));
             return;
         }
@@ -180,14 +267,33 @@ public:
             return;
         }
 
-        NavigateToPose::Goal goal;
-        goal.pose = makePoseStamped(x, y, yaw, frameId.toStdString(), now());
+        const rclcpp::Time stamp = now();
+        const std::string frameStd = frameId.toStdString();
+        const QString labelForLog = label.isEmpty() ? QStringLiteral("목적지") : label;
+        const auto approachPose = findApproachPose(x, y, yaw, frameStd, stamp, labelForLog);
+        const auto finalPose = makePoseStamped(x, y, yaw, frameStd, stamp);
 
         m_bridge->logEvent(QStringLiteral("INFO"),
                             QStringLiteral("단일 목적지 주행 요청: (%1, %2)").arg(x, 0, 'f', 2).arg(y, 0, 'f', 2));
         m_bridge->statusChanged(QStringLiteral("목적지 (%1, %2)로 이동 중...").arg(x, 0, 'f', 2).arg(y, 0, 'f', 2));
         m_navigationInProgress = true;
         m_bridge->navSessionStarted({NavPose{x, y, yaw}}, label);
+
+        if (!approachPose.has_value()) {
+            sendNavGoalLeg(finalPose, true, nullptr);
+            return;
+        }
+
+        sendNavGoalLeg(*approachPose, false, [this, finalPose]() {
+            sendNavGoalLeg(finalPose, true, nullptr);
+        });
+    }
+
+    void sendNavGoalLeg(const geometry_msgs::msg::PoseStamped &pose, bool isFinalLeg,
+                        std::function<void()> onSuccess)
+    {
+        NavigateToPose::Goal goal;
+        goal.pose = pose;
 
         NavClient::SendGoalOptions options;
         options.feedback_callback =
@@ -212,8 +318,12 @@ public:
             }
             m_bridge->navigationGoalAccepted();
         };
-        options.result_callback = [this](const NavClient::GoalHandle::WrappedResult &result) {
+        options.result_callback = [this, isFinalLeg, onSuccess](const NavClient::GoalHandle::WrappedResult &result) {
             m_navGoalHandle.reset();
+            if (!isFinalLeg && result.code == rclcpp_action::ResultCode::SUCCEEDED) {
+                onSuccess();
+                return;
+            }
             const QString text = resultCodeText(result.code);
             const QString level = (result.code == rclcpp_action::ResultCode::SUCCEEDED)
                                        ? QStringLiteral("INFO")
@@ -239,7 +349,8 @@ public:
 
     void followWaypoints(const QVector<NavPose> &poses, const QString &frameId, const QString &label)
     {
-        if (m_navGoalHandle || m_followGoalHandle) {
+        // navigateToPose()와 동일한 이유로 m_navigationInProgress도 같이 본다.
+        if (m_navGoalHandle || m_followGoalHandle || m_navigationInProgress) {
             m_bridge->navigationGoalRejected(QStringLiteral("이미 진행 중인 goal이 있습니다."));
             return;
         }
@@ -250,14 +361,25 @@ public:
         }
 
         const rclcpp::Time stamp = now();
+        const std::string frameStd = frameId.toStdString();
         FollowWaypoints::Goal goal;
-        goal.poses.reserve(static_cast<size_t>(poses.size()));
+        goal.poses.reserve(static_cast<size_t>(poses.size()) * 2);
+        m_followRealPoseIndices.clear();
         for (const NavPose &pose : poses) {
-            goal.poses.push_back(makePoseStamped(pose.x, pose.y, pose.yaw, frameId.toStdString(), stamp));
+            const QString labelForLog = QStringLiteral("웨이포인트 %1").arg(m_followRealPoseIndices.size() + 1);
+            const auto approachPose = findApproachPose(pose.x, pose.y, pose.yaw, frameStd, stamp, labelForLog);
+            if (approachPose.has_value()) {
+                goal.poses.push_back(*approachPose);
+            }
+            m_followRealPoseIndices.push_back(goal.poses.size());
+            goal.poses.push_back(makePoseStamped(pose.x, pose.y, pose.yaw, frameStd, stamp));
         }
-        m_followTotal = static_cast<int>(goal.poses.size());
+        m_followTotal = static_cast<int>(poses.size());
 
-        m_bridge->logEvent(QStringLiteral("INFO"), QStringLiteral("경로 주행 요청: waypoint %1개").arg(m_followTotal));
+        m_bridge->logEvent(QStringLiteral("INFO"),
+                           QStringLiteral("경로 주행 요청: waypoint %1개 (접근 지점 포함 총 %2개 지점 경유)")
+                               .arg(m_followTotal)
+                               .arg(goal.poses.size()));
         m_bridge->waypointProgress(0, m_followTotal);
         m_bridge->statusChanged(QStringLiteral("경로 주행 중 (0/%1)").arg(m_followTotal));
         m_navigationInProgress = true;
@@ -266,7 +388,11 @@ public:
         FollowClient::SendGoalOptions options;
         options.feedback_callback =
             [this](FollowClient::GoalHandle::SharedPtr, const std::shared_ptr<const FollowWaypoints::Feedback> feedback) {
-                m_bridge->waypointProgress(static_cast<int>(feedback->current_waypoint), m_followTotal);
+                const auto currentWaypoint = feedback->current_waypoint;
+                const int realCompleted = static_cast<int>(std::count_if(
+                    m_followRealPoseIndices.begin(), m_followRealPoseIndices.end(),
+                    [currentWaypoint](size_t idx) { return idx < currentWaypoint; }));
+                m_bridge->waypointProgress(realCompleted, m_followTotal);
             };
         options.goal_response_callback = [this](FollowClient::GoalHandle::SharedPtr handle) {
             if (!handle) {
@@ -328,10 +454,10 @@ public:
             return;
         }
         if (m_navigationInProgress) {
-            // navigateToPose/followWaypoints를 호출한 직후 goal_response_callback이
-            // 아직 안 와서(accept 대기 중) 핸들이 잠깐 비어 있는 순간이 있다. 여기서
-            // 그냥 무시하면 취소 요청이 통째로 씹혀서 "전환"을 눌러도 로봇이 원래
-            // 목적지로 계속 가버린다.
+
+            // approach 목표가 막 끝나고 최종 목표가 아직 accept되지 않은 순간처럼
+            // 핸들이 잠깐 비어 있을 수 있다. 여기서 그냥 무시하면 취소 요청이
+            // 통째로 씹혀서 "전환"을 눌러도 로봇이 원래 목적지로 계속 가버린다.
             m_cancelRequestedBeforeHandle = true;
             m_bridge->logEvent(QStringLiteral("WARN"), QStringLiteral("주행 취소를 요청했습니다. (다음 목표 수신 즉시 취소)"));
             m_bridge->statusChanged(QStringLiteral("취소 요청됨..."));
@@ -494,6 +620,7 @@ private:
     rclcpp::Publisher<nav2_msgs::msg::SpeedLimit>::SharedPtr m_speedLimitPub;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr m_cmdVelPub;
     rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr m_amclSub;
+
     // GUI 스레드의 lastKnownAmclPose() 조회와 ROS 스핀 스레드의 구독 콜백이
     // 동시에 접근하므로 mutex로 보호한다.
     mutable std::mutex m_lastAmclPoseMutex;
@@ -503,15 +630,19 @@ private:
     bool m_hasAmclPose {false};
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr m_scanSub;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr m_odomSub;
+    rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr m_costmapSub;
+    nav_msgs::msg::OccupancyGrid::SharedPtr m_latestCostmap;
     std::unique_ptr<tf2_ros::Buffer> m_tfBuffer;
     std::shared_ptr<tf2_ros::TransformListener> m_tfListener;
     NavClient::GoalHandle::SharedPtr m_navGoalHandle;
     FollowClient::GoalHandle::SharedPtr m_followGoalHandle;
-    // goal 핸들이 아직 없는 순간에 cancelGoal()이 호출되면(예: 대기 호출 "전환"
-    // 버튼) 취소할 대상이 없어 요청이 그냥 씹혔다. 이 플래그를 세워두면 다음
-    // goal이 accept되는 즉시 취소를 적용한다.
+
+    // approach->최종 목표 전환 구간처럼 goal 핸들이 아직 없는 순간에 cancelGoal()이
+    // 호출되면(예: 대기 호출 "전환" 버튼) 취소할 대상이 없어 요청이 그냥 씹혔다.
+    // 이 플래그를 세워두면 다음 goal이 accept되는 즉시 취소를 적용한다.
     bool m_cancelRequestedBeforeHandle {false};
     int m_followTotal {0};
+    std::vector<size_t> m_followRealPoseIndices;
     rclcpp::TimerBase::SharedPtr m_connectionCheckTimer;
     rclcpp::Client<lifecycle_msgs::srv::GetState>::SharedPtr m_btNavigatorStateClient;
     rclcpp::Client<lifecycle_msgs::srv::GetState>::SharedPtr m_waypointFollowerStateClient;

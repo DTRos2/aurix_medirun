@@ -131,7 +131,9 @@ controller_server:
       max_vel_theta: 1.0
       min_speed_xy: 0.0
       max_speed_xy: 0.22
-      min_speed_theta: 0.0
+      # 0.0으로 두면 목표 근처에서 아주 작은 각속도를 명령할 수 있는데, 트레일러
+      # 저항 때문에 그 속도로는 정지마찰을 못 이겨 제자리에서 헛도는 현상이 생긴다.
+      min_speed_theta: 0.6
       # Add high threshold velocity for turtlebot 3 issue.
       # https://github.com/ROBOTIS-GIT/turtlebot3_simulations/issues/75
       acc_lim_x: 2.0
@@ -151,7 +153,8 @@ controller_server:
       trans_stopped_velocity: 0.25
       short_circuit_trajectory_evaluation: True
       stateful: True
-      critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
+      # RotateToGoal을 빼서 최종 yaw를 맞추기 위한 제자리 회전 성향을 줄인다.
+      critics: ["Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
       BaseObstacle.scale: 0.04
       PathAlign.scale: 24.0
       PathAlign.forward_point_distance: 0.1

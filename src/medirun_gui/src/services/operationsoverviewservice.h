@@ -38,6 +38,11 @@ struct SystemHealthRow
     QString label;
     int percent {0};
     QString kind; // "green" | "amber" | "red"
+
+    bool operator==(const SystemHealthRow &other) const
+    {
+        return label == other.label && percent == other.percent && kind == other.kind;
+    }
 };
 
 struct OperationsEventRow
