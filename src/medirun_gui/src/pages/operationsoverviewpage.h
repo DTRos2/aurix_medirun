@@ -80,6 +80,9 @@ private:
     // DB 기반 2행(ROS2 통신/DB 동기화)만 여기 담고, Nav2/카메라는 아래 라이브
     // 상태로 렌더 시점에 합쳐 4행을 만든다.
     QVector<SystemHealthRow> m_lastHealthDbRows;
+    // renderHealthPanel()이 실제로 화면에 그린 마지막 행 값 — 값이 그대로면
+    // 위젯을 다시 만들지 않고 건너뛰어 깜빡임을 막는다.
+    QVector<SystemHealthRow> m_lastRenderedHealthRows;
     bool m_hasNav2Signal {false};
     bool m_nav2Connected {false};
     bool m_hasAmclPose {false};
