@@ -13,11 +13,22 @@
 
 namespace {
 
+constexpr qint64 kMinReasonableRequestedAtSec = 1577836800; // 2020-01-01 00:00:00 UTC
+
 QDateTime parseRequestedAt(const QJsonObject &object)
 {
     const double requestedAtSec = object.value(QStringLiteral("requested_at_sec")).toDouble(-1.0);
     if (requestedAtSec > 0.0) {
-        return QDateTime::fromSecsSinceEpoch(static_cast<qint64>(requestedAtSec));
+        const qint64 requestedAtWholeSec = static_cast<qint64>(requestedAtSec);
+        const qint64 nowSec = QDateTime::currentSecsSinceEpoch();
+        // 일부 발행자가 epoch seconds 대신 "당일 경과 초" 같은 작은 숫자를 보내는
+        // 경우가 있어, 1970년대로 저장되지 않도록 비정상 범위는 현재 시각으로
+        // 보정한다. 미래값도 과도하면 같이 막는다.
+        if (requestedAtWholeSec >= kMinReasonableRequestedAtSec && requestedAtWholeSec <= nowSec + 24 * 60 * 60) {
+            return QDateTime::fromSecsSinceEpoch(requestedAtWholeSec);
+        }
+        RCLCPP_WARN(rclcpp::get_logger("medirun_gui_mission_bridge"),
+                    "requested_at_sec out of range: %.3f, fallback to current time", requestedAtSec);
     }
     return QDateTime::currentDateTime();
 }
