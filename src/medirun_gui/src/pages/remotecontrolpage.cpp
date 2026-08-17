@@ -6,6 +6,7 @@
 #include "../services/mapfile.h"
 #include "../services/operationsoverviewservice.h"
 #include "../services/robotservice.h"
+#include "../services/sensortelemetryprovider.h"
 #include "../theme/dashboardpalette.h"
 #include "../widgets/badgelabel.h"
 #include "../widgets/mapviewwidget.h"
@@ -54,6 +55,25 @@ QPushButton *directionButton(const QString &text, bool danger = false)
     button->setObjectName(danger ? QStringLiteral("dangerFilledButton") : QStringLiteral("directionPadButton"));
     button->setFixedSize(38, 38);
     return button;
+}
+
+// LiveControlPage::statValueLabel/setLabelColor와 동일한 모양의 "로봇 상태" 행 —
+// 센서 상태 패널에서 같은 스타일을 재사용하기 위해 그대로 옮겨왔다.
+QLabel *statValueLabel(QBoxLayout *parentLayout, const QString &label)
+{
+    auto *row = new QHBoxLayout;
+    row->addWidget(makeLabel(label, QStringLiteral("metricCaption")));
+    row->addStretch();
+    auto *valueLabel = makeLabel(QStringLiteral("--"));
+    valueLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 11px;").arg(DashboardPalette::TextPrimary.name()));
+    row->addWidget(valueLabel);
+    parentLayout->addLayout(row);
+    return valueLabel;
+}
+
+void setLabelColor(QLabel *label, const QColor &color)
+{
+    label->setStyleSheet(QStringLiteral("color: %1; font-size: 11px;").arg(color.name()));
 }
 
 // 로봇이 정지 상태여도 /odom 노이즈가 0 근처에서 부호만 미세하게 흔들려
@@ -134,6 +154,10 @@ RemoteControlPage::RemoteControlPage(RobotService &robotService, OperationsOverv
     cmdVelPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     rightCol->addWidget(cmdVelPanel);
 
+    auto *sensorStatusPanel = buildSensorStatusPanel();
+    sensorStatusPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    rightCol->addWidget(sensorStatusPanel);
+
     rightCol->addStretch(1);
 
     auto *bottomButtonRow = new QHBoxLayout;
@@ -212,6 +236,19 @@ void RemoteControlPage::setNavigationService(NavigationService *service)
     // 와버렸을 수 있어, 이 페이지가 연결하기 전 시그널을 놓쳤을 수 있다.
     if (double x, y, yaw; m_navigationService->lastKnownAmclPose(x, y, yaw)) {
         handleAmclPoseUpdated(x, y, yaw);
+    }
+}
+
+void RemoteControlPage::setSensorTelemetryProvider(SensorTelemetryProvider *provider)
+{
+    if (m_sensorTelemetryProvider == provider) {
+        return;
+    }
+    m_sensorTelemetryProvider = provider;
+    if (m_sensorTelemetryProvider != nullptr) {
+        connect(m_sensorTelemetryProvider, &SensorTelemetryProvider::frontDistanceChanged, this, &RemoteControlPage::handleFrontDistanceChanged);
+        connect(m_sensorTelemetryProvider, &SensorTelemetryProvider::rearDistanceChanged, this, &RemoteControlPage::handleRearDistanceChanged);
+        connect(m_sensorTelemetryProvider, &SensorTelemetryProvider::payloadLoadedChanged, this, &RemoteControlPage::handlePayloadLoadedChanged);
     }
 }
 
@@ -297,6 +334,7 @@ void RemoteControlPage::handleOdomVelocityUpdated(double linearMps, double angul
 void RemoteControlPage::handleTeleopActiveChanged(bool active)
 {
     m_teleopActive = active;
+    refreshRobotMarkerState();
     if (m_manualBannerTitleLabel != nullptr) {
         m_manualBannerTitleLabel->setText(active ? QStringLiteral("🎮  수동 제어 활성") : QStringLiteral("수동 제어 대기"));
         m_manualBannerTitleLabel->setStyleSheet(
@@ -327,6 +365,7 @@ void RemoteControlPage::handleNavSessionStarted(const QVector<NavPose> &goals, c
     Q_UNUSED(goals);
     Q_UNUSED(label);
     m_navigationInProgress = true;
+    refreshRobotMarkerState();
     // 자동주행이 시작됐는데 방향 버튼/키가 눌려있던 상태로 남아있으면
     // teleop과 Nav2가 동시에 /cmd_vel을 발행해 충돌한다 — 즉시 정지.
     m_teleop->stop();
@@ -356,6 +395,33 @@ void RemoteControlPage::handleNavSessionFinished(bool success, bool cancelled)
     handleTeleopActiveChanged(false);
 }
 
+void RemoteControlPage::handleFrontDistanceChanged(int centimeters)
+{
+    if (m_frontObstacleValueLabel == nullptr) {
+        return;
+    }
+    m_frontObstacleValueLabel->setText(QStringLiteral("%1cm").arg(centimeters));
+    setLabelColor(m_frontObstacleValueLabel, centimeters < 20 ? DashboardPalette::Red : DashboardPalette::TextPrimary);
+}
+
+void RemoteControlPage::handleRearDistanceChanged(int centimeters)
+{
+    if (m_rearObstacleValueLabel == nullptr) {
+        return;
+    }
+    m_rearObstacleValueLabel->setText(QStringLiteral("%1cm").arg(centimeters));
+    setLabelColor(m_rearObstacleValueLabel, centimeters < 20 ? DashboardPalette::Red : DashboardPalette::TextPrimary);
+}
+
+void RemoteControlPage::handlePayloadLoadedChanged(bool loaded)
+{
+    if (m_payloadValueLabel == nullptr) {
+        return;
+    }
+    m_payloadValueLabel->setText(loaded ? QStringLiteral("적재됨") : QStringLiteral("미적재"));
+    setLabelColor(m_payloadValueLabel, loaded ? DashboardPalette::Green : DashboardPalette::TextMuted);
+}
+
 void RemoteControlPage::updateSpeedPresetButtons()
 {
     if (m_speedFineButton == nullptr || m_speedNormalButton == nullptr || m_speedFastButton == nullptr) {
@@ -382,12 +448,29 @@ void RemoteControlPage::updateSpeedPresetButtons()
 
 void RemoteControlPage::handleAmclPoseUpdated(double x, double y, double yawRad)
 {
+    if (!m_hasAmclPose) {
+        // 초기 위치를 처음 받은 순간 — 안내 배너를 "일치 확인"으로 바꾸고,
+        // 이제부터 로봇 마커를 그릴 수 있는 상태가 된다.
+        m_hasAmclPose = true;
+        updateInitialPoseBanner();
+    }
+
     if (!m_mapIsMain || !m_currentMapMeta.valid) {
         return;
     }
 
+    m_mapView->setRobotVisible(true);
     m_mapView->setRobotPose(worldToNormalized(x, y), qRadiansToDegrees(yawRad));
-    m_mapView->setRobotState(RobotMarkerState::Ready);
+    refreshRobotMarkerState();
+}
+
+void RemoteControlPage::refreshRobotMarkerState()
+{
+    if (m_mapView == nullptr) {
+        return;
+    }
+    const bool driving = m_teleopActive || m_navigationInProgress;
+    m_mapView->setRobotState(driving ? RobotMarkerState::Moving : RobotMarkerState::Ready);
 }
 
 void RemoteControlPage::applyCameraFrame(const QImage &frame)
@@ -464,21 +547,23 @@ QWidget *RemoteControlPage::buildCameraPanel()
     m_cameraFrameLabel->setMinimumSize(1, 1);
     layout->addWidget(m_cameraFrameLabel, 1);
 
-    m_cameraBottomRow = new QWidget(panel);
-    auto *bottomRow = new QHBoxLayout(m_cameraBottomRow);
-    bottomRow->setContentsMargins(0, 0, 0, 0);
-    bottomRow->addStretch();
-    auto *front = makeLabel(QStringLiteral("전방 0.42m"));
-    front->setStyleSheet(QStringLiteral("color: %1; font-size: 10px; padding: 3px 9px; border: 1px solid #2a4a66; border-radius: 6px;").arg(DashboardPalette::Green.name()));
-    bottomRow->addWidget(front);
-    auto *left = makeLabel(QStringLiteral("좌 0.88m"));
-    left->setStyleSheet(QStringLiteral("color: %1; font-size: 10px; padding: 3px 9px; border: 1px solid #2a4a66; border-radius: 6px;").arg(DashboardPalette::TextSecondary.name()));
-    bottomRow->addWidget(left);
-    auto *right = makeLabel(QStringLiteral("우 1.14m"));
-    right->setStyleSheet(QStringLiteral("color: %1; font-size: 10px; padding: 3px 9px; border: 1px solid #2a4a66; border-radius: 6px;").arg(DashboardPalette::TextSecondary.name()));
-    bottomRow->addWidget(right);
-    bottomRow->addStretch();
-    layout->addWidget(m_cameraBottomRow);
+    return panel;
+}
+
+QWidget *RemoteControlPage::buildSensorStatusPanel()
+{
+    // LiveControlPage::buildRobotStatusPanel()의 전방/후방 장애물·AED 적재
+    // 항목을 그대로 재사용한다 — 좌/우 초음파 센서는 실제 하드웨어가 없어
+    // 표시하지 않는다.
+    auto *panel = panelFrame(QStringLiteral("contentPanel"));
+    auto *layout = new QVBoxLayout(panel);
+    layout->setContentsMargins(11, 9, 11, 9);
+    layout->setSpacing(6);
+    layout->addWidget(makeLabel(QStringLiteral("센서 상태"), QStringLiteral("metricCaption")));
+
+    m_frontObstacleValueLabel = statValueLabel(layout, QStringLiteral("전방 장애물"));
+    m_rearObstacleValueLabel = statValueLabel(layout, QStringLiteral("후방 장애물"));
+    m_payloadValueLabel = statValueLabel(layout, QStringLiteral("AED 적재"));
     return panel;
 }
 
@@ -506,8 +591,10 @@ QWidget *RemoteControlPage::buildMinimapPanel()
     m_mapView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_mapView->setMode(MapViewMode::Reference);
     m_mapView->setCaption(QStringLiteral("미니맵 · 방향 참조용"));
-    m_mapView->setRobotPose(QPointF(0.35, 0.65), 0.0);
-    m_mapView->setRobotState(RobotMarkerState::Warning);
+    // 초기 위치를 아직 못 받았으면(m_hasAmclPose==false) 로봇 마커를 그리지
+    // 않는다 — 위치를 모르는 채로 마커부터 보이면 오해를 준다. 대신
+    // buildPoseHintBanner()의 안내 배너로 "초기 위치를 설정하세요"를 보여준다.
+    m_mapView->setRobotVisible(false);
     connect(m_mapView, &MapViewWidget::posePickRequested, this, &RemoteControlPage::handlePosePickRequested);
     layout->addWidget(m_mapView, 1);
 
@@ -530,15 +617,43 @@ QWidget *RemoteControlPage::buildPoseHintBanner()
     layout->setContentsMargins(9, 6, 9, 6);
     layout->setSpacing(6);
 
-    auto *icon = makeLabel(QStringLiteral("⚠"));
-    icon->setStyleSheet(QStringLiteral("color: %1; font-size: 11px;").arg(DashboardPalette::Amber.name()));
-    layout->addWidget(icon);
+    m_poseHintIconLabel = makeLabel(QStringLiteral("⚠"));
+    layout->addWidget(m_poseHintIconLabel);
 
-    auto *text = makeLabel(QStringLiteral("로봇의 실제 위치와 지도 위 마커가 일치하는지 확인하세요 · 다르면 초기 위치 설정"));
-    text->setStyleSheet(QStringLiteral("color: %1; font-size: 10px;").arg(DashboardPalette::Amber.name()));
-    layout->addWidget(text, 1);
+    m_poseHintTextLabel = makeLabel(QString());
+    layout->addWidget(m_poseHintTextLabel, 1);
+
+    m_mapPoseHintBanner = panel;
+    updateInitialPoseBanner();
 
     return panel;
+}
+
+void RemoteControlPage::updateInitialPoseBanner()
+{
+    if (m_mapPoseHintBanner == nullptr || m_poseHintIconLabel == nullptr || m_poseHintTextLabel == nullptr) {
+        return;
+    }
+
+    if (!m_hasAmclPose) {
+        // 초기 위치를 아예 모르는 상태 — QFrame#warningBanner(주황)보다 급한
+        // 빨강으로 눈에 띄게 만든다(buildManualControlBanner의 anomalyCard와
+        // 동일 톤).
+        m_mapPoseHintBanner->setStyleSheet(
+            QStringLiteral("background-color: #1a0f18; border: 1px solid #7c2438; border-radius: 8px;"));
+        m_poseHintIconLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 11px;").arg(DashboardPalette::Red.name()));
+        m_poseHintTextLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 10px;").arg(DashboardPalette::Red.name()));
+        m_poseHintTextLabel->setText(
+            QStringLiteral("초기 위치가 설정되지 않았습니다 · 아래 '📍 초기 위치 설정' 버튼을 누른 뒤 지도를 클릭+드래그하세요"));
+        return;
+    }
+
+    // 초기 위치를 받은 뒤에는 원래의 온화한 확인 안내로 되돌아간다 —
+    // 인라인 스타일을 비워서 QFrame#warningBanner(주황) qss가 다시 적용되게 한다.
+    m_mapPoseHintBanner->setStyleSheet(QString());
+    m_poseHintIconLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 11px;").arg(DashboardPalette::Amber.name()));
+    m_poseHintTextLabel->setStyleSheet(QStringLiteral("color: %1; font-size: 10px;").arg(DashboardPalette::Amber.name()));
+    m_poseHintTextLabel->setText(QStringLiteral("로봇의 실제 위치와 지도 위 마커가 일치하는지 확인하세요 · 다르면 초기 위치 설정"));
 }
 
 QWidget *RemoteControlPage::buildViewSwapButton()
@@ -743,10 +858,9 @@ void RemoteControlPage::swapCameraAndMap()
         m_minimapPanel->setMaximumHeight(QWIDGETSIZE_MAX);
         m_minimapPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         m_cameraPanel->setMinimumHeight(0);
-        // 배지/거리칩 오버레이를 감춰서 축소된 높이 대부분을 실제 영상에 내준다
+        // 배지 오버레이를 감춰서 축소된 높이 대부분을 실제 영상에 내준다
         // (100px로는 오버레이만 겨우 보이고 영상은 안 보이던 문제 수정).
         m_cameraTopRow->setVisible(false);
-        m_cameraBottomRow->setVisible(false);
         m_cameraPanel->setFixedHeight(150);
         m_cameraPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
 
@@ -762,7 +876,6 @@ void RemoteControlPage::swapCameraAndMap()
         m_minimapPanel->setMinimumHeight(0);
         m_minimapPanel->setMaximumHeight(QWIDGETSIZE_MAX);
         m_cameraTopRow->setVisible(true);
-        m_cameraBottomRow->setVisible(true);
         m_cameraPanel->setMaximumHeight(QWIDGETSIZE_MAX);
         m_cameraPanel->setMinimumHeight(230);
         m_cameraPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);

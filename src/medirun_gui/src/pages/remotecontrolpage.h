@@ -20,6 +20,7 @@ class MapViewWidget;
 class CameraFeedProvider;
 class RobotService;
 class OperationsOverviewService;
+class SensorTelemetryProvider;
 
 class RemoteControlPage : public QWidget
 {
@@ -30,6 +31,7 @@ public:
 
     void setCameraFeedProvider(CameraFeedProvider *provider);
     void setNavigationService(NavigationService *service);
+    void setSensorTelemetryProvider(SensorTelemetryProvider *provider);
     void setSession(const AppSession &session);
 
     // MainWindow -> DashboardCentralWidget이 이 페이지가 현재 화면일 때만
@@ -58,10 +60,14 @@ private slots:
     // NavigationService를 공유하므로 이 시그널로 감지해서 수동 제어를 막는다.
     void handleNavSessionStarted(const QVector<NavPose> &goals, const QString &label);
     void handleNavSessionFinished(bool success, bool cancelled);
+    void handleFrontDistanceChanged(int centimeters);
+    void handleRearDistanceChanged(int centimeters);
+    void handlePayloadLoadedChanged(bool loaded);
 
 private:
     QWidget *buildManualControlBanner();
     QWidget *buildCameraPanel();
+    QWidget *buildSensorStatusPanel();
     QWidget *buildMinimapPanel();
     QWidget *buildPoseHintBanner();
     QWidget *buildViewSwapButton();
@@ -83,6 +89,13 @@ private:
     QPointF worldToNormalized(double x, double y) const;
     QPointF normalizedToWorld(const QPointF &normalized) const;
     void updateInitialPoseButtonEnabled();
+    void updateInitialPoseBanner();
+    // teleop 수동 조작 중이거나 웨이포인트 자동주행 중이면 로봇이 실제로
+    // 움직이고 있는 것이므로 마커를 "주행 중"(Moving)으로, 둘 다 아니면
+    // "대기"(Ready)로 되돌린다. AMCL 위치가 들어올 때뿐 아니라 teleop/자동주행
+    // 시작·종료 시점에도 즉시 반영해야 값이 도착하기 전까지 마커가 낡은 상태로
+    // 남지 않는다.
+    void refreshRobotMarkerState();
     // 지도가 로드된 뒤 DB(waypoint_set.name="home", call_button)에서 홈/콜존
     // 마커를 읽어와 지도에 반영한다 — WaypointManagementPage의
     // mergeHomeWaypointInto/mergeCallButtonsInto와 동일한 source of truth.
@@ -96,10 +109,16 @@ private:
     QLabel *m_cameraFrameLabel = nullptr;
     // 카메라 패널이 축소된(스왑된) 상태일 때는 감춰서 영상 표시 영역을 넓게 확보한다.
     QWidget *m_cameraTopRow = nullptr;
-    QWidget *m_cameraBottomRow = nullptr;
     MapViewWidget *m_mapView = nullptr;
     // 지도가 축소된(미니맵) 상태일 때는 감춰서, 확대(메인) 상태일 때만 보인다.
     QWidget *m_mapPoseHintBanner = nullptr;
+    QLabel *m_poseHintIconLabel = nullptr;
+    QLabel *m_poseHintTextLabel = nullptr;
+    // AMCL이 초기 위치를 한 번이라도 받았는지 — 이게 false인 동안은 로봇 위치가
+    // 신뢰할 수 없으므로 지도에 로봇 마커를 아예 그리지 않고, 대신 초기 위치
+    // 설정 안내 배너(빨강)를 보여준다. 받은 뒤에는 위치 일치 확인 배너(주황)로
+    // 바뀐다 — WaypointManagementPage::m_hasAmclPose와 동일한 규칙.
+    bool m_hasAmclPose = false;
     QPushButton *m_setInitialPoseButton = nullptr;
     QVBoxLayout *m_bigSlot = nullptr;
     QVBoxLayout *m_smallSlot = nullptr;
@@ -138,6 +157,14 @@ private:
     QLabel *m_cmdVelTitleLabel = nullptr;
     QLabel *m_cmdVelLinearValueLabel = nullptr;
     QLabel *m_cmdVelAngularValueLabel = nullptr;
+
+    // 센서 상태 패널 — LiveControlPage 로봇 상태박스의 전방/후방 장애물·AED
+    // 적재(홀센서) 항목을 그대로 재사용한다. 좌/우 초음파 센서는 실제
+    // 하드웨어가 없어 표시하지 않는다.
+    SensorTelemetryProvider *m_sensorTelemetryProvider = nullptr;
+    QLabel *m_frontObstacleValueLabel = nullptr;
+    QLabel *m_rearObstacleValueLabel = nullptr;
+    QLabel *m_payloadValueLabel = nullptr;
 };
 
 #endif // REMOTECONTROLPAGE_H
