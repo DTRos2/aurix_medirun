@@ -48,6 +48,7 @@ GuiApplicationController::GuiApplicationController(QApplication &application, QO
     , m_loginDialog(nullptr)
     , m_mainWindow(nullptr)
 {
+    connect(&m_application, &QApplication::aboutToQuit, this, &GuiApplicationController::handleAboutToQuit);
 }
 
 GuiApplicationController::~GuiApplicationController() = default;
@@ -257,6 +258,20 @@ void GuiApplicationController::handleLogout()
     m_cameraFeedProvider = nullptr;
     m_missionController.reset();
     showLoginPage();
+}
+
+void GuiApplicationController::handleAboutToQuit()
+{
+    if (m_mainWindow != nullptr) {
+        // deleteLater()가 아니라 즉시 delete — aboutToQuit 이후엔 이벤트
+        // 루프가 곧바로 멈춰서 deleteLater()가 예약한 삭제를 처리할 기회가
+        // 없다. MainWindow가 삭제되면서 자식으로 붙은 ROS 프로바이더들
+        // (RosBatteryTelemetryProvider/RosCameraFeedProvider/
+        // RosSensorTelemetryProvider)의 소멸자가 이제야 정상적으로 불려
+        // 스핀 스레드가 cancel()+join()으로 정리된다.
+        delete m_mainWindow;
+        m_mainWindow = nullptr;
+    }
 }
 
 void GuiApplicationController::connectWindowFlow()
