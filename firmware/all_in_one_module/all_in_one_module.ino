@@ -56,8 +56,20 @@ const unsigned long SAMPLE_INTERVAL_MS = 100;
 const uint8_t MEDIAN_WINDOW = 3;
 const unsigned long ECHO_TIMEOUT_US = 30000UL;
 const int MAX_RANGE_CM = 400;
+// HC-SR04류는 물체가 몇 cm 이내로 바짝 붙으면 반사 펄스가 너무 짧아 pulseIn()이 아예
+// 못 잡고 타임아웃난다 — "사거리 밖(멀다)"과 "너무 가까워 못 잡음"이 똑같이 duration==0으로
+// 나와 이 신호 하나로는 구분이 안 된다. 물체가 순간이동하듯 사라지진 않으므로, 직전
+// 실측값이 이미 가까웠다면(RECENT_CLOSE_THRESHOLD_CM 이내) 그 다음 타임아웃은 "더
+// 가까워져서 못 잡힌 것"으로 보고 작은 값을 보고한다. 직전 값이 멀었거나 아직 없으면
+// (기동 직후) 기존대로 "사거리 밖"으로 본다 — 열린 공간에서 매번 안전정지가 걸리는
+// 걸 막기 위함. (실제로 로봇 바로 앞에 바짝 붙였는데 DIST:400이 나와 안전정지가 안
+// 걸리는 게 실측으로 확인된 문제 — 이 이력 기반 판단으로 고친다.)
+const int RECENT_CLOSE_THRESHOLD_CM = 25;
+const int ECHO_LOST_FALLBACK_CM = 5;
 int frontHistory[MEDIAN_WINDOW];
 int rearHistory[MEDIAN_WINDOW];
+int frontLastCm = MAX_RANGE_CM;
+int rearLastCm = MAX_RANGE_CM;
 uint8_t historyIndex = 0;
 bool historyFilled = false;
 unsigned long lastSampleAt = 0;
@@ -100,7 +112,7 @@ const uint8_t CMD_BUFFER_SIZE = 24;
 char cmdBuffer[CMD_BUFFER_SIZE];
 uint8_t cmdLength = 0;
 
-int readDistanceCm(uint8_t trigPin, uint8_t echoPin) {
+int readDistanceCm(uint8_t trigPin, uint8_t echoPin, int &lastKnownCm) {
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
 
@@ -110,6 +122,9 @@ int readDistanceCm(uint8_t trigPin, uint8_t echoPin) {
 
   unsigned long duration = pulseIn(echoPin, HIGH, ECHO_TIMEOUT_US);
   if (duration == 0) {
+    if (lastKnownCm <= RECENT_CLOSE_THRESHOLD_CM) {
+      return ECHO_LOST_FALLBACK_CM;
+    }
     return MAX_RANGE_CM;
   }
 
@@ -117,6 +132,7 @@ int readDistanceCm(uint8_t trigPin, uint8_t echoPin) {
   if (distanceCm > MAX_RANGE_CM) {
     distanceCm = MAX_RANGE_CM;
   }
+  lastKnownCm = distanceCm;
   return distanceCm;
 }
 
@@ -353,9 +369,9 @@ void updateUltrasonic() {
   }
   lastSampleAt = now;
 
-  frontHistory[historyIndex] = readDistanceCm(FRONT_TRIG_PIN, FRONT_ECHO_PIN);
+  frontHistory[historyIndex] = readDistanceCm(FRONT_TRIG_PIN, FRONT_ECHO_PIN, frontLastCm);
   delay(10);
-  rearHistory[historyIndex] = readDistanceCm(REAR_TRIG_PIN, REAR_ECHO_PIN);
+  rearHistory[historyIndex] = readDistanceCm(REAR_TRIG_PIN, REAR_ECHO_PIN, rearLastCm);
 
   historyIndex = (historyIndex + 1) % MEDIAN_WINDOW;
   if (historyIndex == 0) {
