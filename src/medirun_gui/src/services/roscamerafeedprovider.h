@@ -34,8 +34,8 @@ private:
     QTimer *m_timeoutTimer;
     rclcpp::Node::SharedPtr m_node;
     // image_transport::create_subscription으로 "compressed" transport hint를 줘서
-    // /camera/image_raw/compressed(JPEG)를 구독 — 대역폭 절감 목적. v4l2_camera_node가
-    // image_transport 퍼블리셔라 컴프레스드 토픽을 자동으로 같이 발행해준다.
+    // /camera/image_raw/compressed(JPEG)를 BEST_EFFORT, depth=1로 구독한다. UDP에서
+    // 손실된 과거 프레임을 기다리거나 쌓지 않고 항상 최신 프레임을 우선한다.
     image_transport::Subscriber m_subscription;
     std::unique_ptr<rclcpp::executors::SingleThreadedExecutor> m_executor;
     std::thread m_spinThread;

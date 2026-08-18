@@ -100,6 +100,12 @@ source /opt/ros/humble/setup.bash
 ros2 launch turtlebot3_bringup camera.launch.py format:=BGR888
 ```
 
+카메라 launch는 `turtlebot3_bringup/config/cyclonedds_udp.xml`을 자동 적용해
+CycloneDDS IPv4 UDP 전송을 사용한다. 이미지 데이터는 JPEG 압축 토픽을
+`BEST_EFFORT`, depth 1로 구독하므로 네트워크가 잠시 밀려도 과거 프레임을
+쌓지 않고 최신 프레임을 우선한다. Pi 쪽 소스를 갱신한 뒤에는
+`turtlebot3_bringup`을 다시 빌드하고 `install/setup.bash`를 source해야 한다.
+
 > `src/medirun_bringup/launch/camera.launch.py`(`v4l2_camera` 기반)는 UVC 웹캠 등 다른 하드웨어 대비용으로 남겨둔 미사용 파일이며, 실제 로봇에서는 쓰지 않는다.
 
 

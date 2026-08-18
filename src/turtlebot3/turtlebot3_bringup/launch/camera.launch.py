@@ -15,6 +15,9 @@
 # limitations under the License.
 
 
+import os
+
+from ament_index_python.packages import get_package_share_directory
 from ament_index_python.resources import has_resource
 
 from launch.actions import DeclareLaunchArgument
@@ -27,6 +30,12 @@ from launch_ros.descriptions import ComposableNode
 
 
 def generate_launch_description() -> LaunchDescription:
+
+    cyclonedds_config = os.path.join(
+        get_package_share_directory('turtlebot3_bringup'),
+        'config',
+        'cyclonedds_udp.xml',
+    )
 
     camera_param_name = 'camera'
     camera_param_default = str(0)
@@ -111,6 +120,10 @@ def generate_launch_description() -> LaunchDescription:
         package='rclcpp_components',
         executable='component_container',
         composable_node_descriptions=composable_nodes,
+        additional_env={
+            'RMW_IMPLEMENTATION': 'rmw_cyclonedds_cpp',
+            'CYCLONEDDS_URI': 'file://' + cyclonedds_config,
+        },
     )
 
     return LaunchDescription([
