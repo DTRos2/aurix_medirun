@@ -17,6 +17,7 @@ from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
     EmitEvent,
+    GroupAction,
     IncludeLaunchDescription,
     RegisterEventHandler,
     TimerAction,
@@ -30,6 +31,9 @@ from launch_ros.actions import Node
 
 TURTLEBOT3_MODEL = os.environ.get("TURTLEBOT3_MODEL", "burger")
 ROS_DISTRO = os.environ.get("ROS_DISTRO", "humble")
+CYCLONEDDS_CONFIG = os.path.join(
+    get_package_share_directory("turtlebot3_bringup"), "config", "cyclonedds_udp.xml"
+)
 
 # 이 파일은 --symlink-install로 설치되므로 install/ 아래의 심볼릭 링크를 통해
 # 실행된다. abspath는 심볼릭 링크를 따라가지 않아 install 경로로 잘못
@@ -58,6 +62,7 @@ def generate_launch_description():
         )
 
     nav2_launch_file_dir = os.path.join(get_package_share_directory("nav2_bringup"), "launch")
+    medirun_launch_file_dir = os.path.join(get_package_share_directory("medirun_bringup"), "launch")
     rviz_config_dir = os.path.join(
         get_package_share_directory("turtlebot3_navigation2"), "rviz", "tb3_navigation2.rviz"
     )
@@ -68,6 +73,10 @@ def generate_launch_description():
         name="medirun_gui",
         output="screen",
         condition=IfCondition(use_gui),
+        additional_env={
+            "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
+            "CYCLONEDDS_URI": "file://" + CYCLONEDDS_CONFIG,
+        },
     )
 
     return LaunchDescription(
@@ -82,13 +91,56 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "use_gui", default_value="true", description="medirun_gui 대시보드를 자동으로 같이 띄울지 여부"
             ),
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource([nav2_launch_file_dir, "/bringup_launch.py"]),
-                launch_arguments={
-                    "map": map_yaml,
-                    "use_sim_time": use_sim_time,
-                    "params_file": param_dir,
-                }.items(),
+            # Nav2를 composition 모드로 실행하되, navigation 부분은 MediRun 전용
+            # navigation_safety.launch.py를 사용한다. 일반 주행(velocity_smoother)뿐 아니라
+            # behavior_server의 BackUp/Spin 출력도 모두 초음파 안전 게이트 앞의 raw 토픽으로
+            # 보낸다. 이 배선이 없으면 후진/회전 복구 동작이 /cmd_vel로 직접 나가 안전 노드를
+            # 우회할 수 있다.
+            GroupAction(
+                actions=[
+                    Node(
+                        package="rclcpp_components",
+                        executable="component_container_isolated",
+                        name="nav2_container",
+                        parameters=[{"autostart": True}],
+                        arguments=["--ros-args", "--log-level", "info"],
+                        remappings=[("/tf", "tf"), ("/tf_static", "tf_static")],
+                        output="screen",
+                    ),
+                    IncludeLaunchDescription(
+                        PythonLaunchDescriptionSource([nav2_launch_file_dir, "/localization_launch.py"]),
+                        launch_arguments={
+                            "map": map_yaml,
+                            "use_sim_time": use_sim_time,
+                            "params_file": param_dir,
+                            "autostart": "true",
+                            "use_composition": "True",
+                            "container_name": "nav2_container",
+                        }.items(),
+                    ),
+                    IncludeLaunchDescription(
+                        PythonLaunchDescriptionSource([medirun_launch_file_dir, "/navigation_safety.launch.py"]),
+                        launch_arguments={
+                            "use_sim_time": use_sim_time,
+                            "params_file": param_dir,
+                            "autostart": "true",
+                            "use_composition": "True",
+                            "container_name": "nav2_container",
+                        }.items(),
+                    ),
+                ]
+            ),
+            # 초음파 전방/후방 15cm 이내 접근 시 Nav2 자율주행을 정지시킨다. 위의 전용
+            # navigation launch가 모은 모든 Nav2 cmd_vel이 이 노드를 거쳐 최종 /cmd_vel로 나간다
+            # (src/arduino_bridge/src/ultrasonic_safety_stop.cpp). 원격조종(teleop)은
+            # 현재 GUI가 /cmd_vel에 직접 발행해 이 게이트를 거치지 않는다 — 이번 요청
+            # 범위는 Nav2 자율주행 중 정지이므로 teleop 경로는 그대로 두었다.
+            Node(
+                package="arduino_bridge",
+                executable="ultrasonic_safety_stop",
+                name="ultrasonic_safety_stop",
+                parameters=[{"front_stop_distance_cm": 15, "rear_stop_distance_cm": 15, "hold_duration_sec": 0.0}],
+                output="screen",
             ),
             Node(
                 package="rviz2",
