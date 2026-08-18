@@ -8,6 +8,7 @@
 namespace {
 constexpr int kFrameTimeoutMs = 2000; // 03번 설계서 1.5절 "통신" 규칙: 2초 미수신 시 단절
 constexpr int kTimeoutCheckIntervalMs = 500;
+constexpr size_t kCameraQueueDepth = 1; // 실시간 화면은 밀린 프레임보다 최신 프레임을 우선한다.
 
 qint64 currentTimeMs()
 {
@@ -28,6 +29,8 @@ RosCameraFeedProvider::RosCameraFeedProvider(QObject *parent)
     m_timeoutTimer->setInterval(kTimeoutCheckIntervalMs);
     connect(m_timeoutTimer, &QTimer::timeout, this, &RosCameraFeedProvider::checkFrameTimeout);
 
+    auto cameraQos = rmw_qos_profile_sensor_data;
+    cameraQos.depth = kCameraQueueDepth;
     m_subscription = image_transport::create_subscription(
         m_node.get(),
         "camera/image_raw",
@@ -35,7 +38,7 @@ RosCameraFeedProvider::RosCameraFeedProvider(QObject *parent)
             handleImage(msg);
         },
         "compressed",
-        rmw_qos_profile_sensor_data);
+        cameraQos);
 }
 
 RosCameraFeedProvider::~RosCameraFeedProvider()
