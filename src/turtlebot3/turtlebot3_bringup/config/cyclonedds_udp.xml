@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain Id="any">
+    <General>
+      <!-- Keep camera traffic on connectionless IPv4 UDP. -->
+      <Transport>udp</Transport>
+      <Interfaces>
+        <NetworkInterface autodetermine="true" priority="default" multicast="default" />
+      </Interfaces>
+      <!-- Use multicast only for discovery; camera samples are sent by unicast on Wi-Fi. -->
+      <AllowMulticast>spdp</AllowMulticast>
+      <!-- Stay below a 1500-byte Ethernet/Wi-Fi MTU and let DDS fragment images itself. -->
+      <MaxMessageSize>1400B</MaxMessageSize>
+      <FragmentSize>1344B</FragmentSize>
+    </General>
+  </Domain>
+</CycloneDDS>
