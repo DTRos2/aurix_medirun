@@ -26,3 +26,6 @@ docs/tests/*.md
 
 .claude/settings.local.json
 .claude/hooks/session-start-read-docs.sh
+
+# 개인 작업용 트러블슈팅 메모 (공유 대상 아님)
+docs/troubleshooting/초음파_안전정지_Nav2_우회구조와_클래스_설계_20260818.md
