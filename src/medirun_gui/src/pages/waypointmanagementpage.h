@@ -8,6 +8,7 @@
 #include "../services/robotservice.h"
 #include "../widgets/waypointmapwidget.h"
 
+#include <QShowEvent>
 #include <QVector>
 #include <QWidget>
 
@@ -19,6 +20,7 @@ class QListWidgetItem;
 class QPushButton;
 class QStackedWidget;
 class WaypointRepository;
+class MissionController;
 
 class WaypointManagementPage : public QWidget
 {
@@ -31,6 +33,10 @@ public:
     // disabled and just report an error if no service is attached).
     void setNavigationService(NavigationService *service);
     void setWaypointRepository(WaypointRepository *repository);
+    void setMissionController(MissionController *controller);
+
+protected:
+    void showEvent(QShowEvent *event) override;
 
 private:
     QWidget *buildHeader();
@@ -60,6 +66,12 @@ private:
     void prefillNewWaypointForm(double x, double y, double yawDeg);
     void handleSaveWaypoint();
     void handleDeleteWaypoint();
+    // m_kindCombo가 바뀔 때마다 호출 — 호출 구역일 때만 감지된 콜존 ID
+    // 드롭다운을 보여준다.
+    void updateCallZoneIdComboVisibility();
+    // MissionController가 세션 동안 관측한 콜존 ID 목록으로 드롭다운을
+    // 다시 채운다(첫 항목은 "직접 입력/자동 채번" placeholder).
+    void refreshCallZoneIdCombo();
     void handleMapPickRequested(const QPointF &normalizedPos, double yawRadians);
     QString nextIdForKind(WaypointMarkerKind kind) const;
     QPointF normalizedFromMeters(double x, double y) const;
@@ -86,24 +98,24 @@ private:
     // <workspace>/install/.../lib/medirun_gui에서 4단계 위로 올라간 경로.
     // 계산 불가 시(설치 레이아웃 밖에서 실행 등) 빈 문자열.
     QString workspaceRootPath() const;
-    void handleLoadWaypointFile();
-    // 파일 없이도(다른 PC 등) 이 로봇으로 DB(waypoint_set)에 저장된 이름
-    // 목록을 보여주고 고른 걸 불러온다.
-    void handleLoadWaypointFromDb();
-    void handleSaveWaypointFile();
-    // call_button DB의 콜존(BTN_* 등)을 waypoints 위에 upsert한다. 대시보드
-    // 최초 진입 화면(빈 상태) 및 "웨이포인트 불러오기" 직후 둘 다 이걸 거쳐야
-    // call_button 등록분이 항상 지도에 나온다는 불변식이 성립한다.
+    // call_button DB의 콜존(BTN_* 등)을 waypoints 위에 upsert한다. 페이지가
+    // 보일 때마다(showEvent) 이걸 거쳐야 call_button 등록분이 항상 지도에
+    // 나온다는 불변식이 성립한다.
     void mergeCallButtonsInto(WaypointMap &waypoints) const;
-    // waypoint_set에 name="home"으로 저장된 라이브러리에서 kind=Home인
-    // 항목만 골라 waypoints 위에 얹는다. mergeCallButtonsInto와 동일한
-    // 지점(최초 진입 + 불러오기 직후)에서 같이 호출해 HOME도 항상 나오게 한다.
+    // waypoint_set(type='home')에서 홈 지점을 골라 waypoints 위에 얹는다.
+    // mergeCallButtonsInto와 동일한 지점(showEvent)에서 같이 호출한다.
     void mergeHomeWaypointInto(WaypointMap &waypoints) const;
-    // handleLoadWaypointFile/handleLoadWaypointFromDb가 공유 — 불러온
-    // frame_id+waypoints+trajectories를(call_button과 합쳐서) 페이지 상태에
-    // 반영하고 화면을 갱신한다.
-    void applyLoadedWaypointLibrary(
-        const QString &frameId, const WaypointMap &waypoints, const TrajectoryMap &trajectories, const QString &statusMessage);
+    // waypoint_set(type='waypoint')의 개별 경유점 전부를 waypoints 위에 얹는다.
+    // mergeCallButtonsInto/mergeHomeWaypointInto와 동일한 지점에서 같이 호출.
+    void mergeWaypointEntriesInto(WaypointMap &waypoints) const;
+    // waypoint_set(type='trajectory')의 저장된 경로 전부를 m_trajectories에
+    // 다시 채운다(교체) — showEvent에서 호출.
+    void reloadTrajectoriesFromDb();
+    // 경유점/경로를 각각 개별 DB row로 저장한 뒤, 같은 내용을 로컬 백업 yaml로도
+    // 자동 저장한다. 파일명은 사용자가 고르지 않고 자동 생성한다:
+    // 경유점 = "waypoint_<이름>.yaml", 경로 = "<yymmdd>_<경로이름>.yaml".
+    void backupWaypointEntryToFile(const WaypointDef &def) const;
+    void backupTrajectoryToFile(const QString &name, const QStringList &waypointCodes) const;
 
     void handleNavigateToSelectedWaypoint();
     void handleNavigateSelectedRoute();
@@ -148,6 +160,7 @@ private:
 
     NavigationService *m_navigationService {nullptr};
     WaypointRepository *m_waypointRepository {nullptr};
+    MissionController *m_missionController {nullptr};
     // navigate_to_pose/follow_waypoints 액션 서버가 실제로 goal을 받을 수
     // 있는지(nav2ConnectionChanged로 갱신). SLAM 매핑 중 nav2가 PAUSE되면
     // false가 되어 주행 버튼이 잠긴다.
@@ -186,6 +199,10 @@ private:
     QListWidget *m_waypointList;
     QLabel *m_waypointListCountLabel;
     QLabel *m_editPanelTitle;
+    // 호출 구역(CallZone)일 때만 보이는, MQTT로 실제 감지된 콜존 ID 선택
+    // 드롭다운. "이름" 입력창 위에 배치.
+    QLabel *m_callZoneIdLabel {nullptr};
+    QComboBox *m_callZoneIdCombo {nullptr};
     QLineEdit *m_nameEdit;
     QLineEdit *m_xEdit;
     QLineEdit *m_yEdit;

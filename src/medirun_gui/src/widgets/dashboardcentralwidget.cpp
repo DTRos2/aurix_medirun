@@ -146,6 +146,9 @@ void DashboardCentralWidget::setMissionController(MissionController *controller)
     if (m_liveControlPage != nullptr) {
         m_liveControlPage->setMissionController(controller);
     }
+    if (m_waypointPage != nullptr) {
+        m_waypointPage->setMissionController(controller);
+    }
 }
 
 void DashboardCentralWidget::setWaypointRepository(WaypointRepository *repository)
