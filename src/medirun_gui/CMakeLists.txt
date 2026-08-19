@@ -24,6 +24,7 @@ find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(action_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(robot_audio_interfaces REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc videoio)
@@ -180,6 +181,7 @@ ament_target_dependencies(medirun_gui
         sensor_msgs
         action_msgs
         std_msgs
+        robot_audio_interfaces
         cv_bridge
         image_transport
         tf2

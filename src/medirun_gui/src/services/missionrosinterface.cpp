@@ -4,6 +4,7 @@
 
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <robot_audio_interfaces/msg/audio_command.hpp>
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -104,6 +105,11 @@ public:
             });
 
         m_uiMissionPub = create_publisher<std_msgs::msg::String>("/medirun/ui/mission_command", 10);
+        // Pi의 robot_audio_output(audio_output_node)이 구독하는 토픽 — 이
+        // 저장소가 아니라 Pi의 별도 워크스페이스(~/turtlebot3_ws)에서 도는
+        // 노드다(2026-08-19 실기 확인). 인터페이스만 robot_audio_interfaces로
+        // 이 저장소에 가져와 빌드한다.
+        m_audioCommandPub = create_publisher<robot_audio_interfaces::msg::AudioCommand>("/audio/command", 10);
 
         m_dockRequestPub = create_publisher<std_msgs::msg::Bool>("/medirun/vision/dock_request", 10);
         m_dockResultSub = create_subscription<std_msgs::msg::String>(
@@ -154,6 +160,21 @@ public:
                                     .arg(command, missionId, queueId, waypointId));
     }
 
+    void publishAudioAnnouncement(const QString &text)
+    {
+        if (!m_audioCommandPub) {
+            ensureInterfaces();
+        }
+        robot_audio_interfaces::msg::AudioCommand msg;
+        msg.type = robot_audio_interfaces::msg::AudioCommand::TYPE_TTS;
+        msg.text = text.toStdString();
+        msg.volume = 1.0F;
+        msg.repeat = 1;
+        m_audioCommandPub->publish(msg);
+        emit m_bridge->logEvent(QStringLiteral("INFO"),
+                                QStringLiteral("[AUDIO] announcement published text=\"%1\"").arg(text));
+    }
+
     void retryCommunication()
     {
         ensureInterfaces();
@@ -175,6 +196,7 @@ private:
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr m_missionStateSub;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr m_navigationStatusSub;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr m_uiMissionPub;
+    rclcpp::Publisher<robot_audio_interfaces::msg::AudioCommand>::SharedPtr m_audioCommandPub;
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr m_dockRequestPub;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr m_dockResultSub;
 };
@@ -220,6 +242,11 @@ void MissionRosInterface::publishMissionCommand(const QString &command,
                                                 const QString &waypointId)
 {
     m_impl->node->publishMissionCommand(command, missionId, queueId, waypointId);
+}
+
+void MissionRosInterface::publishAudioAnnouncement(const QString &text)
+{
+    m_impl->node->publishAudioAnnouncement(text);
 }
 
 void MissionRosInterface::retryCommunication()
