@@ -177,6 +177,11 @@ public:
         int robotId, const QString &name, const QString &frameId, const WaypointMap &waypoints,
         const TrajectoryMap &trajectories, QString &errorMessage) = 0;
 
+    // 홈 지점을 waypoint_set(type='home')에서 등록 해제한다(소프트 삭제,
+    // call_button/경유점과 동일한 패턴). 홈은 로봇당 행 하나뿐이라 name/id
+    // 인자가 필요 없다.
+    virtual bool deregisterHomeEntry(int robotId, QString &errorMessage) = 0;
+
     // 경유점(WaypointMarkerKind::Waypoint) 개별 등록/조회/삭제 — call_button과
     // 동일한 패턴으로 waypoint_set(type='waypoint')에 한 행 = 한 지점으로 저장한다.
     // waypointDbId로 upsert된 행의 PK를 돌려준다(경로 스텝 저장 시 이름 대신

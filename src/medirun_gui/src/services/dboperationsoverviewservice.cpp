@@ -845,6 +845,26 @@ bool DbOperationsOverviewService::saveWaypointLibrary(
     return true;
 }
 
+bool DbOperationsOverviewService::deregisterHomeEntry(int robotId, QString &errorMessage)
+{
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "UPDATE waypoint_set SET deregistered_at = NOW() "
+        "WHERE robot_id = :robotId AND type = 'home' AND name = 'home' AND deregistered_at IS NULL"));
+    query.bindValue(QStringLiteral(":robotId"), robotId);
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("홈 등록 해제 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    errorMessage.clear();
+    return true;
+}
+
 bool DbOperationsOverviewService::loadActiveWaypointEntries(int robotId, QVector<WaypointDef> &rows, QString &errorMessage)
 {
     rows.clear();
