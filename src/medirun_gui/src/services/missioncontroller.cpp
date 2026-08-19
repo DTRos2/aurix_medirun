@@ -674,6 +674,13 @@ void MissionController::beginArrivedWait()
     emit historyChanged();
     emit missionChanged();
 
+    // 문서 02 §7.1 음성 안내 #6. Pi의 audio_output_node(robot_audio_output,
+    // 이 저장소 밖 ~/turtlebot3_ws)가 /audio/command를 받아 gTTS로 재생한다
+    // (bringup의 "주행을 시작합니다" 안내와 동일 방식). 도착 판단이
+    // Nav2(PC)에서 나오는 한 이 발행도 Wi-Fi 순단에 노출된다 — 구조적
+    // 한계이며 감수하고 진행하기로 함(2026-08-19).
+    m_rosInterface->publishAudioAnnouncement(QStringLiteral("AED가 도착했습니다"));
+
     m_forcedReturnTimer->start(kForcedReturnTimeoutSec * 1000);
     m_reminderTimer->start(kPayloadReminderIntervalSec * 1000);
 }
