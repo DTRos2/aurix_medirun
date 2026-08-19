@@ -24,6 +24,11 @@ enum class MissionState {
     Cancelling,
     Diverting,
     ReturningHome,
+    // 홈 Nav2 goal 성공 후, ArUco 마커를 찾아 전면주차를
+    // 수행하는 동안의 상태. 홈 복귀는 항상 이 상태를 거친다 — docking_manager의
+    // simulate_docking 파라미터(기본 true)가 켜져 있으면 카메라 없이도 짧게
+    // 대기 후 바로 Completed로 넘어간다.
+    Parking,
     Completed,
     Cancelled,
     Failed
@@ -131,6 +136,8 @@ inline QString missionStateText(MissionState state)
         return QStringLiteral("DIVERTING");
     case MissionState::ReturningHome:
         return QStringLiteral("RETURNING_HOME");
+    case MissionState::Parking:
+        return QStringLiteral("PARKING");
     case MissionState::Completed:
         return QStringLiteral("COMPLETED");
     case MissionState::Cancelled:

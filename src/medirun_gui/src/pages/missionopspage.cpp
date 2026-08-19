@@ -80,7 +80,7 @@ QString stateColor(MissionState state)
         return DashboardPalette::Red.name();
     }
     if (state == MissionState::Arrived || state == MissionState::ReturningHome || state == MissionState::Diverting
-        || state == MissionState::Cancelling) {
+        || state == MissionState::Cancelling || state == MissionState::Parking) {
         return DashboardPalette::Amber.name();
     }
     return DashboardPalette::Cyan.name();

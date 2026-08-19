@@ -2,6 +2,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 
+#include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <robot_audio_interfaces/msg/audio_command.hpp>
 
@@ -109,6 +110,38 @@ public:
         // 노드다(2026-08-19 실기 확인). 인터페이스만 robot_audio_interfaces로
         // 이 저장소에 가져와 빌드한다.
         m_audioCommandPub = create_publisher<robot_audio_interfaces::msg::AudioCommand>("/audio/command", 10);
+
+        m_dockRequestPub = create_publisher<std_msgs::msg::Bool>("/medirun/vision/dock_request", 10);
+        m_dockResultSub = create_subscription<std_msgs::msg::String>(
+            "/medirun/vision/dock_result", 10,
+            [this](const std_msgs::msg::String &msg) {
+                const QJsonObject object = parseJsonObject(msg.data);
+                const QString status = object.value(QStringLiteral("status")).toString();
+                const QString reason = object.value(QStringLiteral("reason")).toString();
+                emit m_bridge->dockResultReceived(status == QStringLiteral("SUCCEEDED"), reason);
+            });
+    }
+
+    void requestDocking()
+    {
+        if (!m_dockRequestPub) {
+            ensureInterfaces();
+        }
+        std_msgs::msg::Bool msg;
+        msg.data = true;
+        m_dockRequestPub->publish(msg);
+        emit m_bridge->logEvent(QStringLiteral("INFO"), QStringLiteral("[ROS2] dock_request published"));
+    }
+
+    void cancelDocking()
+    {
+        if (!m_dockRequestPub) {
+            ensureInterfaces();
+        }
+        std_msgs::msg::Bool msg;
+        msg.data = false;
+        m_dockRequestPub->publish(msg);
+        emit m_bridge->logEvent(QStringLiteral("INFO"), QStringLiteral("[ROS2] dock_request(false) published — cancel"));
     }
 
     void publishMissionCommand(const QString &command,
@@ -164,6 +197,8 @@ private:
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr m_navigationStatusSub;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr m_uiMissionPub;
     rclcpp::Publisher<robot_audio_interfaces::msg::AudioCommand>::SharedPtr m_audioCommandPub;
+    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr m_dockRequestPub;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr m_dockResultSub;
 };
 
 struct MissionRosInterface::Impl
@@ -217,4 +252,14 @@ void MissionRosInterface::publishAudioAnnouncement(const QString &text)
 void MissionRosInterface::retryCommunication()
 {
     m_impl->node->retryCommunication();
+}
+
+void MissionRosInterface::requestDocking()
+{
+    m_impl->node->requestDocking();
+}
+
+void MissionRosInterface::cancelDocking()
+{
+    m_impl->node->cancelDocking();
 }

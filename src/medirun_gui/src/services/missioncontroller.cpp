@@ -104,6 +104,7 @@ MissionController::MissionController(const AppSession &session,
     connect(m_rosInterface, &MissionRosInterface::dispatchRequested, this, &MissionController::handleDispatchRequested);
     connect(m_rosInterface, &MissionRosInterface::missionHeartbeat, this, &MissionController::handleRosHeartbeat);
     connect(m_rosInterface, &MissionRosInterface::communicationRetryFinished, this, &MissionController::handleRosRetryFinished);
+    connect(m_rosInterface, &MissionRosInterface::dockResultReceived, this, &MissionController::handleDockResult);
 
     updateConnectionState();
     startNextQueueIfPossible();
@@ -242,6 +243,19 @@ void MissionController::requestMissionCancel()
         if (beginReturnHomeFlow(QStringLiteral("운영자 미션 취소 요청 — 호출구역 도착 후라 즉시 홈 복귀로 처리"))) {
             m_rosInterface->publishMissionCommand(QStringLiteral("return_home"), m_snapshot.missionId, m_snapshot.queueId, QString());
         }
+        return;
+    }
+
+    if (m_snapshot.state == MissionState::Parking) {
+        // 전면주차는 Nav2 goal이 아니라 docking_manager가 /cmd_vel을 직접
+        // 제어하는 중이라 cancelGoal()로는 못 멈춘다 — dock_request(false)로
+        // 정지시키고, 결과는 handleDockResult가 "취소" 사유를 보고 Cancelled로
+        // 마무리한다.
+        m_pendingReason = QStringLiteral("운영자 미션 취소 요청 — 전면주차 중단");
+        addHistory(QStringLiteral("MISSION_CANCEL_REQUESTED"), QString(), m_snapshot.destinationName, m_snapshot.missionId,
+                   m_snapshot.queueId, QStringLiteral("REQUESTED"), m_pendingReason);
+        emit historyChanged();
+        m_rosInterface->cancelDocking();
         return;
     }
 
@@ -394,8 +408,21 @@ void MissionController::handleNavigationResult(const QString &resultCode, const 
 
     if (resultCode == QStringLiteral("SUCCEEDED")) {
         if (m_snapshot.state == MissionState::ReturningHome) {
-            finishMission(m_pendingReason.contains(QStringLiteral("취소")) ? MissionState::Cancelled : MissionState::Completed,
-                          m_pendingReason, QStringLiteral("RETURN_HOME_COMPLETED"), QStringLiteral("SUCCEEDED"));
+            if (m_pendingReason.contains(QStringLiteral("취소"))) {
+                finishMission(MissionState::Cancelled, m_pendingReason, QStringLiteral("RETURN_HOME_COMPLETED"), QStringLiteral("SUCCEEDED"));
+                return;
+            }
+            // 홈(또는 HOME_PRE_DOCK) 도착 — 여기서 바로 끝내지 않고 항상 ArUco
+            // 전면주차로 이어간다. docking_manager는 simulate_docking 파라미터가
+            // true(기본값)면 카메라/마커 없이도 잠깐 대기 후 SUCCEEDED를 돌려주므로,
+            // 카메라가 없는 로봇도 안전하게 그대로 완료된다 — false로 바꾼
+            // 로봇만 실제 ArUco 인식을 수행한다. /medirun/vision/dock_result가
+            // 오면 handleDockResult에서 최종 마무리한다.
+            addHistory(QStringLiteral("PARKING_STARTED"), QString(), m_snapshot.destinationName, m_snapshot.missionId,
+                       m_snapshot.queueId, QStringLiteral("STARTED"), QStringLiteral("홈 도착 — ArUco 전면주차 시작"));
+            setMissionState(MissionState::Parking);
+            emit historyChanged();
+            m_rosInterface->requestDocking();
             return;
         }
         // 호출구역 도착 — 여기서 바로 미션을 끝내지 않고 AED 반출 대기로
@@ -453,6 +480,23 @@ void MissionController::handleRosRetryFinished(bool success, const QString &deta
     updateConnectionState();
     emit retryStateChanged();
     emit historyChanged();
+}
+
+void MissionController::handleDockResult(bool success, const QString &detail)
+{
+    if (m_snapshot.state != MissionState::Parking) {
+        return;
+    }
+    if (success) {
+        finishMission(MissionState::Completed, m_pendingReason, QStringLiteral("PARKING_COMPLETED"), QStringLiteral("SUCCEEDED"));
+        return;
+    }
+    if (m_pendingReason.contains(QStringLiteral("취소"))) {
+        finishMission(MissionState::Cancelled, m_pendingReason, QStringLiteral("PARKING_CANCELLED"), QStringLiteral("CANCELLED"));
+        return;
+    }
+    const QString reason = detail.isEmpty() ? QStringLiteral("ArUco 전면주차 실패") : QStringLiteral("ArUco 전면주차 실패: %1").arg(detail);
+    finishMission(MissionState::Failed, reason, QStringLiteral("PARKING_FAILED"), QStringLiteral("FAILED"));
 }
 
 void MissionController::updateElapsed()
@@ -590,7 +634,7 @@ void MissionController::startMissionForQueue(const QString &queueId, bool divert
 
 bool MissionController::beginReturnHomeFlow(const QString &reason)
 {
-    if (m_snapshot.state == MissionState::ReturningHome) {
+    if (m_snapshot.state == MissionState::ReturningHome || m_snapshot.state == MissionState::Parking) {
         return false;
     }
 
@@ -748,6 +792,9 @@ void MissionController::handleReminderTick()
 
 bool MissionController::resolveHomeWaypoint(WaypointDef &homeWaypoint, WaypointPose &homePose, QString &errorMessage) const
 {
+    // Home 도착 후 항상 ArUco 전면주차로 이어진다(handleNavigationResult
+    // 참고). simulate_docking(기본 true)이면 카메라 없는 로봇도 안전하게
+    // 그대로 완료되므로 Home 웨이포인트 하나만 있으면 된다.
     const QVector<WaypointDef> homes = m_waypointRepository->waypointsByKind(WaypointMarkerKind::Home);
     if (homes.isEmpty()) {
         errorMessage = QStringLiteral("홈 waypoint가 설정되어 있지 않습니다.");

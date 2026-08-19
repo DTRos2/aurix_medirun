@@ -82,6 +82,7 @@ private slots:
     void handlePayloadRemovedDelayElapsed();
     void handleForcedReturnTimeout();
     void handleReminderTick();
+    void handleDockResult(bool success, const QString &detail);
     void updateElapsed();
 
 private:
@@ -100,6 +101,8 @@ private:
     bool beginReturnHomeFlow(const QString &reason);
     void beginArrivedWait();
     void stopArrivalTimers();
+    // Home 웨이포인트를 홈 복귀 목표로 돌려준다. 도착 후 항상 ArUco
+    // 전면주차(Parking)로 이어간다.
     bool resolveHomeWaypoint(WaypointDef &homeWaypoint, WaypointPose &homePose, QString &errorMessage) const;
     void finishMission(MissionState finalState, const QString &reason, const QString &historyType, const QString &historyResult,
                        bool requiresQueueConfirmation = false);

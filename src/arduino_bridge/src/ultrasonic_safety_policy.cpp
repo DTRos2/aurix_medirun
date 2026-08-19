@@ -102,10 +102,14 @@ StopReason UltrasonicSafetyPolicy::evaluateStopReason(
     const VelocityCommand &command) const noexcept {
   const bool front_blocking = front_.holding && command.linear_x > 0.0;
   const bool rear_blocking = rear_.holding && command.linear_x < 0.0;
-  const bool rotation_blocking = (front_.holding || rear_.holding) &&
+  // 순수 제자리 회전(선속도 0)일 때만 전후방 상관없이 둘 다 체크한다.
+  // 전진/후진에 조향이 섞인 경우는 진행 방향 센서만 본다 — 그렇지 않으면
+  // 전진 중 후방 센서가 걸려 계속 멈추는 문제가 있었다(2026-08-19).
+  const bool in_place_rotation = std::abs(command.linear_x) <= kMotionEpsilon &&
                                  std::abs(command.angular_z) > kMotionEpsilon;
+  const bool rotation_blocking =
+      in_place_rotation && (front_.holding || rear_.holding);
 
-  // 기존 로그와 동일하게 회전이 섞인 명령은 회전 위험을 가장 먼저 보고한다.
   if (rotation_blocking) {
     return StopReason::kRotationObstacle;
   }
