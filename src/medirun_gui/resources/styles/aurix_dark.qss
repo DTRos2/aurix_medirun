@@ -608,6 +608,17 @@ QPushButton#ghostChipButton:hover {
     color: #eef5fb;
 }
 
+QPushButton#ghostChipButton:checked {
+    background-color: #39c5e0;
+    border-color: #39c5e0;
+    color: #06222c;
+}
+
+QPushButton#ghostChipButton:checked:hover {
+    background-color: #5cd3e8;
+    border-color: #5cd3e8;
+}
+
 QPushButton#linkChipButton {
     background-color: transparent;
     border: none;
