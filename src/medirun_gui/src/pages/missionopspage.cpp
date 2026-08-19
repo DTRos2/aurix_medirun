@@ -79,7 +79,8 @@ QString stateColor(MissionState state)
     if (state == MissionState::Failed || state == MissionState::Cancelled) {
         return DashboardPalette::Red.name();
     }
-    if (state == MissionState::ReturningHome || state == MissionState::Diverting || state == MissionState::Cancelling) {
+    if (state == MissionState::ReturningHome || state == MissionState::Diverting || state == MissionState::Cancelling
+        || state == MissionState::Parking) {
         return DashboardPalette::Amber.name();
     }
     return DashboardPalette::Cyan.name();

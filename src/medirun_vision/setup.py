@@ -9,8 +9,14 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
-        (f"share/{package_name}/launch", ["launch/.gitkeep"]),
-        (f"share/{package_name}/config", ["config/.gitkeep"]),
+        (
+            f"share/{package_name}/launch",
+            ["launch/vision_bringup.launch.py", "launch/parking.launch.py"],
+        ),
+        (
+            f"share/{package_name}/config",
+            ["config/docking.yaml", "config/parking.yaml"],
+        ),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -19,4 +25,10 @@ setup(
     description="Vision package for the MediRun project.",
     license="Apache-2.0",
     tests_require=["pytest"],
+    entry_points={
+        "console_scripts": [
+            "docking_manager = medirun_vision.docking_manager:main",
+            "aruco_detector_node = medirun_vision.aruco_detector_node:main",
+        ]
+    },
 )

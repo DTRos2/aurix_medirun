@@ -1,0 +1,50 @@
+/**:
+  ros__parameters:
+    simulate_docking: false
+    simulated_docking_sec: 4.0
+
+    home_aruco_ids: [14, 15]
+    marker_size_m: 0.10
+    camera_frame: "camera_link"
+    base_frame: "base_link"
+
+    lateral_tolerance: 0.03
+    yaw_tolerance: 0.05
+    yaw_align_threshold: 0.15
+
+    max_angular_velocity: 0.8
+    max_angular_velocity_moving: 0.15
+    # 제자리 회전(탐색 스윕/정렬)이 정지마찰을 못 이기고 헛도는 문제 완화용
+    # 최소 회전 속도 — 이보다 느리게는 명령하지 않는다. 0.5도 힘이 부족해서
+    # 0.7로 올림(2026-08-19). 전후진 섞는 호 그리기 방식은 이동 반경이 커져
+    # 마커를 자주 놓치는 문제가 있어 순수 제자리 회전으로 되돌렸다.
+    min_rotation_speed: 0.7
+    search_angular_velocity: 0.5
+    search_timeout_sec: 20.0
+    search_direction_switch_pause_sec: 0.25
+
+    linear_speed_min: 0.03
+    linear_speed_max: 0.07
+    final_adjustment_distance: 0.3
+    # 사용자 지정값 15cm(2026-08-19). ultrasonic_safety_stop의
+    # front/rear_stop_distance_cm(7cm, bringup.launch.py)보다 여유 있게
+    # 떨어져 있어 안전정지가 먼저 걸리지 않는다.
+    target_distance: 0.15
+
+    marker_timeout_sec: 1.5
+    pre_dock_settle_sec: 0.3
+
+    kp_yaw: 0.6
+    error_filter_alpha: 0.3
+
+aruco_detector_node:
+  ros__parameters:
+    home_aruco_ids: [14, 15]
+    marker_size_m: 0.10
+    camera_frame: "camera_link"
+    base_frame: "base_link"
+    publish_rate_hz: 15.0
+    # 실측(2026-08-19)으로 yaw가 반대로 나와서 -1.0으로 뒤집음. 여전히
+    # 반대로 돌면 1.0으로, 좌우(lateral)가 반대면 lateral_sign을 -1.0으로.
+    yaw_sign: -1.0
+    lateral_sign: 1.0

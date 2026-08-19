@@ -72,6 +72,7 @@ private slots:
     void handleAmclPoseUpdated(double x, double y, double yawRad);
     void handleRosHeartbeat(const QString &source, const QDateTime &receivedAt);
     void handleRosRetryFinished(bool success, const QString &detail);
+    void handleDockResult(bool success, const QString &detail);
     void updateElapsed();
 
 private:
@@ -88,6 +89,8 @@ private:
     void startNextQueueIfPossible();
     void startMissionForQueue(const QString &queueId, bool divertedFromActiveMission);
     bool beginReturnHomeFlow(const QString &reason);
+    // Home 웨이포인트를 홈 복귀 목표로 돌려준다. 도착 후 항상 ArUco
+    // 전면주차(Parking)로 이어간다.
     bool resolveHomeWaypoint(WaypointDef &homeWaypoint, WaypointPose &homePose, QString &errorMessage) const;
     void finishMission(MissionState finalState, const QString &reason, const QString &historyType, const QString &historyResult,
                        bool requiresQueueConfirmation = false);

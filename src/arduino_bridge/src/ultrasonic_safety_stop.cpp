@@ -3,9 +3,11 @@
 #include <geometry_msgs/msg/twist.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/string.hpp>
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 namespace arduino_bridge {
 
@@ -34,7 +36,22 @@ public:
     nav_cmd_sub_ = create_subscription<geometry_msgs::msg::Twist>(
         "medirun/navigation/cmd_vel_raw", 10,
         [this](const geometry_msgs::msg::Twist::SharedPtr msg) {
+          // ArUco 전면주차가 진행 중일 때는 Nav2 쪽 잔여 발행(정지 직후 늦게
+          // 도착하는 메시지 등)이 파킹 저속 명령을 덮어쓰지 않도록 무시한다.
+          if (parking_active_) {
+            return;
+          }
           handleCommand(*msg);
+        });
+    parking_cmd_sub_ = create_subscription<geometry_msgs::msg::Twist>(
+        "medirun/parking/cmd_vel_raw", 10,
+        [this](const geometry_msgs::msg::Twist::SharedPtr msg) {
+          handleCommand(*msg);
+        });
+    parking_state_sub_ = create_subscription<std_msgs::msg::String>(
+        "medirun/parking/state", 10,
+        [this](const std_msgs::msg::String::SharedPtr msg) {
+          parking_active_ = msg->data != "IDLE" && msg->data != "PARKED" && msg->data != "FAILED";
         });
   }
 
@@ -109,6 +126,9 @@ private:
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr front_sub_;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr rear_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr nav_cmd_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr parking_cmd_sub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr parking_state_sub_;
+  bool parking_active_{false};
 };
 
 } // namespace arduino_bridge
