@@ -5,6 +5,7 @@
 #include "../services/drivingrecordservice.h"
 #include "../services/missioncontroller.h"
 #include "../services/operationsoverviewservice.h"
+#include "../services/robotservice.h"
 #include "../services/sensortelemetryprovider.h"
 #include "../services/telemetryprovider.h"
 #include "../services/waypointrepository.h"
@@ -395,6 +396,11 @@ void LiveControlPage::setOperationsOverviewService(OperationsOverviewService *se
     }
 }
 
+void LiveControlPage::setRobotService(RobotService *service)
+{
+    m_robotService = service;
+}
+
 void LiveControlPage::setDrivingRecordService(DrivingRecordService *service)
 {
     if (m_drivingRecordService == service) {
@@ -718,30 +724,59 @@ QPointF LiveControlPage::worldToNormalized(double x, double y) const
 
 void LiveControlPage::refreshMapMarkers()
 {
-    if (!m_mapMeta.valid || m_waypointRepository == nullptr) {
+    // 원격제어 페이지(RemoteControlPage::refreshDbMarkers)와 동일한 규칙 —
+    // 콜존/홈 마커는 공유 WaypointRepository 스냅샷이 아니라 항상 DB
+    // (call_button / waypoint_set name="home")를 직접 재조회해서 그린다.
+    // WaypointRepository는 미션 목적지 좌표 조회(refreshMap) 용도로만 남긴다.
+    if (!m_mapMeta.valid || m_operationsOverviewService == nullptr) {
         return;
     }
 
-    const WaypointMap waypoints = m_waypointRepository->waypoints();
-    QVector<QPointF> waypointPoints;
-    QVector<double> waypointYaws;
-    QPointF homePoint;
     bool hasHome = false;
-    for (auto it = waypoints.cbegin(); it != waypoints.cend(); ++it) {
-        const WaypointDef &def = it.value();
-        const QPointF normalized = worldToNormalized(def.x, def.y);
-        if (def.kind == WaypointMarkerKind::Home) {
-            homePoint = normalized;
-            hasHome = true;
-        } else {
-            waypointPoints.push_back(normalized);
-            waypointYaws.push_back(def.yaw);
+    QPointF homeNormalized;
+    if (m_robotService != nullptr) {
+        const QVector<RobotRecord> robots = m_robotService->listRobots(false);
+        if (robots.size() == 1) {
+            QString frameId;
+            WaypointMap homeWaypoints;
+            TrajectoryMap trajectories;
+            QString homeErrorMessage;
+            if (m_operationsOverviewService->loadWaypointLibraryByName(
+                    robots.first().id, QStringLiteral("home"), frameId, homeWaypoints, trajectories, homeErrorMessage)) {
+                for (auto it = homeWaypoints.cbegin(); it != homeWaypoints.cend(); ++it) {
+                    if (it.value().kind == WaypointMarkerKind::Home) {
+                        homeNormalized = worldToNormalized(it.value().x, it.value().y);
+                        hasHome = true;
+                        break;
+                    }
+                }
+            }
         }
     }
-    m_mapView->setWaypoints(waypointPoints, waypointYaws);
-    if (hasHome) {
-        m_mapView->setHome(homePoint);
+    m_mapView->setHome(homeNormalized, hasHome);
+
+    QVector<CallButtonRow> callButtons;
+    QString callButtonErrorMessage;
+    QVector<QPointF> callZonePoints;
+    QStringList callZoneLabels;
+    if (m_operationsOverviewService->loadActiveCallButtons(callButtons, callButtonErrorMessage)) {
+        callZonePoints.reserve(callButtons.size());
+        callZoneLabels.reserve(callButtons.size());
+        for (const CallButtonRow &row : std::as_const(callButtons)) {
+            callZonePoints.append(worldToNormalized(row.x, row.y));
+            callZoneLabels.append(row.zoneName.isEmpty() ? row.code : row.zoneName);
+        }
     }
+    m_mapView->setCallZones(callZonePoints, callZoneLabels);
+}
+
+void LiveControlPage::showEvent(QShowEvent *event)
+{
+    // 웨이포인트 관리 페이지에서 콜존/홈을 추가·수정·삭제하고 이 페이지로
+    // 돌아왔을 때 바로 반영되도록, 페이지가 다시 보일 때마다 DB 마커를 새로
+    // 읽어온다(RemoteControlPage::showEvent와 동일한 이유).
+    refreshMapMarkers();
+    QWidget::showEvent(event);
 }
 
 void LiveControlPage::refreshMap()

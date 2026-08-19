@@ -65,6 +65,7 @@ DashboardCentralWidget::DashboardCentralWidget(
     m_liveControlPage = new LiveControlPage(m_stack);
     m_liveControlPage->setSession(m_session);
     m_liveControlPage->setOperationsOverviewService(&operationsOverviewService);
+    m_liveControlPage->setRobotService(&robotService);
     connect(m_liveControlPage, &LiveControlPage::missionCancelRequested, this, &DashboardCentralWidget::missionCancelRequested);
     connect(m_liveControlPage, &LiveControlPage::returnHomeRequested, this, &DashboardCentralWidget::returnHomeRequested);
     connect(m_liveControlPage, &LiveControlPage::missionOpsRequested, this, [this]() { navigateTo(PageId::MissionOps); });
@@ -144,6 +145,9 @@ void DashboardCentralWidget::setMissionController(MissionController *controller)
     }
     if (m_liveControlPage != nullptr) {
         m_liveControlPage->setMissionController(controller);
+    }
+    if (m_waypointPage != nullptr) {
+        m_waypointPage->setMissionController(controller);
     }
 }
 

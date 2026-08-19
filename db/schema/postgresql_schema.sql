@@ -384,28 +384,35 @@ CREATE INDEX idx_slam_job_session_started_at
 ON slam_job (session_id, started_at DESC);
 
 CREATE TABLE waypoint_set (
-    id          INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    robot_id    INTEGER NOT NULL,
-    map_id      INTEGER,
-    name        VARCHAR(120) NOT NULL,
-    description TEXT,
-    waypoints   JSONB NOT NULL DEFAULT '[]'::jsonb,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (robot_id, name),
-    CHECK (jsonb_typeof(waypoints) IN ('array', 'object'))
+    id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    robot_id        INTEGER NOT NULL,
+    map_id          INTEGER,
+    type            VARCHAR(16) NOT NULL DEFAULT 'waypoint' CHECK (
+        type IN ('waypoint', 'home', 'trajectory')
+    ),
+    name            VARCHAR(120) NOT NULL,
+    description     TEXT,
+    waypoints       JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deregistered_at TIMESTAMPTZ,
+    UNIQUE (robot_id, type, name),
+    CHECK (jsonb_typeof(waypoints) IN ('array', 'object')),
+    CHECK (deregistered_at IS NULL OR deregistered_at >= created_at)
 );
 
-COMMENT ON TABLE waypoint_set IS 'Waypoint 세트. 개별 waypoint는 JSONB로 관리(배열 또는 객체)';
-COMMENT ON COLUMN waypoint_set.id IS 'Waypoint 세트 PK, 자동 증가';
+COMMENT ON TABLE waypoint_set IS '경유점/홈/경로를 type으로 구분해 개별 행으로 관리. 경유점·홈은 한 행 = 한 지점(waypoints: 단일 항목 object), 경로는 한 행 = 한 저장 경로(waypoints: 웨이포인트 code 순서 배열). 콜존은 이 테이블이 아니라 call_button에서 관리';
+COMMENT ON COLUMN waypoint_set.id IS 'PK, 자동 증가';
 COMMENT ON COLUMN waypoint_set.robot_id IS '대상 로봇 id';
 COMMENT ON COLUMN waypoint_set.map_id IS '기준 맵 id';
-COMMENT ON COLUMN waypoint_set.name IS 'Waypoint 세트 이름';
-COMMENT ON COLUMN waypoint_set.description IS 'Waypoint 세트 설명';
-COMMENT ON COLUMN waypoint_set.waypoints IS 'Waypoint 좌표 배열(JSONB array) 또는 Qt GUI 웨이포인트 관리 페이지가 저장한 라이브러리 전체(JSONB object: frame_id/waypoints/trajectories, name=''default'')';
-COMMENT ON COLUMN waypoint_set.created_at IS '세트 생성 시간';
+COMMENT ON COLUMN waypoint_set.type IS '행 종류 — waypoint(경유점)/home(홈)/trajectory(경로)';
+COMMENT ON COLUMN waypoint_set.name IS 'waypoint/home 행은 웨이포인트 code(예: W-1, HOME), trajectory 행은 사용자가 입력한 경로 이름';
+COMMENT ON COLUMN waypoint_set.description IS '설명(선택)';
+COMMENT ON COLUMN waypoint_set.waypoints IS 'type=waypoint/home: 단일 지점 object({x,y,yaw,label}). type=trajectory: 순서대로 방문할 스텝 배열(JSONB array), 각 원소는 {"table":"call_button"|"waypoint","id":N} — call_button.code/waypoint_set.name 문자열은 두 테이블에서 각자 독립적으로 매겨져 서로 겹칠 수 있어 테이블+id로 명시';
+COMMENT ON COLUMN waypoint_set.created_at IS '등록 시간';
+COMMENT ON COLUMN waypoint_set.deregistered_at IS '등록 해제 시간. NULL이면 사용 중';
 
-CREATE INDEX idx_waypoint_set_robot_created_at
-ON waypoint_set (robot_id, created_at DESC);
+CREATE INDEX idx_waypoint_set_robot_type_active
+ON waypoint_set (robot_id, type) WHERE deregistered_at IS NULL;
 
 CREATE TABLE nav_goal_log (
     id                  INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

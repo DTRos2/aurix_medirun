@@ -6,6 +6,7 @@
 #include "../services/mapfile.h"
 
 #include <QImage>
+#include <QShowEvent>
 #include <QVector>
 #include <QWidget>
 
@@ -22,6 +23,7 @@ class SensorTelemetryProvider;
 class CameraFeedProvider;
 class WaypointRepository;
 class OperationsOverviewService;
+class RobotService;
 class DrivingRecordService;
 
 class LiveControlPage : public QWidget
@@ -39,12 +41,16 @@ public:
     void setCameraFeedProvider(CameraFeedProvider *provider);
     void setWaypointRepository(WaypointRepository *repository);
     void setOperationsOverviewService(OperationsOverviewService *service);
+    void setRobotService(RobotService *service);
     void setDrivingRecordService(DrivingRecordService *service);
 
 signals:
     void missionCancelRequested();
     void returnHomeRequested();
     void missionOpsRequested();
+
+protected:
+    void showEvent(QShowEvent *event) override;
 
 private slots:
     void refreshMissionStepper();
@@ -101,6 +107,7 @@ private:
     CameraFeedProvider *m_cameraFeedProvider {nullptr};
     WaypointRepository *m_waypointRepository {nullptr};
     OperationsOverviewService *m_operationsOverviewService {nullptr};
+    RobotService *m_robotService {nullptr};
     DrivingRecordService *m_drivingRecordService {nullptr};
 
     MapMeta m_mapMeta;

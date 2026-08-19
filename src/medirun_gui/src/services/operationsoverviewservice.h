@@ -65,11 +65,32 @@ struct NavGoalPoint
 // call_button 테이블 한 행. code가 웨이포인트 id(예: "BTN_01")와 대응한다.
 struct CallButtonRow
 {
+    int id {0};
     QString code;
     QString zoneName;
     double x {0.0};
     double y {0.0};
     double yaw {0.0};
+};
+
+// trajectory 스텝 하나 — 어느 테이블의 어느 행인지. call_button과
+// waypoint_set은 서로 독립된 PK 시퀀스라 id만으로는 구분 못 해서 테이블도
+// 같이 저장한다.
+struct TrajectoryStep
+{
+    QString table; // "call_button" | "waypoint"
+    int id {0};
+};
+
+// waypoint_set(type='trajectory') 한 행. name이 경로 이름, waypointCodes가
+// 순서대로 방문할 웨이포인트 code 목록(콜존/홈/경유점 code 모두 가능) — DB엔
+// TrajectoryStep(테이블+id)으로 저장되지만, 호출자에게는 지금까지와 동일하게
+// code 문자열로 되돌려준다(웨이포인트관리 페이지의 나머지 로직이 전부 code
+// 기준이라 그대로 재사용하기 위함).
+struct TrajectoryRow
+{
+    QString name;
+    QStringList waypointCodes;
 };
 
 class OperationsOverviewService
@@ -143,32 +164,45 @@ public:
         const QString &issuedBy,
         QString &errorMessage) = 0;
 
-    // Qt GUI 웨이포인트 관리 페이지가 쓰는 웨이포인트 라이브러리(이름있는
-    // waypoint + trajectory, waypoints/*.yaml과 동일 구조)를 waypoint_set
-    // 테이블에서 불러온다. 로봇의 여러 저장 세트(이름=저장 시 쓴 파일명) 중
-    // 가장 최근 것 하나를 고른다. 저장된 게 없으면 found=false를 채우고
-    // true를 반환한다(에러 아님).
-    virtual bool loadWaypointLibrary(
-        int robotId, QString &frameId, WaypointMap &waypoints, TrajectoryMap &trajectories, bool &found,
-        QString &errorMessage) = 0;
-
-    // 이 로봇으로 저장된 waypoint_set.name 목록(최근 저장 순). 파일이 없는
-    // 다른 PC에서 "DB에서 불러오기"로 고를 목록을 채우는 용도.
-    virtual bool listWaypointLibraryNames(int robotId, QStringList &names, QString &errorMessage) = 0;
-
-    // listWaypointLibraryNames로 고른 특정 이름의 세트를 불러온다.
+    // waypoint_set(type='home')에서 이 로봇의 홈 지점 하나를 불러온다.
+    // name은 항상 "home" 고정으로 호출한다(waypoint_set.name = 'home').
     virtual bool loadWaypointLibraryByName(
         int robotId, const QString &name, QString &frameId, WaypointMap &waypoints, TrajectoryMap &trajectories,
         QString &errorMessage) = 0;
 
-    // "파일로 저장" 버튼을 눌렀을 때, 같은 내용을 waypoint_set에도 upsert한다.
-    // name: waypoint_set.name — 같은 이름으로 다시 저장하면 그 행을 덮어쓰고,
-    // 다른 이름(예: 다른 파일명)으로 저장하면 새 행이 생긴다(robot_id+name UNIQUE).
-    // YAML 파일을 다른 이름으로 저장하면 새 파일이 생기는 것과 동일한 동작을
-    // 의도한 것 — 호출자(WaypointManagementPage)가 저장 파일의 basename을 넘긴다.
+    // 홈 지점을 waypoint_set(type='home', name='home')에 upsert한다. 웨이포인트
+    // 관리 페이지에서 홈을 등록/수정할 때 즉시 호출 — call_button과 동일하게
+    // 개별 행 하나로 관리한다.
     virtual bool saveWaypointLibrary(
         int robotId, const QString &name, const QString &frameId, const WaypointMap &waypoints,
         const TrajectoryMap &trajectories, QString &errorMessage) = 0;
+
+    // 경유점(WaypointMarkerKind::Waypoint) 개별 등록/조회/삭제 — call_button과
+    // 동일한 패턴으로 waypoint_set(type='waypoint')에 한 행 = 한 지점으로 저장한다.
+    // waypointDbId로 upsert된 행의 PK를 돌려준다(경로 스텝 저장 시 이름 대신
+    // 이 id를 바로 쓰기 위함 — 호출자가 다시 조회할 필요 없게).
+    virtual bool loadActiveWaypointEntries(int robotId, QVector<WaypointDef> &rows, QString &errorMessage) = 0;
+    virtual bool upsertWaypointEntry(
+        int robotId, const QString &code, const QString &label, double x, double y, double yaw, int &waypointDbId,
+        QString &errorMessage) = 0;
+    virtual bool deregisterWaypointEntry(int robotId, const QString &code, QString &errorMessage) = 0;
+
+    // 경로(trajectory) 개별 등록/조회/삭제 — waypoint_set(type='trajectory')에
+    // 한 행 = 한 저장 경로로 저장한다. 스텝은 TrajectoryStep(테이블+id)으로
+    // 저장하고(call_button/waypoint_set 문자열 이름은 서로 다른 테이블에서
+    // 독립적으로 매겨져 대소문자·중복 등으로 어긋나기 쉬움), 조회 시엔
+    // 호출자 편의를 위해 code 문자열로 되돌려준다.
+    virtual bool loadActiveTrajectoryEntries(int robotId, QVector<TrajectoryRow> &rows, QString &errorMessage) = 0;
+    virtual bool upsertTrajectoryEntry(
+        int robotId, const QString &name, const QVector<TrajectoryStep> &steps, QString &errorMessage) = 0;
+    virtual bool deregisterTrajectoryEntry(int robotId, const QString &name, QString &errorMessage) = 0;
+
+    // (table,id) 스텝 하나를 스텝으로 쓰는, 등록 해제 안 된 trajectory 이름
+    // 목록을 돌려준다. 웨이포인트/콜존 삭제 전에 "이 경로들이 참조 중이라
+    // 삭제 못 함"을 확인하는 용도 — 삭제해도 trajectory 행 자체는 안
+    // 건드리므로, 이 체크 없이 삭제하면 저장된 경로가 조용히 스텝을 잃는다.
+    virtual bool findTrajectoriesReferencing(
+        int robotId, const QString &table, int dbId, QStringList &trajectoryNames, QString &errorMessage) = 0;
 
     // driving_session 시작. 현재 진행 중인(status='running') 가장 최근
     // robot_session을 찾아 연결하고, 없으면 mode='manual'인 녹화 전용 세션을
@@ -206,9 +240,17 @@ public:
 
     // 콜존 웨이포인트(BTN_* 등, kind=CallZone) 하나를 call_button에 upsert한다.
     // code(=waypoint id) UNIQUE라 이미 있으면 zone_name/좌표/yaw를 갱신하고,
-    // 등록 해제돼 있었으면 다시 활성화(deregistered_at = NULL)한다.
+    // 등록 해제돼 있었으면 다시 활성화(deregistered_at = NULL)한다. callButtonDbId로
+    // upsert된 행의 PK를 돌려준다(경로 스텝 저장용, loadActiveWaypointEntries의
+    // waypointDbId와 동일한 이유).
     virtual bool upsertCallButton(
-        const QString &code, const QString &zoneName, double x, double y, double yaw, QString &errorMessage) = 0;
+        const QString &code, const QString &zoneName, double x, double y, double yaw, int &callButtonDbId,
+        QString &errorMessage) = 0;
+
+    // 콜존 웨이포인트가 삭제됐을 때 call_button도 같이 지운다. robot과 동일한
+    // deregistered_at 소프트 삭제(완전 DELETE 아님, 이력 보존) — 이미 등록
+    // 해제됐거나 없는 code를 넘겨도 0행 UPDATE로 조용히 성공 처리한다.
+    virtual bool deregisterCallButton(const QString &code, QString &errorMessage) = 0;
 };
 
 #endif // OPERATIONSOVERVIEWSERVICE_H
