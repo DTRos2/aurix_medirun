@@ -24,6 +24,12 @@ RAW_CMD_VEL_TOPIC = "/medirun/navigation/cmd_vel_raw"
 
 def generate_launch_description():
     bringup_dir = get_package_share_directory("nav2_bringup")
+    # burger.yaml의 default_bt_xml_filename이 실제 존재하지 않는 파일명이라
+    # Nav2 기본 BT(Spin 복구 각도 90도)로 조용히 대체되고 있었다. 트레일러엔
+    # 너무 큰 복구 회전이라 spin_dist를 줄인 커스텀 BT로 덮어쓴다(2026-08-19).
+    gentle_recovery_bt = os.path.join(
+        get_package_share_directory("medirun_bringup"), "config", "navigate_w_gentle_recovery.xml"
+    )
 
     namespace = LaunchConfiguration("namespace")
     use_sim_time = LaunchConfiguration("use_sim_time")
@@ -56,7 +62,11 @@ def generate_launch_description():
         RewrittenYaml(
             source_file=params_file,
             root_key=namespace,
-            param_rewrites={"use_sim_time": use_sim_time, "autostart": autostart},
+            param_rewrites={
+                "use_sim_time": use_sim_time,
+                "autostart": autostart,
+                "default_bt_xml_filename": gentle_recovery_bt,
+            },
             convert_types=True,
         ),
         allow_substs=True,

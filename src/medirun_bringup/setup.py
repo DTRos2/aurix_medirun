@@ -19,7 +19,7 @@ setup(
                 "launch/callzone_bringup.launch.py",
             ],
         ),
-        (f"share/{package_name}/config", ["config/.gitkeep"]),
+        (f"share/{package_name}/config", ["config/.gitkeep", "config/navigate_w_gentle_recovery.xml"]),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

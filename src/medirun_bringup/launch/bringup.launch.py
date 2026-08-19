@@ -50,6 +50,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration("use_sim_time")
     use_rviz = LaunchConfiguration("use_rviz")
     use_gui = LaunchConfiguration("use_gui")
+    use_parking = LaunchConfiguration("use_parking")
 
     param_file_name = TURTLEBOT3_MODEL + ".yaml"
     if ROS_DISTRO == "humble":
@@ -63,6 +64,7 @@ def generate_launch_description():
 
     nav2_launch_file_dir = os.path.join(get_package_share_directory("nav2_bringup"), "launch")
     medirun_launch_file_dir = os.path.join(get_package_share_directory("medirun_bringup"), "launch")
+    medirun_vision_launch_file_dir = os.path.join(get_package_share_directory("medirun_vision"), "launch")
     rviz_config_dir = os.path.join(
         get_package_share_directory("turtlebot3_navigation2"), "rviz", "tb3_navigation2.rviz"
     )
@@ -98,6 +100,11 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "use_gui", default_value="true", description="medirun_gui 대시보드를 자동으로 같이 띄울지 여부"
+            ),
+            DeclareLaunchArgument(
+                "use_parking",
+                default_value="true",
+                description="ArUco 기반 홈 전면주차 노드(aruco_detector_node/docking_manager)를 같이 띄울지 여부",
             ),
             # Nav2를 composition 모드로 실행하되, navigation 부분은 MediRun 전용
             # navigation_safety.launch.py를 사용한다. 일반 주행(velocity_smoother)뿐 아니라
@@ -147,8 +154,18 @@ def generate_launch_description():
                 package="arduino_bridge",
                 executable="ultrasonic_safety_stop",
                 name="ultrasonic_safety_stop",
-                parameters=[{"front_stop_distance_cm": 15, "rear_stop_distance_cm": 15, "hold_duration_sec": 0.0}],
+                # front/rear_stop_distance_cm은 10cm(2026-08-19) — ArUco 전면주차
+                # target_distance(medirun_vision/config/parking.yaml, 15cm)보다
+                # 가까워야 안전정지가 마지막 접근/정렬 중 후진을 막지 않는다.
+                parameters=[{"front_stop_distance_cm": 10, "rear_stop_distance_cm": 10, "hold_duration_sec": 0.0}],
                 output="screen",
+            ),
+            # HOME_PRE_DOCK 도착 이후 ArUco 마커를 찾아 전면주차를 수행하는 노드들.
+            # ultrasonic_safety_stop이 최종 /cmd_vel 게이트이므로 이 뒤에 떠 있어야
+            # medirun/parking/cmd_vel_raw가 안전 정책을 거쳐 나간다.
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource([medirun_vision_launch_file_dir, "/parking.launch.py"]),
+                condition=IfCondition(use_parking),
             ),
             Node(
                 package="rviz2",
