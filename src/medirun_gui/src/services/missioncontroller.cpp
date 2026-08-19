@@ -7,6 +7,7 @@
 
 #include <QDateTime>
 #include <QDebug>
+#include <QSettings>
 #include <QTimer>
 #include <QTime>
 #include <QUuid>
@@ -24,6 +25,12 @@ QString historyId()
 {
     return QUuid::createUuid().toString(QUuid::WithoutBraces);
 }
+
+// observedButtonIds()를 앱 재시작 후에도 남기기 위한 로컬 설정 키 — 매번
+// 실제 버튼을 다시 눌러야만 웨이포인트관리 페이지 드롭다운에 뜨는 걸 막는다
+// (main.cpp에서 QApplication에 조직/앱 이름이 이미 설정돼 있어 QSettings()를
+// 인자 없이 그대로 쓸 수 있다).
+constexpr auto kObservedButtonIdsSettingsKey = "mission/observedCallButtonIds";
 
 QString resultText(const QString &resultCode)
 {
@@ -54,6 +61,7 @@ MissionController::MissionController(const AppSession &session,
     m_storageService->setSessionContext(m_session);
     m_queueItems = m_storageService->loadQueue();
     m_historyEntries = m_storageService->loadTodayHistory();
+    m_observedButtonIds = QSettings().value(QLatin1String(kObservedButtonIdsSettingsKey)).toStringList();
     m_elapsedTimer = new QTimer(this);
     m_elapsedTimer->setInterval(1000);
     connect(m_elapsedTimer, &QTimer::timeout, this, &MissionController::updateElapsed);
@@ -159,6 +167,11 @@ bool MissionController::nav2Connected() const
 bool MissionController::retryInProgress() const
 {
     return m_retryInProgress;
+}
+
+QStringList MissionController::observedButtonIds() const
+{
+    return m_observedButtonIds;
 }
 
 void MissionController::requestRetry()
@@ -411,6 +424,14 @@ void MissionController::enqueueCall(const QString &buttonId,
                                     const QString &missionId,
                                     const QDateTime &requestedAt)
 {
+    // 등록 성공/실패와 무관하게, 실제 하드웨어가 보낸 raw button_id를 전부
+    // 기록해둔다 — 웨이포인트관리 페이지가 콜존 등록 시 "감지된 콜존 ID"
+    // 드롭다운으로 보여준다. 최근 감지된 것이 앞에 오게 유지.
+    m_observedButtonIds.removeAll(buttonId);
+    m_observedButtonIds.prepend(buttonId);
+    QSettings().setValue(QLatin1String(kObservedButtonIdsSettingsKey), m_observedButtonIds);
+    emit observedButtonIdsChanged();
+
     for (const MissionQueueItem &existing : std::as_const(m_queueItems)) {
         if (existing.waypointId == buttonId
             && (existing.status == MissionQueueStatus::Waiting || existing.status == MissionQueueStatus::Active)) {

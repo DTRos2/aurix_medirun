@@ -5,6 +5,7 @@
 #include "../models/missiontypes.h"
 
 #include <QObject>
+#include <QStringList>
 #include <QTimer>
 
 class NavigationService;
@@ -34,6 +35,10 @@ public:
     bool rosConnected() const;
     bool nav2Connected() const;
     bool retryInProgress() const;
+    // MQTT 콜존 버튼이 이번 앱 세션 동안 실제로 보낸 raw button_id 목록(최근
+    // 감지 순, 등록 성공/실패 여부와 무관 — 웨이포인트관리 페이지가 콜존
+    // 등록 시 "감지된 콜존 ID" 드롭다운을 채우는 데 쓴다). 앱 재시작 시 초기화.
+    QStringList observedButtonIds() const;
 
 public slots:
     void requestRetry();
@@ -51,6 +56,7 @@ signals:
     void connectionStateChanged();
     void retryStateChanged();
     void nextQueueConfirmationRequested(const QString &queueId, const QString &waypointName);
+    void observedButtonIdsChanged();
 
 private slots:
     void handleDispatchRequested(const QString &buttonId,
@@ -129,6 +135,8 @@ private:
     double m_lastRobotY {0.0};
     bool m_robotPoseValid {false};
     double m_initialDistanceMeters {-1.0};
+    // observedButtonIds() 참고 — 최근 감지 순(맨 앞이 최신).
+    QStringList m_observedButtonIds;
 };
 
 #endif // MISSIONCONTROLLER_H

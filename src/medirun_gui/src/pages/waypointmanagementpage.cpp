@@ -1,5 +1,6 @@
 #include "waypointmanagementpage.h"
 
+#include "../services/missioncontroller.h"
 #include "../services/waypointrepository.h"
 #include "../services/waypointfile.h"
 #include "../theme/dashboardpalette.h"
@@ -9,13 +10,13 @@
 #include <QAbstractItemView>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QDate>
 #include <QDebug>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFrame>
 #include <QHBoxLayout>
-#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -62,6 +63,22 @@ QString kindLabel(WaypointMarkerKind kind)
         return QStringLiteral("홈");
     }
     return QString();
+}
+
+// 자동 생성 백업 파일명에 쓸 수 있게, 파일명에 못 쓰는 문자를 제거하고
+// 공백은 밑줄로 바꾼다.
+QString sanitizeForFileName(const QString &text)
+{
+    QString result;
+    result.reserve(text.size());
+    for (const QChar &ch : text) {
+        if (ch.isLetterOrNumber() || ch == QLatin1Char('_') || ch == QLatin1Char('-')) {
+            result.append(ch);
+        } else if (ch.isSpace()) {
+            result.append(QLatin1Char('_'));
+        }
+    }
+    return result.isEmpty() ? QStringLiteral("untitled") : result;
 }
 } // namespace
 
@@ -178,6 +195,68 @@ void WaypointManagementPage::setWaypointRepository(WaypointRepository *repositor
     syncFromRepository();
 }
 
+void WaypointManagementPage::setMissionController(MissionController *controller)
+{
+    if (m_missionController == controller) {
+        return;
+    }
+    m_missionController = controller;
+    if (m_missionController != nullptr) {
+        connect(m_missionController, &MissionController::observedButtonIdsChanged, this,
+                &WaypointManagementPage::refreshCallZoneIdCombo);
+    }
+    refreshCallZoneIdCombo();
+}
+
+void WaypointManagementPage::updateCallZoneIdComboVisibility()
+{
+    if (m_callZoneIdLabel == nullptr || m_callZoneIdCombo == nullptr || m_kindCombo == nullptr) {
+        return;
+    }
+    const auto kind = static_cast<WaypointMarkerKind>(m_kindCombo->currentData().toInt());
+    const bool showCombo = (kind == WaypointMarkerKind::CallZone);
+    m_callZoneIdLabel->setVisible(showCombo);
+    m_callZoneIdCombo->setVisible(showCombo);
+    if (showCombo) {
+        refreshCallZoneIdCombo();
+    }
+}
+
+void WaypointManagementPage::refreshCallZoneIdCombo()
+{
+    if (m_callZoneIdCombo == nullptr) {
+        return;
+    }
+    // 지금 편집 중인 콜존의 code는 목록 재구성 후에도 계속 보여야 한다 —
+    // 새로 감지된 버튼이 그 사이에 하나 더 들어와도 편집 화면이 흔들리면
+    // 안 되므로, 재구성 기준값을 매번 다시 계산한다.
+    QString mustKeep;
+    if (!m_creatingNew && m_waypoints.contains(m_selectedWaypointId)) {
+        const WaypointDef &record = m_waypoints.value(m_selectedWaypointId);
+        if (record.kind == WaypointMarkerKind::CallZone) {
+            mustKeep = record.name;
+        }
+    }
+    const QString previousSelection = m_callZoneIdCombo->currentIndex() > 0 ? m_callZoneIdCombo->currentText() : QString();
+
+    m_callZoneIdCombo->clear();
+    m_callZoneIdCombo->addItem(QStringLiteral("선택 안 함 (자동 채번)"));
+    if (m_missionController != nullptr) {
+        m_callZoneIdCombo->addItems(m_missionController->observedButtonIds());
+    }
+    if (!mustKeep.isEmpty() && m_callZoneIdCombo->findText(mustKeep) < 0) {
+        m_callZoneIdCombo->addItem(mustKeep);
+    }
+
+    const QString toSelect = !mustKeep.isEmpty() ? mustKeep : previousSelection;
+    if (!toSelect.isEmpty()) {
+        const int idx = m_callZoneIdCombo->findText(toSelect);
+        if (idx >= 0) {
+            m_callZoneIdCombo->setCurrentIndex(idx);
+        }
+    }
+}
+
 void WaypointManagementPage::syncFromRepository()
 {
     if (m_waypointRepository == nullptr) {
@@ -210,6 +289,22 @@ void WaypointManagementPage::pushToRepository()
         return;
     }
     m_waypointRepository->replaceAll(m_frameId, m_waypoints, m_trajectories, m_waypointFilePath);
+}
+
+void WaypointManagementPage::showEvent(QShowEvent *event)
+{
+    // 콜존/홈/경유점/경로 전부 DB가 원본이다 — 페이지가 다시 보일 때마다
+    // 최신 값으로 다시 채운다(진행 중인 편집 폼 입력은 건드리지 않음).
+    mergeCallButtonsInto(m_waypoints);
+    mergeHomeWaypointInto(m_waypoints);
+    mergeWaypointEntriesInto(m_waypoints);
+    reloadTrajectoriesFromDb();
+    refreshWaypointList();
+    refreshMapMarkers();
+    refreshRouteCombo();
+    renumberRouteOrderItems();
+    refreshSavedRoutesBar();
+    QWidget::showEvent(event);
 }
 
 QWidget *WaypointManagementPage::buildHeader()
@@ -256,17 +351,6 @@ QWidget *WaypointManagementPage::buildHeader()
     navDivider->setFixedWidth(1);
     navDivider->setFixedHeight(22);
     layout->addWidget(navDivider);
-
-    auto *loadWpButton = new QPushButton(QStringLiteral("웨이포인트 불러오기"), row);
-    loadWpButton->setObjectName(QStringLiteral("ghostChipButton"));
-    connect(loadWpButton, &QPushButton::clicked, this, &WaypointManagementPage::handleLoadWaypointFile);
-    layout->addWidget(loadWpButton);
-
-    auto *loadWpFromDbButton = new QPushButton(QStringLiteral("DB에서 불러오기"), row);
-    loadWpFromDbButton->setObjectName(QStringLiteral("ghostChipButton"));
-    loadWpFromDbButton->setToolTip(QStringLiteral("파일이 없는 PC에서도, 이 로봇으로 DB에 저장해둔 웨이포인트를 불러옵니다."));
-    connect(loadWpFromDbButton, &QPushButton::clicked, this, &WaypointManagementPage::handleLoadWaypointFromDb);
-    layout->addWidget(loadWpFromDbButton);
 
     auto *clearMapButton = new QPushButton(QStringLiteral("지도 초기화"), row);
     clearMapButton->setObjectName(QStringLiteral("ghostChipButton"));
@@ -388,6 +472,18 @@ QWidget *WaypointManagementPage::buildWaypointEditPanel()
     m_editPanelTitle = makeLabel(QStringLiteral("편집"), QStringLiteral("panelTitle"));
     layout->addWidget(m_editPanelTitle);
 
+    m_callZoneIdLabel = makeLabel(
+        QStringLiteral("감지된 콜존 ID (실제 버튼을 눌러야 목록에 추가됩니다)"), QStringLiteral("fieldLabel"));
+    layout->addWidget(m_callZoneIdLabel);
+    m_callZoneIdCombo = new QComboBox(panel);
+    m_callZoneIdCombo->addItem(QStringLiteral("선택 안 함 (자동 채번)"));
+    connect(m_callZoneIdCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        // 중복 콜존 ID 에러로 빨갛게 표시돼 있었다면, 다른 값을 고르는 순간 지운다.
+        m_callZoneIdCombo->setStyleSheet(QString());
+        m_waypointStatusLabel->setStyleSheet(QString());
+    });
+    layout->addWidget(m_callZoneIdCombo);
+
     layout->addWidget(makeLabel(QStringLiteral("이름"), QStringLiteral("fieldLabel")));
     m_nameEdit = new QLineEdit(panel);
     layout->addWidget(m_nameEdit);
@@ -424,6 +520,8 @@ QWidget *WaypointManagementPage::buildWaypointEditPanel()
     m_kindCombo->addItem(QStringLiteral("경유점"), static_cast<int>(WaypointMarkerKind::Waypoint));
     m_kindCombo->addItem(QStringLiteral("홈"), static_cast<int>(WaypointMarkerKind::Home));
     layout->addWidget(m_kindCombo);
+    connect(m_kindCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &WaypointManagementPage::updateCallZoneIdComboVisibility);
 
     auto *actionRow = new QHBoxLayout;
     m_saveWaypointButton = new QPushButton(QStringLiteral("저장"), panel);
@@ -453,13 +551,6 @@ QWidget *WaypointManagementPage::buildWaypointEditPanel()
     connect(m_cancelNavButton, &QPushButton::clicked, this, &WaypointManagementPage::handleCancelNavigation);
     navRow->addWidget(m_cancelNavButton);
     layout->addLayout(navRow);
-
-    layout->addSpacing(4);
-    auto *yamlButton = new QPushButton(QStringLiteral("전체 웨이포인트 저장 (YAML)"), panel);
-    yamlButton->setObjectName(QStringLiteral("amberFilledButton"));
-    yamlButton->setStyleSheet(QStringLiteral("font-size: 11px;"));
-    connect(yamlButton, &QPushButton::clicked, this, &WaypointManagementPage::handleSaveWaypointFile);
-    layout->addWidget(yamlButton);
 
     m_waypointStatusLabel = makeLabel(QString(), QStringLiteral("pageSubtitle"));
     layout->addWidget(m_waypointStatusLabel);
@@ -739,6 +830,7 @@ void WaypointManagementPage::selectWaypoint(const QString &id)
     if (!m_waypoints.contains(id)) {
         return;
     }
+    m_waypointStatusLabel->setStyleSheet(QString());
 
     m_creatingNew = false;
     m_selectedWaypointId = id;
@@ -768,6 +860,14 @@ void WaypointManagementPage::loadWaypointIntoForm(const WaypointDef &record)
     m_kindCombo->setCurrentIndex(m_kindCombo->findData(static_cast<int>(record.kind)));
     m_saveWaypointButton->setText(QStringLiteral("저장"));
     m_deleteWaypointButton->setEnabled(record.name != QStringLiteral("HOME"));
+    if (m_callZoneIdCombo != nullptr) {
+        // 이미 등록된 콜존의 code는 저장 시 바꾸지 않는다(핸들러가 m_creatingNew일
+        // 때만 드롭다운 값을 읽음) — 골라도 반영 안 되는 걸 막기 위해 편집 중엔
+        // 아예 비활성화하되, refreshCallZoneIdCombo가 m_selectedWaypointId
+        // 기준으로 지금 이 웨이포인트의 실제 code를 그대로 보여준다.
+        refreshCallZoneIdCombo();
+        m_callZoneIdCombo->setEnabled(false);
+    }
 }
 
 void WaypointManagementPage::handleNewWaypointRequested()
@@ -784,6 +884,10 @@ void WaypointManagementPage::prefillNewWaypointForm(double x, double y, double y
 
     m_editPanelTitle->setText(QStringLiteral("새 웨이포인트 추가"));
     m_nameEdit->clear();
+    if (m_callZoneIdCombo != nullptr) {
+        m_callZoneIdCombo->setCurrentIndex(0);
+        m_callZoneIdCombo->setEnabled(true);
+    }
     m_xEdit->setText(QString::number(x, 'f', 2));
     m_yEdit->setText(QString::number(y, 'f', 2));
     m_thetaEdit->setText(QString::number(yawDeg, 'f', 0));
@@ -796,6 +900,13 @@ void WaypointManagementPage::prefillNewWaypointForm(double x, double y, double y
 
 void WaypointManagementPage::handleSaveWaypoint()
 {
+    // 이전 시도에서 남은 에러 강조(빨간 글씨/테두리)가 있으면 새 시도 시작 시
+    // 먼저 지운다 — 이번에 검증을 통과하면 그대로 기본 스타일로 유지된다.
+    m_waypointStatusLabel->setStyleSheet(QString());
+    if (m_callZoneIdCombo != nullptr) {
+        m_callZoneIdCombo->setStyleSheet(QString());
+    }
+
     const QString name = m_nameEdit->text().trimmed();
     if (name.isEmpty()) {
         m_waypointStatusLabel->setText(QStringLiteral("이름을 입력하세요."));
@@ -824,8 +935,25 @@ void WaypointManagementPage::handleSaveWaypoint()
             }
         }
 
+        // 콜존은 감지된 콜존 ID 드롭다운에서 고른 값이 있으면 그걸 그대로
+        // code로 쓴다(ESP32가 실제로 보내는 값과 정확히 일치시키기 위함) —
+        // 자동 채번(BTN_01, BTN_02...)에 의존하면 삭제 후 재생성 시 하드웨어와
+        // 어긋날 수 있다. "선택 안 함"이면 기존처럼 자동 채번.
+        QString callZoneCode;
+        if (kind == WaypointMarkerKind::CallZone && m_callZoneIdCombo != nullptr && m_callZoneIdCombo->currentIndex() > 0) {
+            callZoneCode = m_callZoneIdCombo->currentText().trimmed();
+            if (!callZoneCode.isEmpty() && m_waypoints.contains(callZoneCode)) {
+                m_waypointStatusLabel->setStyleSheet(
+                    QStringLiteral("color: %1; font-weight: 600;").arg(DashboardPalette::Red.name()));
+                m_waypointStatusLabel->setText(QStringLiteral("이미 등록된 콜존 ID입니다: %1").arg(callZoneCode));
+                m_callZoneIdCombo->setStyleSheet(
+                    QStringLiteral("QComboBox { border: 1px solid %1; }").arg(DashboardPalette::Red.name()));
+                return;
+            }
+        }
+
         WaypointDef record;
-        record.name = nextIdForKind(kind);
+        record.name = !callZoneCode.isEmpty() ? callZoneCode : nextIdForKind(kind);
         record.label = name;
         record.x = x;
         record.y = y;
@@ -845,14 +973,47 @@ void WaypointManagementPage::handleSaveWaypoint()
         m_waypointStatusLabel->setText(QStringLiteral("%1 웨이포인트를 수정했습니다.").arg(m_selectedWaypointId));
     }
 
+    // 콜존/경유점/홈 모두 저장 즉시 각자의 DB 소스에 개별 반영한다 — call_button
+    // 은 이전부터 이랬고, 이번에 경유점(waypoint_set type='waypoint')과
+    // 홈(waypoint_set type='home')도 같은 방식으로 맞췄다.
+    const WaypointDef saved = m_waypoints.value(m_selectedWaypointId);
     if (kind == WaypointMarkerKind::CallZone) {
-        // 콜존(BTN_*)은 "파일로 저장"을 누르기 전이라도 등록/수정 즉시
-        // call_button에 반영한다 — MQTT 버튼 파이프라인이 참조하는 값이
-        // 웨이포인트 파일 저장 시점과 어긋나지 않게 하기 위함.
-        const WaypointDef &saved = m_waypoints.value(m_selectedWaypointId);
+        int dbId = 0;
         QString dbErrorMessage;
-        if (!m_overviewService.upsertCallButton(saved.name, saved.label, saved.x, saved.y, saved.yaw, dbErrorMessage)) {
+        if (!m_overviewService.upsertCallButton(saved.name, saved.label, saved.x, saved.y, saved.yaw, dbId, dbErrorMessage)) {
             qWarning() << "call_button upsert 실패:" << dbErrorMessage;
+        } else {
+            // 저장된 행의 실제 PK를 바로 붙여둔다 — 페이지를 새로고침하지 않고
+            // 바로 경로에 추가해도 trajectory 저장이 이 id를 쓸 수 있게.
+            m_waypoints[m_selectedWaypointId].dbId = dbId;
+        }
+    } else if (kind == WaypointMarkerKind::Waypoint) {
+        const QVector<RobotRecord> robots = m_robotService.listRobots(false);
+        if (robots.size() == 1) {
+            int dbId = 0;
+            QString dbErrorMessage;
+            if (!m_overviewService.upsertWaypointEntry(
+                    robots.first().id, saved.name, saved.label, saved.x, saved.y, saved.yaw, dbId, dbErrorMessage)) {
+                qWarning() << "경유점 등록 실패:" << dbErrorMessage;
+            } else {
+                m_waypoints[m_selectedWaypointId].dbId = dbId;
+                backupWaypointEntryToFile(saved);
+            }
+        }
+    } else if (kind == WaypointMarkerKind::Home) {
+        const QVector<RobotRecord> robots = m_robotService.listRobots(false);
+        if (robots.size() == 1) {
+            WaypointMap homeMap;
+            homeMap.insert(saved.name, saved);
+            QString dbErrorMessage;
+            if (!m_overviewService.saveWaypointLibrary(
+                    robots.first().id, QStringLiteral("home"), m_frameId, homeMap, TrajectoryMap(), dbErrorMessage)) {
+                qWarning() << "홈 저장 실패:" << dbErrorMessage;
+            } else {
+                // saveWaypointLibrary는 PK를 안 돌려주므로, 방금 저장된 행을
+                // 다시 읽어와서 dbId를 채운다(경로에 홈을 바로 추가할 수 있게).
+                mergeHomeWaypointInto(m_waypoints);
+            }
         }
     }
 
@@ -874,19 +1035,69 @@ void WaypointManagementPage::handleDeleteWaypoint()
         return;
     }
 
+    // 이전 시도에서 남은 에러 강조(빨간 글씨)가 있으면 새 시도 시작 시 지운다.
+    m_waypointStatusLabel->setStyleSheet(QString());
+
+    const QString deletedId = m_selectedWaypointId;
+    const WaypointDef deletedRecord = m_waypoints.value(deletedId);
+
+    // 저장된 경로가 이 웨이포인트/콜존을 스텝으로 쓰고 있으면 삭제를 막는다
+    // — 삭제해도 trajectory 행 자체는 안 건드리므로, 막지 않으면 저장된
+    // 경로가 나중에 조용히 그 스텝을 잃는다(화면엔 안 보이는데 DB엔 죽은
+    // 참조가 남음).
+    if (deletedRecord.dbId > 0
+        && (deletedRecord.kind == WaypointMarkerKind::CallZone || deletedRecord.kind == WaypointMarkerKind::Waypoint)) {
+        const QVector<RobotRecord> robots = m_robotService.listRobots(false);
+        if (robots.size() == 1) {
+            const QString table = (deletedRecord.kind == WaypointMarkerKind::CallZone)
+                ? QStringLiteral("call_button")
+                : QStringLiteral("waypoint");
+            QStringList referencingTrajectories;
+            QString checkErrorMessage;
+            if (m_overviewService.findTrajectoriesReferencing(
+                    robots.first().id, table, deletedRecord.dbId, referencingTrajectories, checkErrorMessage)) {
+                if (!referencingTrajectories.isEmpty()) {
+                    m_waypointStatusLabel->setStyleSheet(
+                        QStringLiteral("color: %1; font-weight: 600;").arg(DashboardPalette::Red.name()));
+                    m_waypointStatusLabel->setText(QStringLiteral("삭제할 수 없습니다 — 저장된 경로에서 사용 중: %1")
+                                                        .arg(referencingTrajectories.join(QStringLiteral(", "))));
+                    return;
+                }
+            } else {
+                qWarning() << "경로 참조 확인 실패:" << checkErrorMessage;
+            }
+        }
+    }
+
     const auto confirm = QMessageBox::question(
-        this, QStringLiteral("웨이포인트 삭제"),
-        QStringLiteral("%1 웨이포인트를 삭제하시겠습니까?").arg(m_selectedWaypointId));
+        this, QStringLiteral("웨이포인트 삭제"), QStringLiteral("%1 웨이포인트를 삭제하시겠습니까?").arg(deletedId));
     if (confirm != QMessageBox::Yes) {
         return;
     }
 
-    const QString deletedId = m_selectedWaypointId;
+    const WaypointMarkerKind deletedKind = deletedRecord.kind;
     m_waypoints.remove(deletedId);
 
     for (int i = m_routeOrderList->count() - 1; i >= 0; --i) {
         if (m_routeOrderList->item(i)->data(Qt::UserRole).toString() == deletedId) {
             delete m_routeOrderList->takeItem(i);
+        }
+    }
+
+    if (deletedKind == WaypointMarkerKind::CallZone) {
+        // 콜존 삭제는 로컬뿐 아니라 call_button도 같이 등록 해제한다 — 안 그러면
+        // 원격제어/실시간관제가 여전히 이 버튼을 보여준다.
+        QString dbErrorMessage;
+        if (!m_overviewService.deregisterCallButton(deletedId, dbErrorMessage)) {
+            qWarning() << "call_button 등록 해제 실패:" << dbErrorMessage;
+        }
+    } else if (deletedKind == WaypointMarkerKind::Waypoint) {
+        const QVector<RobotRecord> robots = m_robotService.listRobots(false);
+        if (robots.size() == 1) {
+            QString dbErrorMessage;
+            if (!m_overviewService.deregisterWaypointEntry(robots.first().id, deletedId, dbErrorMessage)) {
+                qWarning() << "경유점 등록 해제 실패:" << dbErrorMessage;
+            }
         }
     }
 
@@ -1094,12 +1305,50 @@ void WaypointManagementPage::handleSaveTrajectory()
         return;
     }
 
+    // 각 스텝을 DB PK(테이블+id)로 바로 변환한다 — 이름을 나중에 다시
+    // 찾는 대신, 그 웨이포인트를 저장했을 때 이미 받아둔 dbId를 그대로 쓴다
+    // (call_button/waypoint_set은 서로 독립된 PK 시퀀스라 이름 문자열로
+    // 되찾으면 대소문자·중복 등으로 어긋나기 쉽다). 아직 저장 안 된
+    // 웨이포인트(dbId 없음)가 섞여 있으면 저장 자체를 막는다.
     QStringList sequence;
+    QVector<TrajectoryStep> steps;
     for (int i = 0; i < m_routeOrderList->count(); ++i) {
-        sequence.append(m_routeOrderList->item(i)->data(Qt::UserRole).toString());
+        const QString code = m_routeOrderList->item(i)->data(Qt::UserRole).toString();
+        sequence.append(code);
+
+        if (!m_waypoints.contains(code) || m_waypoints.value(code).dbId <= 0) {
+            m_trajectoryStatusLabel->setText(
+                QStringLiteral("'%1' 웨이포인트가 아직 DB에 저장되지 않아 경로에 추가할 수 없습니다.").arg(code));
+            return;
+        }
+        const WaypointDef &stepDef = m_waypoints.value(code);
+        TrajectoryStep step;
+        step.table = (stepDef.kind == WaypointMarkerKind::CallZone) ? QStringLiteral("call_button") : QStringLiteral("waypoint");
+        step.id = stepDef.dbId;
+        steps.append(step);
     }
     m_trajectories.insert(name, sequence);
-    m_trajectoryStatusLabel->setText(QStringLiteral("%1 경로를 Trajectory로 저장했습니다.").arg(name));
+
+    // 경로도 경유점/콜존과 동일하게 저장 즉시 개별 DB row(waypoint_set
+    // type='trajectory')로 반영하고, 로컬 백업 yaml도 자동 이름으로 남긴다.
+    const QVector<RobotRecord> robots = m_robotService.listRobots(false);
+    if (robots.size() == 1) {
+        QString dbErrorMessage;
+        if (!m_overviewService.upsertTrajectoryEntry(robots.first().id, name, steps, dbErrorMessage)) {
+            // DB 반영 실패해도 화면(m_trajectories)엔 이미 들어간 상태라, 실패를
+            // 콘솔 로그로만 남기면 사용자는 저장된 줄 알고 지나친다 — 상태
+            // 라벨에도 그대로 보여준다.
+            qWarning() << "경로 등록 실패:" << dbErrorMessage;
+            m_trajectoryStatusLabel->setText(
+                QStringLiteral("%1 경로를 화면에는 추가했지만 DB 저장 실패: %2").arg(name, dbErrorMessage));
+        } else {
+            backupTrajectoryToFile(name, sequence);
+            m_trajectoryStatusLabel->setText(QStringLiteral("%1 경로를 Trajectory로 저장했습니다.").arg(name));
+        }
+    } else {
+        m_trajectoryStatusLabel->setText(
+            QStringLiteral("%1 경로를 화면에는 추가했지만 등록된 로봇이 1대가 아니어서 DB에는 저장하지 않음").arg(name));
+    }
 
     m_routeNameEdit->clear();
     m_routeOrderList->clear();
@@ -1143,6 +1392,14 @@ void WaypointManagementPage::handleDeleteSelectedSavedRoute()
     const QString deletedName = m_selectedSavedRoute;
     m_trajectories.remove(deletedName);
     m_selectedSavedRoute.clear();
+
+    const QVector<RobotRecord> robots = m_robotService.listRobots(false);
+    if (robots.size() == 1) {
+        QString dbErrorMessage;
+        if (!m_overviewService.deregisterTrajectoryEntry(robots.first().id, deletedName, dbErrorMessage)) {
+            qWarning() << "경로 등록 해제 실패:" << dbErrorMessage;
+        }
+    }
     m_trajectoryStatusLabel->setText(QStringLiteral("%1 경로를 삭제했습니다.").arg(deletedName));
     refreshSavedRoutesBar();
 
@@ -1250,6 +1507,7 @@ void WaypointManagementPage::mergeCallButtonsInto(WaypointMap &waypoints) const
         def.y = row.y;
         def.yaw = row.yaw;
         def.kind = WaypointMarkerKind::CallZone;
+        def.dbId = row.id;
         waypoints.insert(def.name, def);
     }
 }
@@ -1277,72 +1535,78 @@ void WaypointManagementPage::mergeHomeWaypointInto(WaypointMap &waypoints) const
     }
 }
 
-void WaypointManagementPage::applyLoadedWaypointLibrary(
-    const QString &frameId, const WaypointMap &waypoints, const TrajectoryMap &trajectories, const QString &statusMessage)
-{
-    WaypointMap mergedWaypoints = waypoints;
-    mergeCallButtonsInto(mergedWaypoints);
-    mergeHomeWaypointInto(mergedWaypoints);
-
-    m_frameId = frameId;
-    m_waypoints = mergedWaypoints;
-    m_trajectories = trajectories;
-    m_selectedSavedRoute.clear();
-    m_routeOrderList->clear();
-
-    refreshWaypointList();
-    refreshMapMarkers();
-    refreshRouteCombo();
-    renumberRouteOrderItems();
-    refreshSavedRoutesBar();
-
-    m_waypointStatusLabel->setText(statusMessage);
-
-    if (!m_waypoints.isEmpty()) {
-        selectWaypoint(m_waypoints.firstKey());
-    } else {
-        handleNewWaypointRequested();
-    }
-}
-
-void WaypointManagementPage::handleLoadWaypointFromDb()
+void WaypointManagementPage::mergeWaypointEntriesInto(WaypointMap &waypoints) const
 {
     const QVector<RobotRecord> robots = m_robotService.listRobots(false);
     if (robots.size() != 1) {
-        m_waypointStatusLabel->setText(QStringLiteral("등록된 로봇이 1대가 아니어서 DB 목록을 가져올 수 없습니다."));
         return;
     }
-    const int robotId = robots.first().id;
 
-    QStringList names;
+    QVector<WaypointDef> rows;
     QString errorMessage;
-    if (!m_overviewService.listWaypointLibraryNames(robotId, names, errorMessage)) {
-        QMessageBox::warning(this, QStringLiteral("DB 목록 조회 실패"), errorMessage);
+    if (!m_overviewService.loadActiveWaypointEntries(robots.first().id, rows, errorMessage)) {
         return;
     }
-    if (names.isEmpty()) {
-        m_waypointStatusLabel->setText(QStringLiteral("DB에 저장된 웨이포인트가 없습니다."));
+    for (const WaypointDef &def : std::as_const(rows)) {
+        waypoints.insert(def.name, def);
+    }
+}
+
+void WaypointManagementPage::reloadTrajectoriesFromDb()
+{
+    const QVector<RobotRecord> robots = m_robotService.listRobots(false);
+    if (robots.size() != 1) {
         return;
     }
 
-    bool ok = false;
-    const QString name = QInputDialog::getItem(
-        this, QStringLiteral("DB에서 웨이포인트 불러오기"), QStringLiteral("저장된 이름 선택 (최근 저장 순):"), names, 0, false, &ok);
-    if (!ok || name.isEmpty()) {
+    QVector<TrajectoryRow> rows;
+    QString errorMessage;
+    if (!m_overviewService.loadActiveTrajectoryEntries(robots.first().id, rows, errorMessage)) {
+        return;
+    }
+    m_trajectories.clear();
+    for (const TrajectoryRow &row : std::as_const(rows)) {
+        m_trajectories.insert(row.name, row.waypointCodes);
+    }
+}
+
+void WaypointManagementPage::backupWaypointEntryToFile(const WaypointDef &def) const
+{
+    const QString workspaceRoot = workspaceRootPath();
+    if (workspaceRoot.isEmpty()) {
         return;
     }
 
-    QString frameId;
-    WaypointMap waypoints;
-    TrajectoryMap trajectories;
-    if (!m_overviewService.loadWaypointLibraryByName(robotId, name, frameId, waypoints, trajectories, errorMessage)) {
-        QMessageBox::warning(this, QStringLiteral("웨이포인트 불러오기 실패"), errorMessage);
+    const QString fileName =
+        QStringLiteral("waypoint_%1.yaml").arg(sanitizeForFileName(def.label.isEmpty() ? def.name : def.label));
+    const QString path = QDir(workspaceRoot).filePath(QStringLiteral("maps/waypoints/%1").arg(fileName));
+
+    WaypointMap single;
+    single.insert(def.name, def);
+    QString errorMessage;
+    if (!saveWaypointYaml(path, m_frameId, single, TrajectoryMap(), errorMessage)) {
+        qWarning() << "경유점 백업 저장 실패:" << errorMessage;
+    }
+}
+
+void WaypointManagementPage::backupTrajectoryToFile(const QString &name, const QStringList &waypointCodes) const
+{
+    const QString workspaceRoot = workspaceRootPath();
+    if (workspaceRoot.isEmpty()) {
         return;
     }
 
-    applyLoadedWaypointLibrary(
-        frameId, waypoints, trajectories,
-        QStringLiteral("DB '%1'에서 웨이포인트 %2개, 경로 %3개를 불러왔습니다.").arg(name).arg(waypoints.size()).arg(trajectories.size()));
+    const QString fileName = QStringLiteral("%1_%2.yaml")
+                                  .arg(QDate::currentDate().toString(QStringLiteral("yyMMdd")))
+                                  .arg(sanitizeForFileName(name));
+    const QString path = QDir(workspaceRoot).filePath(QStringLiteral("maps/waypoints/%1").arg(fileName));
+
+    TrajectoryMap single;
+    single.insert(name, waypointCodes);
+    QString errorMessage;
+    if (!saveWaypointYaml(path, m_frameId, WaypointMap(), single, errorMessage)) {
+        qWarning() << "경로 백업 저장 실패:" << errorMessage;
+    }
 }
 
 void WaypointManagementPage::handleClearMap()
@@ -1354,116 +1618,6 @@ void WaypointManagementPage::handleClearMap()
     refreshMapMarkers();
 }
 
-void WaypointManagementPage::handleLoadWaypointFile()
-{
-    QString initialPath = m_waypointFilePath;
-    if (initialPath.isEmpty()) {
-        const QString workspaceRoot = workspaceRootPath();
-        if (!workspaceRoot.isEmpty()) {
-            initialPath = QDir(workspaceRoot).filePath(QStringLiteral("maps/waypoints"));
-        }
-    }
-
-    const QString path = QFileDialog::getOpenFileName(
-        this, QStringLiteral("웨이포인트 파일 불러오기"), initialPath,
-        QStringLiteral("YAML 파일 (*.yaml *.yml)"));
-    if (path.isEmpty()) {
-        return;
-    }
-
-    QString errorMessage;
-    if (m_waypointRepository != nullptr) {
-        if (!m_waypointRepository->loadFromFile(path, errorMessage)) {
-            QMessageBox::warning(this, QStringLiteral("웨이포인트 불러오기 실패"), errorMessage);
-            return;
-        }
-        // 불러온 파일 내용 위에 call_button + HOME을 합쳐서 반영한다 — 파일에
-        // 없거나 좌표가 오래된 콜존/HOME이어도 실제 등록값으로 지도에 나오게 함.
-        WaypointMap overrides;
-        mergeCallButtonsInto(overrides);
-        mergeHomeWaypointInto(overrides);
-        m_waypointRepository->upsertWaypoints(overrides.values());
-        return;
-    }
-
-    QString frameId;
-    WaypointMap waypoints;
-    TrajectoryMap trajectories;
-    if (!loadWaypointYaml(path, frameId, waypoints, trajectories, errorMessage)) {
-        QMessageBox::warning(this, QStringLiteral("웨이포인트 불러오기 실패"), errorMessage);
-        return;
-    }
-
-    m_waypointFilePath = path;
-    applyLoadedWaypointLibrary(
-        frameId, waypoints, trajectories,
-        QStringLiteral("'%1'에서 웨이포인트 %2개, 경로 %3개를 불러왔습니다.")
-            .arg(QFileInfo(path).fileName())
-            .arg(waypoints.size())
-            .arg(trajectories.size()));
-}
-
-void WaypointManagementPage::handleSaveWaypointFile()
-{
-    if (m_waypoints.isEmpty()) {
-        m_waypointStatusLabel->setText(QStringLiteral("저장할 웨이포인트가 없습니다."));
-        return;
-    }
-
-    QString initialPath = m_waypointFilePath;
-    if (initialPath.isEmpty()) {
-        const QString workspaceRoot = workspaceRootPath();
-        if (!workspaceRoot.isEmpty()) {
-            initialPath = QDir(workspaceRoot).filePath(QStringLiteral("maps/waypoints"));
-        }
-    }
-
-    QString path = QFileDialog::getSaveFileName(
-        this, QStringLiteral("웨이포인트 파일 저장"), initialPath,
-        QStringLiteral("YAML 파일 (*.yaml *.yml)"));
-    if (path.isEmpty()) {
-        return;
-    }
-    // 파일 이름에 확장자를 안 붙이면(Qt가 자동으로 붙여주지 않는 플랫폼이
-    // 있음) "불러오기" 대화상자의 *.yaml/*.yml 필터에 안 걸려 목록에서
-    // 안 보이게 된다 — 저장 시점에 강제로 붙여준다.
-    if (!path.endsWith(QStringLiteral(".yaml"), Qt::CaseInsensitive)
-        && !path.endsWith(QStringLiteral(".yml"), Qt::CaseInsensitive)) {
-        path += QStringLiteral(".yaml");
-    }
-
-    QString errorMessage;
-    if (!saveWaypointYaml(path, m_frameId, m_waypoints, m_trajectories, errorMessage)) {
-        if (m_waypointRepository == nullptr || !m_waypointRepository->saveToFile(path, errorMessage)) {
-            QMessageBox::warning(this, QStringLiteral("웨이포인트 저장 실패"), errorMessage);
-            return;
-        }
-    } else if (m_waypointRepository != nullptr) {
-        m_waypointRepository->saveToFile(path, errorMessage);
-    }
-
-    m_waypointFilePath = path;
-
-    const QVector<RobotRecord> robots = m_robotService.listRobots(false);
-    if (robots.size() == 1) {
-        // 저장 파일의 basename을 waypoint_set.name으로 써서, 다른 파일명으로
-        // 저장하면 새 행이 생기고(YAML이 새 파일로 저장되는 것과 동일하게)
-        // 같은 파일명이면 그 행만 덮어쓰게 한다.
-        const QString setName = QFileInfo(path).completeBaseName();
-        QString dbErrorMessage;
-        if (m_overviewService.saveWaypointLibrary(
-                robots.first().id, setName, m_frameId, m_waypoints, m_trajectories, dbErrorMessage)) {
-            m_waypointStatusLabel->setText(QStringLiteral("웨이포인트 파일을 저장했습니다: %1 (DB에도 반영됨)").arg(path));
-        } else {
-            m_waypointStatusLabel->setText(
-                QStringLiteral("웨이포인트 파일을 저장했습니다: %1 (DB 반영 실패: %2)").arg(path, dbErrorMessage));
-        }
-    } else {
-        m_waypointStatusLabel->setText(
-            QStringLiteral("웨이포인트 파일을 저장했습니다: %1 (등록된 로봇이 1대가 아니어서 DB에는 저장하지 않음)").arg(path));
-    }
-    pushToRepository();
-}
 
 void WaypointManagementPage::updateNavButtonsEnabled()
 {

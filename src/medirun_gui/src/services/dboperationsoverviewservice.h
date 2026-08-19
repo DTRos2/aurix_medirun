@@ -46,16 +46,25 @@ public:
         const QString &issuedBy,
         QString &errorMessage) override;
 
-    bool loadWaypointLibrary(
-        int robotId, QString &frameId, WaypointMap &waypoints, TrajectoryMap &trajectories, bool &found,
-        QString &errorMessage) override;
-    bool listWaypointLibraryNames(int robotId, QStringList &names, QString &errorMessage) override;
     bool loadWaypointLibraryByName(
         int robotId, const QString &name, QString &frameId, WaypointMap &waypoints, TrajectoryMap &trajectories,
         QString &errorMessage) override;
     bool saveWaypointLibrary(
         int robotId, const QString &name, const QString &frameId, const WaypointMap &waypoints,
         const TrajectoryMap &trajectories, QString &errorMessage) override;
+
+    bool loadActiveWaypointEntries(int robotId, QVector<WaypointDef> &rows, QString &errorMessage) override;
+    bool upsertWaypointEntry(
+        int robotId, const QString &code, const QString &label, double x, double y, double yaw, int &waypointDbId,
+        QString &errorMessage) override;
+    bool deregisterWaypointEntry(int robotId, const QString &code, QString &errorMessage) override;
+
+    bool loadActiveTrajectoryEntries(int robotId, QVector<TrajectoryRow> &rows, QString &errorMessage) override;
+    bool upsertTrajectoryEntry(
+        int robotId, const QString &name, const QVector<TrajectoryStep> &steps, QString &errorMessage) override;
+    bool deregisterTrajectoryEntry(int robotId, const QString &name, QString &errorMessage) override;
+    bool findTrajectoriesReferencing(
+        int robotId, const QString &table, int dbId, QStringList &trajectoryNames, QString &errorMessage) override;
 
     bool startDrivingSession(int robotId, int &drivingSessionId, int &robotSessionId, QString &errorMessage) override;
     bool appendDrivingRecord(
@@ -77,7 +86,9 @@ public:
 
     bool loadActiveCallButtons(QVector<CallButtonRow> &rows, QString &errorMessage) override;
     bool upsertCallButton(
-        const QString &code, const QString &zoneName, double x, double y, double yaw, QString &errorMessage) override;
+        const QString &code, const QString &zoneName, double x, double y, double yaw, int &callButtonDbId,
+        QString &errorMessage) override;
+    bool deregisterCallButton(const QString &code, QString &errorMessage) override;
 };
 
 #endif // DBOPERATIONSOVERVIEWSERVICE_H
