@@ -859,7 +859,7 @@ void WaypointManagementPage::loadWaypointIntoForm(const WaypointDef &record)
     m_thetaEdit->setCursorPosition(0);
     m_kindCombo->setCurrentIndex(m_kindCombo->findData(static_cast<int>(record.kind)));
     m_saveWaypointButton->setText(QStringLiteral("저장"));
-    m_deleteWaypointButton->setEnabled(record.name != QStringLiteral("HOME"));
+    m_deleteWaypointButton->setEnabled(true);
     if (m_callZoneIdCombo != nullptr) {
         // 이미 등록된 콜존의 code는 저장 시 바꾸지 않는다(핸들러가 m_creatingNew일
         // 때만 드롭다운 값을 읽음) — 골라도 반영 안 되는 걸 막기 위해 편집 중엔
@@ -1030,10 +1030,6 @@ void WaypointManagementPage::handleDeleteWaypoint()
     if (m_selectedWaypointId.isEmpty()) {
         return;
     }
-    if (m_selectedWaypointId == QStringLiteral("HOME")) {
-        m_waypointStatusLabel->setText(QStringLiteral("HOME은 삭제할 수 없습니다."));
-        return;
-    }
 
     // 이전 시도에서 남은 에러 강조(빨간 글씨)가 있으면 새 시도 시작 시 지운다.
     m_waypointStatusLabel->setStyleSheet(QString());
@@ -1097,6 +1093,14 @@ void WaypointManagementPage::handleDeleteWaypoint()
             QString dbErrorMessage;
             if (!m_overviewService.deregisterWaypointEntry(robots.first().id, deletedId, dbErrorMessage)) {
                 qWarning() << "경유점 등록 해제 실패:" << dbErrorMessage;
+            }
+        }
+    } else if (deletedKind == WaypointMarkerKind::Home) {
+        const QVector<RobotRecord> robots = m_robotService.listRobots(false);
+        if (robots.size() == 1) {
+            QString dbErrorMessage;
+            if (!m_overviewService.deregisterHomeEntry(robots.first().id, dbErrorMessage)) {
+                qWarning() << "홈 등록 해제 실패:" << dbErrorMessage;
             }
         }
     }

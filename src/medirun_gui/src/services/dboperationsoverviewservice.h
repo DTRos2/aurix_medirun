@@ -52,6 +52,7 @@ public:
     bool saveWaypointLibrary(
         int robotId, const QString &name, const QString &frameId, const WaypointMap &waypoints,
         const TrajectoryMap &trajectories, QString &errorMessage) override;
+    bool deregisterHomeEntry(int robotId, QString &errorMessage) override;
 
     bool loadActiveWaypointEntries(int robotId, QVector<WaypointDef> &rows, QString &errorMessage) override;
     bool upsertWaypointEntry(
