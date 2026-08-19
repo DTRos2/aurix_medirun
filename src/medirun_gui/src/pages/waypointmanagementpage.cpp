@@ -1148,6 +1148,7 @@ void WaypointManagementPage::handleMapPickRequested(const QPointF &normalizedPos
 void WaypointManagementPage::handleSetInitialPoseToggled(bool checked)
 {
     m_settingInitialPose = checked;
+    m_waypointMap->setPoseSettingEnabled(checked);
     if (checked) {
         selectTab(0);
         m_waypointMap->setCaption(
