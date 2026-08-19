@@ -61,6 +61,13 @@ public:
     // empty vector to clear (e.g. when the map/robot pose becomes invalid).
     void setScanPoints(const QVector<QPointF> &normalizedPoints);
 
+    // 초기 위치 설정 모드(RViz 2D Pose Estimate와 동일)에서는 마커 위를
+    // 클릭해도 그 마커를 선택하지 말고 그 지점을 그대로 pose pick으로
+    // 취급해야 한다 — 마커 위는 클릭이 안 먹는 것처럼 보이던 문제 수정
+    // (2026-08-19). true인 동안은 mousePressEvent가 마커 히트테스트를
+    // 아예 건너뛴다.
+    void setPoseSettingEnabled(bool enabled);
+
 signals:
     void markerClicked(const QString &id);
     void waypointPickRequested(const QPointF &normalizedPos, double yawRadians);
@@ -95,6 +102,7 @@ private:
 
     QVector<QPointF> m_scanNormalizedPoints;
 
+    bool m_poseSettingEnabled {false};
     bool m_dragging {false};
     QPointF m_dragStartPos;
     QPointF m_dragCurrentPos;

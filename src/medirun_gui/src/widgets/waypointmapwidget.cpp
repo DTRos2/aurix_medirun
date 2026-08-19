@@ -191,6 +191,11 @@ void WaypointMapWidget::setScanPoints(const QVector<QPointF> &normalizedPoints)
     update();
 }
 
+void WaypointMapWidget::setPoseSettingEnabled(bool enabled)
+{
+    m_poseSettingEnabled = enabled;
+}
+
 QRectF WaypointMapWidget::drawableArea() const
 {
     const qreal margin = 10.0;
@@ -248,14 +253,16 @@ void WaypointMapWidget::mousePressEvent(QMouseEvent *event)
         return;
     }
 
-    const QRectF area = imageRect();
     m_pressedMarkerId.clear();
-    for (const WaypointMapMarker &marker : m_markers) {
-        const QPointF center = toCanvas(marker.normalizedPos, area);
-        const QPointF delta = center - event->position();
-        if (QPointF::dotProduct(delta, delta) <= kMarkerHitRadius * kMarkerHitRadius) {
-            m_pressedMarkerId = marker.id;
-            break;
+    if (!m_poseSettingEnabled) {
+        const QRectF area = imageRect();
+        for (const WaypointMapMarker &marker : m_markers) {
+            const QPointF center = toCanvas(marker.normalizedPos, area);
+            const QPointF delta = center - event->position();
+            if (QPointF::dotProduct(delta, delta) <= kMarkerHitRadius * kMarkerHitRadius) {
+                m_pressedMarkerId = marker.id;
+                break;
+            }
         }
     }
 
