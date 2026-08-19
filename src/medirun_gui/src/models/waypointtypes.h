@@ -36,6 +36,12 @@ struct WaypointDef
     double y {0.0};
     double yaw {0.0};
     WaypointMarkerKind kind {WaypointMarkerKind::Waypoint};
+    // DB 원본 행의 PK(call_button.id 또는 waypoint_set.id, kind에 따라 다름).
+    // DB에서 불러왔거나 저장 직후에만 채워진다 — 아직 한 번도 저장 안 된
+    // 항목은 0. trajectory 스텝을 이름 문자열이 아니라 이 id로 저장할 때 쓴다
+    // (call_button과 waypoint_set은 서로 독립된 시퀀스라 이름/code 문자열
+    // 매칭은 대소문자·중복 등으로 어긋나기 쉽다).
+    int dbId {0};
 };
 
 using WaypointMap = QMap<QString, WaypointDef>;
