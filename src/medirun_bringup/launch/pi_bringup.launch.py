@@ -75,11 +75,15 @@ def generate_launch_description():
                     ),
                 ]
             ),
+            # front/rear_stop_distance_cm은 10cm(2026-08-19) — ArUco 전면주차
+            # target_distance(medirun_vision/config/parking.yaml, 15cm)보다
+            # 가까워야 안전정지가 마지막 접근/정렬 중 후진을 막지 않는다
+            # (bringup.launch.py와 동일 값으로 맞춤).
             Node(
                 package="arduino_bridge",
                 executable="ultrasonic_safety_stop",
                 name="ultrasonic_safety_stop",
-                parameters=[{"front_stop_distance_cm": 15, "rear_stop_distance_cm": 15, "hold_duration_sec": 0.0}],
+                parameters=[{"front_stop_distance_cm": 10, "rear_stop_distance_cm": 10, "hold_duration_sec": 0.0}],
                 output="screen",
             ),
         ]
