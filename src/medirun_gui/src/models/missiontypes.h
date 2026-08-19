@@ -20,6 +20,7 @@ enum class MissionState {
     Idle,
     Starting,
     Navigating,
+    Arrived,
     Cancelling,
     Diverting,
     ReturningHome,
@@ -89,6 +90,9 @@ struct MissionSnapshot
     QString failureReason;
     double distanceRemainingMeters {-1.0};
     int progressPercent {-1};
+    // MissionState::Arrived 상태에서만 의미 있음 — 홀센서(payloadLoadedChanged)로
+    // AED 반출이 감지됐는지. 미션 시작 시 false로 리셋된다.
+    bool payloadRemoved {false};
 };
 
 inline QString missionQueueStatusText(MissionQueueStatus status)
@@ -119,6 +123,8 @@ inline QString missionStateText(MissionState state)
         return QStringLiteral("STARTING");
     case MissionState::Navigating:
         return QStringLiteral("NAVIGATING");
+    case MissionState::Arrived:
+        return QStringLiteral("ARRIVED");
     case MissionState::Cancelling:
         return QStringLiteral("CANCELLING");
     case MissionState::Diverting:

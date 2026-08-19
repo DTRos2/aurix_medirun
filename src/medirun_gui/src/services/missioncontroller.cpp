@@ -3,6 +3,7 @@
 #include "../ros/navigationservice.h"
 #include "missionrosinterface.h"
 #include "missionstorageservice.h"
+#include "sensortelemetryprovider.h"
 #include "waypointrepository.h"
 
 #include <QDateTime>
@@ -31,6 +32,12 @@ QString historyId()
 // (main.cpp에서 QApplication에 조직/앱 이름이 이미 설정돼 있어 QSettings()를
 // 인자 없이 그대로 쓸 수 있다).
 constexpr auto kObservedButtonIdsSettingsKey = "mission/observedCallButtonIds";
+
+// 문서 02(요구사항 설계) SR-F-010/TC-12: "AED 반출 감지 후 15초 뒤 홈 복귀. 미반출
+// 시 1분 주기 안내 후 3분 경과하면 AED를 실은 채 복귀한다."
+constexpr int kReturnDelayAfterPayloadRemovedSec = 15;
+constexpr int kPayloadReminderIntervalSec = 60;
+constexpr int kForcedReturnTimeoutSec = 180;
 
 QString resultText(const QString &resultCode)
 {
@@ -67,6 +74,17 @@ MissionController::MissionController(const AppSession &session,
     connect(m_elapsedTimer, &QTimer::timeout, this, &MissionController::updateElapsed);
     m_elapsedTimer->start();
 
+    m_payloadRemovedDelayTimer = new QTimer(this);
+    m_payloadRemovedDelayTimer->setSingleShot(true);
+    connect(m_payloadRemovedDelayTimer, &QTimer::timeout, this, &MissionController::handlePayloadRemovedDelayElapsed);
+
+    m_forcedReturnTimer = new QTimer(this);
+    m_forcedReturnTimer->setSingleShot(true);
+    connect(m_forcedReturnTimer, &QTimer::timeout, this, &MissionController::handleForcedReturnTimeout);
+
+    m_reminderTimer = new QTimer(this);
+    connect(m_reminderTimer, &QTimer::timeout, this, &MissionController::handleReminderTick);
+
     connect(m_waypointRepository, &WaypointRepository::repositoryChanged, this, &MissionController::handleWaypointRepositoryChanged);
 
     connect(m_navigationService, &NavigationService::navigationGoalAccepted, this, &MissionController::handleNavigationAccepted);
@@ -89,6 +107,15 @@ MissionController::MissionController(const AppSession &session,
 
     updateConnectionState();
     startNextQueueIfPossible();
+}
+
+void MissionController::setSensorTelemetryProvider(SensorTelemetryProvider *provider)
+{
+    m_sensorTelemetryProvider = provider;
+    if (m_sensorTelemetryProvider != nullptr) {
+        connect(m_sensorTelemetryProvider, &SensorTelemetryProvider::payloadLoadedChanged,
+                this, &MissionController::handlePayloadLoadedChanged);
+    }
 }
 
 MissionSnapshot MissionController::missionSnapshot() const
@@ -207,6 +234,17 @@ void MissionController::requestMissionCancel()
         return;
     }
 
+    // 이미 호출구역에 도착해 AED 반출 대기 중이면 "그 자리에서 정지"는 의미가
+    // 없다(로봇이 이미 멈춰 있음) — 운영자 확인(2026-08-19)에 따라 즉시 홈
+    // 복귀로 처리한다. 취소할 Nav2 goal 자체가 없으므로 beginReturnHomeFlow의
+    // Arrived 분기(cancelGoal 없이 바로 홈으로 출발)를 그대로 탄다.
+    if (m_snapshot.state == MissionState::Arrived) {
+        if (beginReturnHomeFlow(QStringLiteral("운영자 미션 취소 요청 — 호출구역 도착 후라 즉시 홈 복귀로 처리"))) {
+            m_rosInterface->publishMissionCommand(QStringLiteral("return_home"), m_snapshot.missionId, m_snapshot.queueId, QString());
+        }
+        return;
+    }
+
     // 홈 복귀 없이 그 자리에서 정지 + 진행 중이던 호출(큐 항목)은 삭제한다.
     // 실제 종료 처리(Cancelled 상태 전환, 큐 삭제)는 Nav2가 취소를 확인해 준
     // 뒤 handleNavigationResult()의 CANCELED 처리에서 수행한다.
@@ -252,7 +290,11 @@ void MissionController::requestQueueDivert(const QString &queueId)
         startMissionForQueue(queueId, false);
         return;
     }
-    if (m_snapshot.returningHome || m_snapshot.state == MissionState::Cancelling || m_snapshot.state == MissionState::Diverting) {
+    // Arrived(호출구역 도착 후 대기)는 취소할 활성 Nav2 goal이 없어 여기 아래의
+    // cancelGoal()+CANCELED 대기 흐름을 못 탄다 — 도착 후 전환은 막고, 운영자는
+    // 먼저 "복귀"나 "취소"(둘 다 즉시 홈 복귀로 처리됨)로 이 미션부터 끝내야 한다.
+    if (m_snapshot.returningHome || m_snapshot.state == MissionState::Arrived
+        || m_snapshot.state == MissionState::Cancelling || m_snapshot.state == MissionState::Diverting) {
         return;
     }
 
@@ -356,7 +398,10 @@ void MissionController::handleNavigationResult(const QString &resultCode, const 
                           m_pendingReason, QStringLiteral("RETURN_HOME_COMPLETED"), QStringLiteral("SUCCEEDED"));
             return;
         }
-        finishMission(MissionState::Completed, detail, QStringLiteral("MISSION_COMPLETED"), QStringLiteral("SUCCEEDED"));
+        // 호출구역 도착 — 여기서 바로 미션을 끝내지 않고 AED 반출 대기로
+        // 전환한다(SR-F-010/TC-12: 반출 감지 15초 후 자동 복귀, 미반출 시
+        // 60초 안내 반복 후 180초 경과 시 강제 복귀).
+        beginArrivedWait();
         return;
     }
 
@@ -518,6 +563,7 @@ void MissionController::startMissionForQueue(const QString &queueId, bool divert
     });
     m_snapshot.returningHome = false;
     m_snapshot.arrivedBeforeEnd = false;
+    m_snapshot.payloadRemoved = false;
     m_snapshot.failureReason.clear();
     m_snapshot.distanceRemainingMeters = -1.0;
     m_initialDistanceMeters = -1.0;
@@ -566,11 +612,38 @@ bool MissionController::beginReturnHomeFlow(const QString &reason)
         m_snapshot.nextWaypointName = homeWaypoint.label;
         m_snapshot.startedAt = QDateTime::currentDateTime();
         m_snapshot.returningHome = true;
+        m_snapshot.payloadRemoved = false;
         m_pendingAction = PendingAction::ReturnHome;
         m_pendingReason = reason;
         setMissionState(MissionState::ReturningHome);
         addHistory(QStringLiteral("RETURN_HOME_STARTED"), homeWaypoint.name, homeWaypoint.label, m_snapshot.missionId, QString(),
                    QStringLiteral("STARTED"), reason);
+        emit historyChanged();
+        emit missionChanged();
+        m_navigationService->navigateToPose(homePose.positionX, homePose.positionY, homePose.yawRadians, homePose.frameId);
+        return true;
+    }
+
+    if (m_snapshot.state == MissionState::Arrived) {
+        // Arrived는 Nav2 goal이 이미 SUCCEEDED로 끝난 뒤라 취소할 활성 goal이
+        // 없다 — 아래 else 분기(cancelGoal 후 CANCELED 콜백을 기다림)를 타면
+        // CANCELED가 영영 안 와서 멈춘다. Idle 분기처럼 바로 홈 goal을
+        // 보내되, 이미 진행 중인 미션이라 missionId/queueId는 새로 만들지
+        // 않고 그대로 이어간다.
+        stopArrivalTimers();
+        WaypointDef homeWaypoint;
+        WaypointPose homePose;
+        QString errorMessage;
+        if (!resolveHomeWaypoint(homeWaypoint, homePose, errorMessage)) {
+            finishMission(MissionState::Failed, errorMessage, QStringLiteral("RETURN_HOME_FAILED"), QStringLiteral("FAILED"));
+            return false;
+        }
+        addHistory(QStringLiteral("RETURN_HOME_STARTED"), homeWaypoint.name, homeWaypoint.label, m_snapshot.missionId, m_snapshot.queueId,
+                   QStringLiteral("STARTED"), reason);
+        m_snapshot.destinationName = homeWaypoint.label;
+        m_snapshot.nextWaypointName = homeWaypoint.label;
+        m_snapshot.returningHome = true;
+        setMissionState(MissionState::ReturningHome);
         emit historyChanged();
         emit missionChanged();
         m_navigationService->navigateToPose(homePose.positionX, homePose.positionY, homePose.yawRadians, homePose.frameId);
@@ -590,6 +663,80 @@ bool MissionController::beginReturnHomeFlow(const QString &reason)
     emit historyChanged();
     m_navigationService->cancelGoal();
     return true;
+}
+
+void MissionController::beginArrivedWait()
+{
+    m_snapshot.payloadRemoved = false;
+    setMissionState(MissionState::Arrived);
+    addHistory(QStringLiteral("MISSION_ARRIVED"), QString(), m_snapshot.destinationName, m_snapshot.missionId, m_snapshot.queueId,
+               QStringLiteral("ARRIVED"), QStringLiteral("호출구역 도착 — AED 반출 대기"));
+    emit historyChanged();
+    emit missionChanged();
+
+    m_forcedReturnTimer->start(kForcedReturnTimeoutSec * 1000);
+    m_reminderTimer->start(kPayloadReminderIntervalSec * 1000);
+}
+
+void MissionController::stopArrivalTimers()
+{
+    m_payloadRemovedDelayTimer->stop();
+    m_forcedReturnTimer->stop();
+    m_reminderTimer->stop();
+}
+
+void MissionController::handlePayloadLoadedChanged(bool loaded)
+{
+    // loaded==false가 "반출"이다. Arrived 상태에서, 아직 반출 처리 전일 때만
+    // 반응한다(다른 상태에서의 홀센서 값 변화는 이 미션과 무관).
+    if (loaded || m_snapshot.state != MissionState::Arrived || m_snapshot.payloadRemoved) {
+        return;
+    }
+    m_snapshot.payloadRemoved = true;
+    m_forcedReturnTimer->stop();
+    m_reminderTimer->stop();
+    addHistory(QStringLiteral("PAYLOAD_REMOVED_DETECTED"), QString(), m_snapshot.destinationName, m_snapshot.missionId, m_snapshot.queueId,
+               QStringLiteral("DETECTED"), QStringLiteral("AED 반출 감지 — %1초 후 자동 복귀").arg(kReturnDelayAfterPayloadRemovedSec));
+    emit historyChanged();
+    emit missionChanged();
+    m_payloadRemovedDelayTimer->start(kReturnDelayAfterPayloadRemovedSec * 1000);
+}
+
+void MissionController::handlePayloadRemovedDelayElapsed()
+{
+    if (m_snapshot.state != MissionState::Arrived) {
+        return;
+    }
+    if (beginReturnHomeFlow(QStringLiteral("AED 반출 감지 후 자동 복귀"))) {
+        m_rosInterface->publishMissionCommand(QStringLiteral("return_home"), m_snapshot.missionId, m_snapshot.queueId, QString());
+    }
+}
+
+void MissionController::handleForcedReturnTimeout()
+{
+    // payloadRemoved==true인데 여기 도달했다면 이미 15초 타이머 쪽으로 넘어간
+    // 뒤라 이 타이머는 stopArrivalTimers()로 멈췄어야 정상 — 방어적으로 한 번
+    // 더 확인한다.
+    if (m_snapshot.state != MissionState::Arrived || m_snapshot.payloadRemoved) {
+        return;
+    }
+    m_reminderTimer->stop();
+    if (beginReturnHomeFlow(QStringLiteral("AED 미반출 · 3분 경과로 강제 복귀"))) {
+        m_rosInterface->publishMissionCommand(QStringLiteral("return_home"), m_snapshot.missionId, m_snapshot.queueId, QString());
+    }
+}
+
+void MissionController::handleReminderTick()
+{
+    // 실제 음성 안내 파이프라인(audio_manager)이 아직 없어 지금은 기록만
+    // 남긴다 — 파이프라인이 생기면 여기서 방송 명령을 같이 보내면 된다.
+    if (m_snapshot.state != MissionState::Arrived || m_snapshot.payloadRemoved) {
+        m_reminderTimer->stop();
+        return;
+    }
+    addHistory(QStringLiteral("PAYLOAD_REMOVAL_REMINDER"), QString(), m_snapshot.destinationName, m_snapshot.missionId, m_snapshot.queueId,
+               QStringLiteral("REMINDER"), QStringLiteral("AED 반출 안내 — 아직 반출되지 않음"));
+    emit historyChanged();
 }
 
 bool MissionController::resolveHomeWaypoint(WaypointDef &homeWaypoint, WaypointPose &homePose, QString &errorMessage) const
@@ -630,8 +777,12 @@ void MissionController::finishMission(MissionState finalState,
     m_snapshot.failureReason = reason;
     // returningHome은 바로 아래서 false로 리셋해야 다음 대기 호출이 안 막히니,
     // 실시간 관제 스텝퍼가 "복귀 단계까지는 갔었는지" 나중에 구분할 수 있게
-    // 그 순간의 값을 arrivedBeforeEnd에 남겨둔다.
-    m_snapshot.arrivedBeforeEnd = m_snapshot.returningHome || finalState == MissionState::Completed;
+    // 그 순간의 값을 arrivedBeforeEnd에 남겨둔다. Arrived(도착 후 반출 대기
+    // 중 resolveHomeWaypoint 실패 등으로 바로 실패 처리되는 경우)도 "도착은
+    // 했었다"이므로 포함한다.
+    m_snapshot.arrivedBeforeEnd = m_snapshot.returningHome || m_snapshot.state == MissionState::Arrived
+        || finalState == MissionState::Completed;
+    stopArrivalTimers();
     setMissionState(finalState);
     m_pendingAction = PendingAction::None;
     m_pendingDivertQueueId.clear();

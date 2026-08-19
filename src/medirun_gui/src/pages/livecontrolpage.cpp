@@ -86,10 +86,8 @@ const QVector<StepInfo> kMissionSteps = {
     {QStringLiteral("복귀·도킹")},
 };
 
-// MissionState는 "출동중/복귀중"만 구분하고 "현장 도착"·"AED 반출"은 별도 상태로
-// 추적하지 않는다 (missiontypes.h 참고) — returningHome으로 전환되는 순간을
-// "도착+반출 완료"로 근사한다. 정확한 하위 상태가 필요해지면 MissionState를
-// 확장해야 한다.
+// MissionState::Arrived + MissionSnapshot::payloadRemoved로 "현장 도착"과
+// "AED 반출"을 구분해서 보여준다(missiontypes.h 참고).
 QVector<QString> computeStepStates(const MissionSnapshot &snapshot)
 {
     QVector<QString> states(kMissionSteps.size(), QStringLiteral("pending"));
@@ -98,13 +96,17 @@ QVector<QString> computeStepStates(const MissionSnapshot &snapshot)
     }
     states[0] = QStringLiteral("done");
 
-    const bool arrivedOrLater = snapshot.returningHome || snapshot.state == MissionState::Completed;
+    const bool arrivedOrLater = snapshot.state == MissionState::Arrived || snapshot.returningHome
+        || snapshot.state == MissionState::Completed;
     const bool dispatching = snapshot.state == MissionState::Starting || snapshot.state == MissionState::Navigating
         || snapshot.state == MissionState::Diverting;
+    const bool payloadDoneOrLater = snapshot.payloadRemoved || snapshot.returningHome || snapshot.state == MissionState::Completed;
 
     states[1] = arrivedOrLater ? QStringLiteral("done") : (dispatching ? QStringLiteral("active") : QStringLiteral("pending"));
     states[2] = arrivedOrLater ? QStringLiteral("done") : QStringLiteral("pending");
-    states[3] = arrivedOrLater ? QStringLiteral("done") : QStringLiteral("pending");
+    states[3] = payloadDoneOrLater
+        ? QStringLiteral("done")
+        : (snapshot.state == MissionState::Arrived ? QStringLiteral("active") : QStringLiteral("pending"));
 
     if (snapshot.state == MissionState::Completed) {
         states[4] = QStringLiteral("done");
