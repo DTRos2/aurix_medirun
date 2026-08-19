@@ -67,10 +67,18 @@ def generate_launch_description():
         get_package_share_directory("turtlebot3_navigation2"), "rviz", "tb3_navigation2.rviz"
     )
 
+    # name= 파라미터를 일부러 안 준다: launch_ros가 이걸 프로세스 전체에
+    # `--ros-args -r __node:=medirun_gui` 전역 리매핑으로 주입하는데, 이 앱은
+    # 내부적으로 rclcpp::Node를 여러 개(medirun_gui_nav_bridge,
+    # medirun_gui_mission_bridge, medirun_gui_battery_monitor 등) 만들고
+    # 각각 이미 고유 이름을 하드코딩해뒀다. 이 전역 리매핑이 그 이름들 중
+    # 일부를 "medirun_gui"로 덮어써서, ros2 node list에 같은 이름의 노드가
+    # 여러 개 잡히고(WARNING) 서비스/액션 호출이 어느 노드로 갈지 불확정해져
+    # Nav2 연결 상태가 계속 "재연결중"으로 보이는 원인이 됐다(2026-08-19 확인,
+    # demo_nodes_cpp talker로 재현: __node 리매핑이 하드코딩된 이름도 덮어씀).
     gui_node = Node(
         package="medirun_gui",
         executable="medirun_gui_app",
-        name="medirun_gui",
         output="screen",
         condition=IfCondition(use_gui),
         additional_env={
