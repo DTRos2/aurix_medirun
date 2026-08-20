@@ -3,6 +3,8 @@
 #include "../ros/navigationservice.h"
 #include "missionrosinterface.h"
 #include "missionstorageservice.h"
+#include "operationsoverviewservice.h"
+#include "robotservice.h"
 #include "waypointrepository.h"
 
 #include <QDateTime>
@@ -101,6 +103,8 @@ MissionController::MissionController(const AppSession &session,
                                      WaypointRepository *waypointRepository,
                                      MissionStorageService *storageService,
                                      MissionRosInterface *rosInterface,
+                                     RobotService *robotService,
+                                     OperationsOverviewService *overviewService,
                                      QObject *parent)
     : QObject(parent)
     , m_session(session)
@@ -108,6 +112,8 @@ MissionController::MissionController(const AppSession &session,
     , m_waypointRepository(waypointRepository)
     , m_storageService(storageService)
     , m_rosInterface(rosInterface)
+    , m_robotService(robotService)
+    , m_overviewService(overviewService)
 {
     m_storageService->setSessionContext(m_session);
     m_queueItems = m_storageService->loadQueue();
@@ -745,7 +751,11 @@ void MissionController::startMissionForQueue(const QString &queueId, bool divert
     emit missionChanged();
     log(QStringLiteral("NAV2"),
         QStringLiteral("goal send mission_id=%1 queue_id=%2 waypoint_id=%3").arg(item.missionId, item.queueId, item.waypointId));
-    m_navigationService->navigateToPose(item.pose.positionX, item.pose.positionY, item.pose.yawRadians, item.pose.frameId);
+    QVector<NavPose> poses;
+    if (!trajectoryPosesForButton(item.waypointId, poses)) {
+        poses = {NavPose{item.pose.positionX, item.pose.positionY, item.pose.yawRadians}};
+    }
+    dispatchNavigation(poses, item.pose.frameId, item.waypointName);
 
     // 문서 02 §7.1 음성 안내 #3(SR-F-005) "임무 시작" — 호출을 받아 실제로
     // 주행을 시작하는 순간 1회 안내한다. beginArrivedWait()의 "AED가
@@ -813,7 +823,7 @@ bool MissionController::beginReturnHomeFlow(const QString &reason)
         setMissionState(MissionState::ReturningHome);
         emit historyChanged();
         emit missionChanged();
-        m_navigationService->navigateToPose(homePose.positionX, homePose.positionY, homePose.yawRadians, homePose.frameId);
+        dispatchReturnHomeNavigation(homePose, homeWaypoint.label);
         return true;
     }
 
@@ -848,7 +858,7 @@ bool MissionController::dispatchPendingReturnHome()
     m_snapshot.nextWaypointName = homeWaypoint.label;
     m_snapshot.returningHome = true;
     setMissionState(MissionState::ReturningHome);
-    m_navigationService->navigateToPose(homePose.positionX, homePose.positionY, homePose.yawRadians, homePose.frameId);
+    dispatchReturnHomeNavigation(homePose, homeWaypoint.label);
     return true;
 }
 
@@ -881,8 +891,15 @@ void MissionController::beginArrivedWait()
         return;
     }
 
+    // 이 미션을 유발한 버튼의 trajectory도 이 시점(Wi-Fi가 아직 살아있을 때)에
+    // 통째로 같이 실어 보낸다 — Pi가 나중에 복귀할 때 DB를 다시 조회할 필요 없이
+    // 로컬에 이미 가진 이 경로+HOME으로 Wi-Fi 단절 중에도 주행을 완주할 수 있다.
+    QVector<NavPose> trajectoryPoses;
+    if (const MissionQueueItem *item = activeQueueItem()) {
+        trajectoryPosesForButton(item->waypointId, trajectoryPoses);
+    }
     m_rosInterface->publishArrivalNotice(true, m_snapshot.missionId, m_snapshot.queueId, homePose.positionX,
-                                         homePose.positionY, homePose.yawRadians, homePose.frameId);
+                                         homePose.positionY, homePose.yawRadians, homePose.frameId, trajectoryPoses);
 }
 
 void MissionController::handleDockResult(bool success, const QString &detail)
@@ -949,6 +966,62 @@ void MissionController::handlePiReturnStatus(const QString &phase, const QString
         return;
     }
     // "armed"는 화면에 딱히 반영할 게 없어 로그만 남고 지나간다.
+}
+
+bool MissionController::trajectoryPosesForButton(const QString &buttonCode, QVector<NavPose> &poses) const
+{
+    if (!m_robotService || !m_overviewService || buttonCode.isEmpty()) {
+        return false;
+    }
+    // trajectory는 waypoint_set(robot_id, type='trajectory')에 저장돼 로봇마다
+    // 갈리므로, 운영현황 자동기록과 동일하게 로봇이 정확히 1대 등록돼 있을 때만
+    // 조회한다(waypointmanagementpage.cpp::handleSaveTrajectory와 동일 패턴).
+    const QVector<RobotRecord> robots = m_robotService->listRobots(false);
+    if (robots.size() != 1) {
+        return false;
+    }
+
+    QString trajectoryName;
+    QVector<NavGoalPoint> dbPoses;
+    QString errorMessage;
+    if (!m_overviewService->loadTrajectoryPosesForButton(robots.first().id, buttonCode, trajectoryName, dbPoses, errorMessage)) {
+        log(QStringLiteral("MISSION"), QStringLiteral("경로 조회 실패(버튼=%1): %2").arg(buttonCode, errorMessage));
+        return false;
+    }
+    if (dbPoses.isEmpty()) {
+        return false;
+    }
+
+    poses.clear();
+    poses.reserve(dbPoses.size());
+    for (const NavGoalPoint &point : dbPoses) {
+        poses.append(NavPose{point.x, point.y, point.yaw});
+    }
+    log(QStringLiteral("MISSION"),
+        QStringLiteral("버튼 %1 → 경로 '%2'(%3점) 사용").arg(buttonCode, trajectoryName).arg(poses.size()));
+    return true;
+}
+
+void MissionController::dispatchNavigation(const QVector<NavPose> &poses, const QString &frameId, const QString &label)
+{
+    if (poses.isEmpty()) {
+        return;
+    }
+    if (poses.size() == 1) {
+        m_navigationService->navigateToPose(poses.first().x, poses.first().y, poses.first().yaw, frameId, label);
+    } else {
+        m_navigationService->navigateThroughPoses(poses, frameId, label);
+    }
+}
+
+void MissionController::dispatchReturnHomeNavigation(const WaypointPose &homePose, const QString &label)
+{
+    QVector<NavPose> poses;
+    if (const MissionQueueItem *item = activeQueueItem()) {
+        trajectoryPosesForButton(item->waypointId, poses);
+    }
+    poses.append(NavPose{homePose.positionX, homePose.positionY, homePose.yawRadians});
+    dispatchNavigation(poses, homePose.frameId, label);
 }
 
 bool MissionController::resolveHomeWaypoint(WaypointDef &homeWaypoint, WaypointPose &homePose, QString &errorMessage) const

@@ -3,6 +3,7 @@
 
 #include "../app/appsession.h"
 #include "../models/missiontypes.h"
+#include "../ros/navigationservice.h"
 
 #include <QObject>
 #include <QStringList>
@@ -12,6 +13,8 @@ class NavigationService;
 class WaypointRepository;
 class MissionStorageService;
 class MissionRosInterface;
+class RobotService;
+class OperationsOverviewService;
 
 class MissionController : public QObject
 {
@@ -23,6 +26,8 @@ public:
                                WaypointRepository *waypointRepository,
                                MissionStorageService *storageService,
                                MissionRosInterface *rosInterface,
+                               RobotService *robotService,
+                               OperationsOverviewService *overviewService,
                                QObject *parent = nullptr);
 
     MissionSnapshot missionSnapshot() const;
@@ -131,6 +136,19 @@ private:
     // Home 웨이포인트를 홈 복귀 목표로 돌려준다. 도착 후 항상 ArUco
     // 전면주차(Parking)로 이어간다.
     bool resolveHomeWaypoint(WaypointDef &homeWaypoint, WaypointPose &homePose, QString &errorMessage) const;
+    // buttonCode에 연결된 trajectory가 DB에 있으면 그 순서 그대로 poses를 채워
+    // true를 돌려준다(단, 로봇이 정확히 1대 등록돼 있어야 함 — 그 외엔 폴백).
+    // 없거나 조회 실패하면 poses를 안 건드리고 false — 호출자는 이때 기존 단일
+    // pose로 주행해야 한다.
+    bool trajectoryPosesForButton(const QString &buttonCode, QVector<NavPose> &poses) const;
+    // poses.size()==1이면 navigateToPose, 그 이상이면 navigateThroughPoses로
+    // 자동 분기하는 출동/복귀 주행 공통 진입점.
+    void dispatchNavigation(const QVector<NavPose> &poses, const QString &frameId, const QString &label);
+    // 복귀 시 이 미션을 유발한 버튼의 trajectory(저장된 순서 그대로) 뒤에
+    // HOME을 이어붙여 한 번에 navigateThroughPoses로 보낸다. activeQueueItem()로
+    // 트리거 버튼을 못 찾거나 연결된 trajectory가 없으면 HOME 단일 지점으로
+    // 폴백한다(기존 동작과 동일).
+    void dispatchReturnHomeNavigation(const WaypointPose &homePose, const QString &label);
     void finishMission(MissionState finalState, const QString &reason, const QString &historyType, const QString &historyResult,
                        bool requiresQueueConfirmation = false);
     void resetToIdleSnapshot();
@@ -160,6 +178,8 @@ private:
     WaypointRepository *m_waypointRepository {nullptr};
     MissionStorageService *m_storageService {nullptr};
     MissionRosInterface *m_rosInterface {nullptr};
+    RobotService *m_robotService {nullptr};
+    OperationsOverviewService *m_overviewService {nullptr};
     QVector<MissionQueueItem> m_queueItems;
     QVector<MissionHistoryEntry> m_historyEntries;
     MissionSnapshot m_snapshot;

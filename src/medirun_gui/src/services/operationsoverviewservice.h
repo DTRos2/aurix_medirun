@@ -209,6 +209,16 @@ public:
     virtual bool findTrajectoriesReferencing(
         int robotId, const QString &table, int dbId, QStringList &trajectoryNames, QString &errorMessage) = 0;
 
+    // call_button.code(예: "BTN_01")를 스텝으로 포함하는 trajectory를 찾아
+    // (findTrajectoriesReferencing과 동일한 참조 방식, 복수면 첫 번째만 사용) 그
+    // 순서 그대로 x/y/yaw를 resolve해서 돌려준다 — 미션 출동/복귀 주행
+    // (navigate_through_poses)에 바로 먹일 수 있는 형태. 이 코드의 버튼이 없거나
+    // 연결된 trajectory가 없으면 poses를 비운 채 true를 반환한다(호출자가 기존
+    // 단일 pose 주행으로 폴백).
+    virtual bool loadTrajectoryPosesForButton(
+        int robotId, const QString &buttonCode, QString &trajectoryName, QVector<NavGoalPoint> &poses,
+        QString &errorMessage) = 0;
+
     // driving_session 시작. 현재 진행 중인(status='running') 가장 최근
     // robot_session을 찾아 연결하고, 없으면 mode='manual'인 녹화 전용 세션을
     // 새로 만든다. robotSessionId로 실제 연결된 robot_session.id를 돌려준다

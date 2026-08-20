@@ -66,6 +66,9 @@ public:
     bool deregisterTrajectoryEntry(int robotId, const QString &name, QString &errorMessage) override;
     bool findTrajectoriesReferencing(
         int robotId, const QString &table, int dbId, QStringList &trajectoryNames, QString &errorMessage) override;
+    bool loadTrajectoryPosesForButton(
+        int robotId, const QString &buttonCode, QString &trajectoryName, QVector<NavGoalPoint> &poses,
+        QString &errorMessage) override;
 
     bool startDrivingSession(int robotId, int &drivingSessionId, int &robotSessionId, QString &errorMessage) override;
     bool appendDrivingRecord(
