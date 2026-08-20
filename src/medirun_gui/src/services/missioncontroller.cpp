@@ -932,13 +932,18 @@ void MissionController::handleDockResult(bool success, const QString &detail)
 }
 
 void MissionController::handlePiReturnStatus(const QString &phase, const QString &missionId, const QString &queueId,
-                                             int waypointIndex, int posesTotal)
+                                             int waypointIndex, int posesTotal, bool replayed)
 {
     Q_UNUSED(posesTotal)
     // Pi가 지금 진행 중인 우리 미션 얘기를 하는 게 맞는지 확인 — 다른(예:
     // 이미 끝난) 미션의 지연 도착 메시지에 반응하지 않게.
     if (missionId != m_snapshot.missionId || queueId != m_snapshot.queueId) {
         return;
+    }
+    if (replayed) {
+        // Wi-Fi 단절 중 Pi 로컬에 버퍼링돼 있다가 재연결 후 뒤늦게 온 이벤트 —
+        // 처리 로직은 아래와 동일(상태 가드로 재실행에 안전), 로그만 표시.
+        log(QStringLiteral("MISSION"), QStringLiteral("Pi 재전송 이벤트 수신 phase=%1").arg(phase));
     }
 
     if (phase == QStringLiteral("payload_removed")) {

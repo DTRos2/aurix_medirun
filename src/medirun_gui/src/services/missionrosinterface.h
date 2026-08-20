@@ -70,8 +70,12 @@ signals:
     // MissionController는 이걸 구독해서 화면 상태만 따라가고 명령은 안 내린다.
     // waypointIndex/posesTotal: Pi가 navigate_through_poses로 trajectory+HOME을
     // 타는 중 몇 번째 지점을 지났는지(0-based 통과 개수) — 없으면 둘 다 -1.
+    // replayed: PC가 오프라인이던 동안 Pi 로컬에 버퍼링돼 있다가 재연결 후
+    // 뒤늦게 재전송된 이벤트면 true(arrival_return_manager.py의
+    // _replay_pending_events 참고) — 처리 로직은 실시간과 동일(상태 가드
+    // 덕분에 재실행해도 안전), 로그 표시용으로만 쓴다.
     void piReturnStatusReceived(const QString &phase, const QString &missionId, const QString &queueId,
-                                int waypointIndex, int posesTotal);
+                                int waypointIndex, int posesTotal, bool replayed);
     void logEvent(const QString &level, const QString &message);
     // 같은 로봇에 medirun_gui 창이 여러 개 떠 있을 때, 이 프로세스가 실제로
     // 로봇에 명령을 내릴 수 있는 "조종 권한"을 쥐고 있는지. /medirun/gui/control_heartbeat

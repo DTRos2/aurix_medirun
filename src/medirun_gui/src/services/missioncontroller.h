@@ -92,7 +92,7 @@ private slots:
     // 상태만 따라가고 여기서 Nav2 goal을 다시 보내지는 않는다(그건 Pi가
     // 로컬로 이미 처리함). armed/payload_removed/returning/return_failed.
     void handlePiReturnStatus(const QString &phase, const QString &missionId, const QString &queueId,
-                              int waypointIndex, int posesTotal);
+                              int waypointIndex, int posesTotal, bool replayed);
     void handleControlAuthorityChanged(bool isController);
     // 조종 권한이 없는 창이 리더 창의 MissionSnapshot 방송을 받아 자신의
     // m_snapshot을 그대로 덮어쓴다(읽기 전용 미러) — publishSnapshotIfController 참고.

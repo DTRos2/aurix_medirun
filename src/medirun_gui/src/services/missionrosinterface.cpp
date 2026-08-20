@@ -183,7 +183,8 @@ public:
                                                       object.value(QStringLiteral("mission_id")).toString(),
                                                       object.value(QStringLiteral("queue_id")).toString(),
                                                       object.value(QStringLiteral("waypoint_index")).toInt(-1),
-                                                      object.value(QStringLiteral("poses_total")).toInt(-1));
+                                                      object.value(QStringLiteral("poses_total")).toInt(-1),
+                                                      object.value(QStringLiteral("replayed")).toBool(false));
             });
 
         m_missionSnapshotPub = create_publisher<std_msgs::msg::String>("/medirun/gui/mission_snapshot", 10);

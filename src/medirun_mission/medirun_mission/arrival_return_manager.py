@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import math
 import time
+from pathlib import Path
 from typing import Optional
 
 import rclpy
@@ -24,6 +26,11 @@ RETURN_DELAY_AFTER_PAYLOAD_REMOVED_SEC = 15.0
 REMINDER_INTERVAL_SEC = 60.0
 FORCED_RETURN_TIMEOUT_SEC = 180.0
 PAYLOAD_REMOVED_CONFIRM_SEC = 0.5
+
+# pi_return_status를 아무도(PC) 못 듣고 있을 때 유실되지 않도록 임시로
+# 남겨두는 로컬 버퍼 — event_logger.py의 JSONL append 관례를 차용했다.
+# PC가 다시 붙으면(구독자 수 0->양수 전이) 순서대로 재전송하고 비운다.
+PENDING_EVENTS_PATH = Path.home() / ".medirun_pi" / "pending_mission_events.jsonl"
 
 
 def _yaw_to_quaternion(yaw: float):
@@ -52,6 +59,9 @@ class ArrivalReturnManager(Node):
         self._next_reminder_at: Optional[float] = None
 
         self._goal_handle = None
+        # 직전 tick에서 본 pi_return_status 구독자 수 — 0에서 양수로 바뀌는
+        # 순간(PC 재연결)을 잡아내는 용도.
+        self._last_subscriber_count = 0
 
         self._audio_pub = self.create_publisher(AudioCommand, "/audio/command", 10)
         self._dock_pub = self.create_publisher(Bool, "/medirun/vision/dock_request", 10)
@@ -139,6 +149,10 @@ class ArrivalReturnManager(Node):
 
     # ---- 타이머 ----
     def _tick(self) -> None:
+        # armed 여부와 무관하게 매 tick 확인 — 미션이 이미 끝난 뒤에도 PC가
+        # 계속 오프라인이었다면 그 마지막 이벤트들이 버퍼에 남아있을 수 있다.
+        self._check_reconnect_and_replay()
+
         if not self._armed:
             return
         now = time.monotonic()
@@ -262,9 +276,61 @@ class ArrivalReturnManager(Node):
         if waypoint_index >= 0:
             payload["waypoint_index"] = waypoint_index
             payload["poses_total"] = poses_total
+        # PC가 지금 듣고 있는지와 무관하게 먼저 로컬에 남긴다 — 구독자가 없어
+        # DDS가 그냥 버리는 경우(Wi-Fi 단절)에도 유실되지 않게 하기 위함.
+        # 재연결되면 _check_reconnect_and_replay()가 순서대로 다시 보낸다.
+        self._append_pending_event(payload)
         msg = String()
         msg.data = dump_json_message(payload)
         self._status_pub.publish(msg)
+
+    def _append_pending_event(self, payload: dict) -> None:
+        try:
+            PENDING_EVENTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with PENDING_EVENTS_PATH.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(payload, ensure_ascii=True) + "\n")
+        except OSError as exc:
+            self.get_logger().error("진행상황 로컬 버퍼 기록 실패: %s" % exc)
+
+    def _check_reconnect_and_replay(self) -> None:
+        count = self._status_pub.get_subscription_count()
+        reconnected = count > 0 and self._last_subscriber_count == 0
+        self._last_subscriber_count = count
+        if not reconnected:
+            return
+        self._replay_pending_events()
+
+    def _replay_pending_events(self) -> None:
+        if not PENDING_EVENTS_PATH.exists():
+            return
+        try:
+            lines = PENDING_EVENTS_PATH.read_text(encoding="utf-8").splitlines()
+        except OSError as exc:
+            self.get_logger().error("진행상황 로컬 버퍼 읽기 실패: %s" % exc)
+            return
+        if not lines:
+            return
+
+        self.get_logger().info("PC 재연결 감지 — 버퍼된 진행상황 %d건 재전송합니다." % len(lines))
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                payload = json.loads(line)
+            except ValueError:
+                continue
+            payload["replayed"] = True
+            msg = String()
+            msg.data = dump_json_message(payload)
+            self._status_pub.publish(msg)
+
+        # 최선노력(best-effort) 재전송이다 — PC가 실제로 받았다는 ack는 없지만,
+        # 재전송 자체가 구독자가 막 나타난 시점에 이뤄지므로 통상적으로는
+        # 안전하다. 다시 쌓이지 않도록 비운다(다음 실패는 새로 버퍼링됨).
+        try:
+            PENDING_EVENTS_PATH.unlink()
+        except OSError:
+            pass
 
 
 def main() -> None:
