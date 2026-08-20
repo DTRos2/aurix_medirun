@@ -18,11 +18,11 @@
 // - CAL:<0-255>
 //
 // 핀맵
-// - 버튼: A1, A2, A3 (INPUT_PULLUP)
+// - 버튼: A1, A2, A3 (INPUT_PULLUP) — 현재 비활성 (A1을 홀센서로 사용 중)
 // - 전방 초음파: D2 TRIG, D3 ECHO
 // - 후방 초음파: D5 TRIG, D6 ECHO
 // - RGB LED: D9, D10, D11
-// - 홀센서: A0
+// - 홀센서: A1
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -38,7 +38,8 @@ enum LedMode {
   MODE_CAL
 };
 
-// SOS 버튼
+// SOS 버튼 (현재 비활성 — A1을 홀센서로 사용 중)
+/*
 const uint8_t BUTTON_COUNT = 3;
 const uint8_t BUTTON_PINS[BUTTON_COUNT] = {A1, A2, A3};
 const char *BUTTON_IDS[BUTTON_COUNT] = {"BTN_01", "BTN_02", "BTN_03"};
@@ -46,6 +47,7 @@ const unsigned long BUTTON_DEBOUNCE_MS = 50;
 bool buttonRawState[BUTTON_COUNT];
 bool buttonStableState[BUTTON_COUNT];
 unsigned long buttonLastChangeAt[BUTTON_COUNT];
+*/
 
 // 초음파
 const uint8_t FRONT_TRIG_PIN = 2;
@@ -93,7 +95,7 @@ uint8_t dockedBlinkCount = 0;
 bool dockedSequenceDone = false;
 
 // 홀센서
-const uint8_t HALL_PIN = A0;
+const uint8_t HALL_PIN = A1;
 const int MAGNET_RAW_MAX = 506;
 const unsigned long HALL_DEBOUNCE_MS = 500;
 // HALL:은 원래 상태가 바뀔 때만 보내는 edge-triggered 값이었는데, 그러면 어쩌다
@@ -171,6 +173,21 @@ int readSmoothedHallValue() {
 void reportHallState(bool magnetPresent) {
   Serial.print("HALL:");
   Serial.println(magnetPresent ? 1 : 0);
+}
+
+// 컷오프 재조정용 임시 디버그: 실제 analogRead 원값을 그대로 출력한다.
+// hall_module.ino의 printRawDebug()와 동일한 목적 — 값 확인이 끝나면 지워도 된다.
+unsigned long lastHallRawPrintAt = 0;
+const unsigned long HALL_RAW_PRINT_INTERVAL_MS = 200;
+
+void printHallRawDebug(int value) {
+  unsigned long now = millis();
+  if (now - lastHallRawPrintAt < HALL_RAW_PRINT_INTERVAL_MS) {
+    return;
+  }
+  lastHallRawPrintAt = now;
+  Serial.print("RAW:");
+  Serial.println(value);
 }
 
 void setColor(uint8_t red, uint8_t green) {
@@ -341,6 +358,7 @@ void updateLed() {
   }
 }
 
+/*
 void updateSosButtons() {
   unsigned long now = millis();
 
@@ -361,6 +379,7 @@ void updateSosButtons() {
     }
   }
 }
+*/
 
 void updateUltrasonic() {
   unsigned long now = millis();
@@ -392,6 +411,7 @@ void updateUltrasonic() {
 
 void updateHall() {
   int value = readSmoothedHallValue();
+  printHallRawDebug(value);
   unsigned long now = millis();
   bool reading = isMagnetPresent(value);
 
@@ -413,12 +433,14 @@ void updateHall() {
 void setup() {
   Serial.begin(BAUD_RATE);
 
+  /*
   for (uint8_t i = 0; i < BUTTON_COUNT; i++) {
     pinMode(BUTTON_PINS[i], INPUT_PULLUP);
     buttonRawState[i] = digitalRead(BUTTON_PINS[i]);
     buttonStableState[i] = buttonRawState[i];
     buttonLastChangeAt[i] = millis();
   }
+  */
 
   pinMode(FRONT_TRIG_PIN, OUTPUT);
   pinMode(FRONT_ECHO_PIN, INPUT);
@@ -430,6 +452,15 @@ void setup() {
   pinMode(RED_PIN, OUTPUT);
   pinMode(GREEN_PIN, OUTPUT);
   pinMode(BLUE_PIN, OUTPUT);
+
+  // 센서 3핀(AO)이 빠지면 A0가 플로팅돼 직전 값(507~511) 근처에 눌러앉아 컷오프(506)
+  // 부근을 오락가락하며 "끊김"이 "자석 감지"로 오판되는 문제가 있었다. 내부 풀업을
+  // 걸어두면 연결 시엔 SS49E의 낮은 출력 임피던스가 지배해 정상값 그대로 나오고,
+  // 끊기면 풀업이 지배해 raw 값이 VCC 근처(약 1023)로 밀려 506 컷오프와 확실히
+  // 분리된다. 플래시 후 무자석 기준선이 507~511에서 크게 안 벗어나는지 재확인할 것
+  // (hall_module.ino와 달리 이 파일엔 RAW: 디버그 출력이 없으니 확인하려면 임시로
+  // updateHall()에 추가할 것).
+  pinMode(HALL_PIN, INPUT_PULLUP);
 
   hallRawState = isMagnetPresent(readSmoothedHallValue());
   hallStableState = hallRawState;
@@ -445,7 +476,7 @@ void setup() {
 void loop() {
   readSerialCommand();
   updateLed();
-  updateSosButtons();
+  // updateSosButtons();
   updateUltrasonic();
   updateHall();
 }
