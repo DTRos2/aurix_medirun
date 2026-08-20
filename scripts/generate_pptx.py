@@ -402,6 +402,7 @@ def build_slides(root: Path) -> list[SlideSpec]:
     screenshots = root / "docs" / "screenshots" / "gui"
     assets = root / "assets"
     hardware = assets / "arduino_module"
+    kakao = root / "ppt"
 
     return [
         SlideSpec(
@@ -677,6 +678,71 @@ def build_slides(root: Path) -> list[SlideSpec]:
                         "다음 발표 포인트: 실제 브링업 데모 · 버튼 호출 시연 · 미션 관제와 라이브 모니터 연동", 1220, "9D174D"),
             ],
             pictures=[Picture(assets / "aurix_logo.png", inches(9.5), inches(5.55), inches(1.5), inches(0.68), None)],
+        ),
+        SlideSpec(
+            title="Appendix A1 · Call Pipeline",
+            subtitle="BTN_02 예시로 보는 호출 → 미션 생성 5단계",
+            bg_color="F8FAFC",
+            header_accent="0EA5E9",
+            footer_text="ARCHITECTURE APPENDIX",
+            pictures=[Picture(kakao / "KakaoTalk_20260818_132421137.png", inches(0.95), inches(2.05), inches(10.2), inches(3.75), "D7DEE8")],
+            text_boxes=[
+                TextBox(inches(0.95), inches(5.88), inches(10.2), inches(0.4),
+                        "센서 이벤트 → mqtt_bridge → dispatcher 검증 → MissionController가 Nav2 goal 단일 발행 → PostgreSQL 기록",
+                        1180, "334155"),
+            ],
+        ),
+        SlideSpec(
+            title="Appendix A2 · Hardware Deployment Map",
+            subtitle="ESP32 · 운영 PC · TurtleBot3/Pi가 실제로 연결되는 배치",
+            bg_color="F8FAFC",
+            header_accent="6366F1",
+            footer_text="ARCHITECTURE APPENDIX",
+            pictures=[Picture(kakao / "KakaoTalk_20260818_132421137_01.png", inches(0.95), inches(2.05), inches(10.2), inches(3.75), "D7DEE8")],
+            text_boxes=[
+                TextBox(inches(0.95), inches(5.88), inches(10.2), inches(0.4),
+                        "실선은 BTN_02→MQTT→dispatcher→GUI→Nav2→TurtleBot3→DB 기록 경로, 점선은 반출 감지·자동 복귀·ArUco 도킹 확장 경로",
+                        1180, "334155"),
+            ],
+        ),
+        SlideSpec(
+            title="Appendix A3 · GUI Service Layers",
+            subtitle="ROS 2 · DB 데이터가 Qt 서비스를 거쳐 화면과 기록으로 나뉘는 구조",
+            bg_color="F8FAFC",
+            header_accent="059669",
+            footer_text="ARCHITECTURE APPENDIX",
+            pictures=[Picture(kakao / "KakaoTalk_20260818_132421137_02.png", inches(0.95), inches(2.05), inches(10.2), inches(3.75), "D7DEE8")],
+            text_boxes=[
+                TextBox(inches(0.95), inches(5.88), inches(10.2), inches(0.4),
+                        "실시간 상태는 ROS 2 토픽/액션, 과거 이력·감사 기록은 PostgreSQL — 운영 명령은 항상 사용자·시각·결과와 함께 기록",
+                        1180, "334155"),
+            ],
+        ),
+        SlideSpec(
+            title="Appendix A4 · Nav2 Navigation Loop",
+            subtitle="지도·센서 입력부터 로봇 실행 결과까지의 핵심 폐루프",
+            bg_color="F8FAFC",
+            header_accent="D97706",
+            footer_text="ARCHITECTURE APPENDIX",
+            pictures=[Picture(kakao / "KakaoTalk_20260818_132421137_03.png", inches(0.95), inches(2.05), inches(10.2), inches(3.75), "D7DEE8")],
+            text_boxes=[
+                TextBox(inches(0.95), inches(5.88), inches(10.2), inches(0.4),
+                        "AMCL 위치 추정 + Planner/Controller Server가 중복 없는 단일 action으로 로봇을 움직이고 결과를 GUI에 반영",
+                        1180, "334155"),
+            ],
+        ),
+        SlideSpec(
+            title="Appendix A5 · Sensor & Safety Pipeline",
+            subtitle="초음파·홀센서·LED 입력이 안전 정지·자동 복귀로 이어지는 흐름",
+            bg_color="F8FAFC",
+            header_accent="DC2626",
+            footer_text="ARCHITECTURE APPENDIX",
+            pictures=[Picture(kakao / "KakaoTalk_20260818_132421137_04.png", inches(0.95), inches(2.05), inches(10.2), inches(3.75), "D7DEE8")],
+            text_boxes=[
+                TextBox(inches(0.95), inches(5.88), inches(10.2), inches(0.4),
+                        "전방 35cm·후방 25cm 기준 위험 시 즉시 정지, AED 반출 후 자동 복귀·도킹까지 이어지는 확장 경로(점선) 포함",
+                        1180, "334155"),
+            ],
         ),
     ]
 
