@@ -463,7 +463,24 @@ public:
             m_bridge->statusChanged(QStringLiteral("취소 요청됨..."));
             return;
         }
-        m_bridge->logEvent(QStringLiteral("INFO"), QStringLiteral("취소할 진행 중인 주행이 없습니다."));
+
+        // 이 프로세스가 추적 중인 goal 핸들은 없지만, GUI가 미션 도중에
+        // 재시작됐다면 이전 세션이 보낸 goal은 액션 서버(Nav2) 쪽에서 클라이언트
+        // 생사와 무관하게 계속 실행 중일 수 있다 — 새로 뜬 이 프로세스는 그
+        // goal을 전혀 모르니 로컬 핸들 기반 취소로는 못 멈춘다. 로컬 추적 유무와
+        // 상관없이 액션 서버에 남아있는 모든 goal을 취소 요청해 이런 orphan
+        // 상황도 확실히 멈추게 한다(추적 중인 게 진짜 없으면 Nav2가 그냥 무시).
+        m_navClient->async_cancel_all_goals();
+        m_followClient->async_cancel_all_goals();
+        m_bridge->logEvent(QStringLiteral("WARN"),
+                           QStringLiteral("이 세션이 추적 중인 주행은 없어, 혹시 남아있을 이전 목표를 전체 취소 요청했습니다."));
+        m_bridge->statusChanged(QStringLiteral("취소 요청됨..."));
+        // 이 세션은 orphan된 goal의 핸들이 없어 그 goal 자체의 result_callback을
+        // 받을 방법이 없다 — 그대로 두면 MissionController가 Cancelling 상태에서
+        // 영원히 CANCELED를 못 받아 멈춘다. 위에서 전체 취소를 요청한 것으로
+        // 갈음해 이 세션 기준으로는 바로 취소 완료 처리한다.
+        m_bridge->navigationResult(QStringLiteral("CANCELED"),
+                                   QStringLiteral("이전 세션의 미추적 목표 — 전체 취소 요청으로 갈음"));
     }
 
     void retryConnections()
