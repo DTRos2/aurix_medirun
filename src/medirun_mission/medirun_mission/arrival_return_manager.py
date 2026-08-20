@@ -7,7 +7,7 @@ from typing import Optional
 import rclpy
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped
-from nav2_msgs.action import NavigateToPose
+from nav2_msgs.action import NavigateThroughPoses, NavigateToPose
 from rclpy.action import ActionClient
 from rclpy.node import Node
 from robot_audio_interfaces.msg import AudioCommand
@@ -38,6 +38,10 @@ class ArrivalReturnManager(Node):
         self._mission_id = ""
         self._queue_id = ""
         self._home_pose: Optional[dict] = None
+        # 도착 통지에 같이 실려온, 이 미션을 유발한 버튼의 trajectory(저장된
+        # 순서 그대로의 {x,y,yaw} 리스트) — 비어있으면 기존처럼 HOME 단일
+        # 지점으로 복귀한다.
+        self._trajectory_poses: list = []
 
         self._payload_removed = False
         self._payload_loaded_last: Optional[bool] = None
@@ -53,6 +57,7 @@ class ArrivalReturnManager(Node):
         self._dock_pub = self.create_publisher(Bool, "/medirun/vision/dock_request", 10)
         self._status_pub = self.create_publisher(String, "/medirun/mission/pi_return_status", 10)
         self._nav_client = ActionClient(self, NavigateToPose, "navigate_to_pose")
+        self._through_poses_client = ActionClient(self, NavigateThroughPoses, "navigate_through_poses")
 
         self.create_subscription(String, "/medirun/mission/arrival_notice", self._handle_arrival_notice, 10)
         self.create_subscription(Bool, "/arduino/payload_loaded", self._handle_payload, 10)
@@ -74,6 +79,11 @@ class ArrivalReturnManager(Node):
         self._mission_id = payload.get("mission_id", "")
         self._queue_id = payload.get("queue_id", "")
         self._home_pose = home_pose
+        # PC가 이 시점(Wi-Fi가 아직 살아있을 때)에 미리 resolve해서 통째로
+        # 실어보낸 경로 — 나중에 복귀할 때 DB 재조회 없이 이걸 그대로 쓴다.
+        self._trajectory_poses = [
+            step for step in payload.get("trajectory", []) if "x" in step and "y" in step
+        ]
 
         self._payload_removed = False
         self._payload_loaded_last = None
@@ -163,19 +173,37 @@ class ArrivalReturnManager(Node):
             self._publish_status("return_failed")
             return
 
-        if not self._nav_client.wait_for_server(timeout_sec=2.0):
-            self.get_logger().error("navigate_to_pose 액션 서버를 찾을 수 없습니다.")
-            self._publish_status("return_failed")
-            return
-
-        goal_msg = NavigateToPose.Goal()
-        goal_msg.pose = self._make_pose_stamped(
+        frame_id = str(self._home_pose.get("frame_id", "map"))
+        home_stamped = self._make_pose_stamped(
             float(self._home_pose["x"]),
             float(self._home_pose["y"]),
             float(self._home_pose.get("yaw", 0.0)),
-            str(self._home_pose.get("frame_id", "map")),
+            frame_id,
         )
-        send_future = self._nav_client.send_goal_async(goal_msg)
+
+        if self._trajectory_poses:
+            # trajectory를 저장된 순서 그대로 탄 뒤 HOME을 이어붙여, 중간 정지
+            # 없이 한 번의 navigate_through_poses로 복귀한다.
+            if not self._through_poses_client.wait_for_server(timeout_sec=2.0):
+                self.get_logger().error("navigate_through_poses 액션 서버를 찾을 수 없습니다.")
+                self._publish_status("return_failed")
+                return
+            goal_msg = NavigateThroughPoses.Goal()
+            goal_msg.poses = [
+                self._make_pose_stamped(float(step["x"]), float(step["y"]), float(step.get("yaw", 0.0)), frame_id)
+                for step in self._trajectory_poses
+            ]
+            goal_msg.poses.append(home_stamped)
+            send_future = self._through_poses_client.send_goal_async(goal_msg)
+        else:
+            if not self._nav_client.wait_for_server(timeout_sec=2.0):
+                self.get_logger().error("navigate_to_pose 액션 서버를 찾을 수 없습니다.")
+                self._publish_status("return_failed")
+                return
+            goal_msg = NavigateToPose.Goal()
+            goal_msg.pose = home_stamped
+            send_future = self._nav_client.send_goal_async(goal_msg)
+
         send_future.add_done_callback(self._on_goal_response)
 
     def _make_pose_stamped(self, x: float, y: float, yaw: float, frame_id: str) -> PoseStamped:

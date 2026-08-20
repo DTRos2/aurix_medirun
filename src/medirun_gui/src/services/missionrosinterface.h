@@ -1,8 +1,11 @@
 #ifndef MISSIONROSINTERFACE_H
 #define MISSIONROSINTERFACE_H
 
+#include "../ros/navigationservice.h"
+
 #include <QObject>
 #include <QDateTime>
+#include <QVector>
 
 #include <memory>
 
@@ -35,13 +38,18 @@ public slots:
     // 취소/복귀시켜서 Pi가 나중에 또 복귀 goal을 쏘면 안 될 때 쓴다. 이 신호
     // 이후로는 반출 감지·15초/60초/180초 타이머·복귀 goal 전송까지 전부
     // Pi가 로컬로 처리해서 Wi-Fi가 끊겨도 이어간다(2026-08-19).
+    // trajectoryPoses: 이 미션을 유발한 버튼에 연결된 경로(저장된 순서 그대로,
+    // 비어있을 수 있음) — Pi가 복귀 시 이 경로를 먼저 타고 HOME으로 가도록
+    // Wi-Fi가 아직 살아있는 이 시점에 통째로 넘겨준다(미션 시작 시 필요한
+    // 웨이포인트를 Pi에 전부 전달해 이후 Wi-Fi가 끊겨도 주행 가능하게 하기 위함).
     void publishArrivalNotice(bool armed,
                               const QString &missionId,
                               const QString &queueId,
                               double homeX,
                               double homeY,
                               double homeYaw,
-                              const QString &frameId);
+                              const QString &frameId,
+                              const QVector<NavPose> &trajectoryPoses = {});
     // 조종 권한을 가진 창만 호출한다 — 다른(읽기 전용) 창들이 미션 진행
     // 상황(호출 접수/출동 중/현장 도착 등 스테퍼)을 실시간으로 따라 볼 수
     // 있도록 MissionSnapshot을 JSON으로 방송한다.

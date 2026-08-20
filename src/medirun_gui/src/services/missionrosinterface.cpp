@@ -6,6 +6,7 @@
 #include <std_msgs/msg/string.hpp>
 #include <robot_audio_interfaces/msg/audio_command.hpp>
 
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaType>
@@ -70,7 +71,8 @@ std::string makeArrivalNoticeJson(bool armed,
                                   double homeX,
                                   double homeY,
                                   double homeYaw,
-                                  const QString &frameId)
+                                  const QString &frameId,
+                                  const QVector<NavPose> &trajectoryPoses)
 {
     QJsonObject object;
     object.insert(QStringLiteral("armed"), armed);
@@ -83,6 +85,17 @@ std::string makeArrivalNoticeJson(bool armed,
         homePose.insert(QStringLiteral("yaw"), homeYaw);
         homePose.insert(QStringLiteral("frame_id"), frameId);
         object.insert(QStringLiteral("home_pose"), homePose);
+        if (!trajectoryPoses.isEmpty()) {
+            QJsonArray trajectory;
+            for (const NavPose &pose : trajectoryPoses) {
+                QJsonObject step;
+                step.insert(QStringLiteral("x"), pose.x);
+                step.insert(QStringLiteral("y"), pose.y);
+                step.insert(QStringLiteral("yaw"), pose.yaw);
+                trajectory.append(step);
+            }
+            object.insert(QStringLiteral("trajectory"), trajectory);
+        }
     }
     return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact)).toStdString();
 }
@@ -267,13 +280,14 @@ public:
                               double homeX,
                               double homeY,
                               double homeYaw,
-                              const QString &frameId)
+                              const QString &frameId,
+                              const QVector<NavPose> &trajectoryPoses)
     {
         if (!m_arrivalNoticePub) {
             ensureInterfaces();
         }
         std_msgs::msg::String msg;
-        msg.data = makeArrivalNoticeJson(armed, missionId, queueId, homeX, homeY, homeYaw, frameId);
+        msg.data = makeArrivalNoticeJson(armed, missionId, queueId, homeX, homeY, homeYaw, frameId, trajectoryPoses);
         m_arrivalNoticePub->publish(msg);
         emit m_bridge->logEvent(QStringLiteral("INFO"),
                                 QStringLiteral("[ROS2] arrival_notice published armed=%1 mission_id=%2").arg(armed).arg(missionId));
@@ -509,9 +523,10 @@ void MissionRosInterface::publishArrivalNotice(bool armed,
                                                double homeX,
                                                double homeY,
                                                double homeYaw,
-                                               const QString &frameId)
+                                               const QString &frameId,
+                                               const QVector<NavPose> &trajectoryPoses)
 {
-    m_impl->node->publishArrivalNotice(armed, missionId, queueId, homeX, homeY, homeYaw, frameId);
+    m_impl->node->publishArrivalNotice(armed, missionId, queueId, homeX, homeY, homeYaw, frameId, trajectoryPoses);
 }
 
 void MissionRosInterface::requestDocking()
