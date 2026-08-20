@@ -68,7 +68,10 @@ signals:
     // Pi의 arrival_return_manager가 /medirun/mission/pi_return_status로 방송하는
     // 진행상황 — "armed"/"payload_removed"/"returning"/"return_failed".
     // MissionController는 이걸 구독해서 화면 상태만 따라가고 명령은 안 내린다.
-    void piReturnStatusReceived(const QString &phase, const QString &missionId, const QString &queueId);
+    // waypointIndex/posesTotal: Pi가 navigate_through_poses로 trajectory+HOME을
+    // 타는 중 몇 번째 지점을 지났는지(0-based 통과 개수) — 없으면 둘 다 -1.
+    void piReturnStatusReceived(const QString &phase, const QString &missionId, const QString &queueId,
+                                int waypointIndex, int posesTotal);
     void logEvent(const QString &level, const QString &message);
     // 같은 로봇에 medirun_gui 창이 여러 개 떠 있을 때, 이 프로세스가 실제로
     // 로봇에 명령을 내릴 수 있는 "조종 권한"을 쥐고 있는지. /medirun/gui/control_heartbeat

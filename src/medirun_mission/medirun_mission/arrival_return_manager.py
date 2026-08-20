@@ -194,7 +194,14 @@ class ArrivalReturnManager(Node):
                 for step in self._trajectory_poses
             ]
             goal_msg.poses.append(home_stamped)
-            send_future = self._through_poses_client.send_goal_async(goal_msg)
+            poses_total = len(goal_msg.poses)
+
+            def _on_feedback(feedback_msg, _total=poses_total) -> None:
+                remaining = int(feedback_msg.feedback.number_of_poses_remaining)
+                passed = max(0, _total - remaining)
+                self._publish_status("returning", waypoint_index=passed, poses_total=_total)
+
+            send_future = self._through_poses_client.send_goal_async(goal_msg, feedback_callback=_on_feedback)
         else:
             if not self._nav_client.wait_for_server(timeout_sec=2.0):
                 self.get_logger().error("navigate_to_pose 액션 서버를 찾을 수 없습니다.")
@@ -250,9 +257,13 @@ class ArrivalReturnManager(Node):
         msg.repeat = 1
         self._audio_pub.publish(msg)
 
-    def _publish_status(self, phase: str) -> None:
+    def _publish_status(self, phase: str, waypoint_index: int = -1, poses_total: int = -1) -> None:
+        payload = {"phase": phase, "mission_id": self._mission_id, "queue_id": self._queue_id}
+        if waypoint_index >= 0:
+            payload["waypoint_index"] = waypoint_index
+            payload["poses_total"] = poses_total
         msg = String()
-        msg.data = dump_json_message({"phase": phase, "mission_id": self._mission_id, "queue_id": self._queue_id})
+        msg.data = dump_json_message(payload)
         self._status_pub.publish(msg)
 
 

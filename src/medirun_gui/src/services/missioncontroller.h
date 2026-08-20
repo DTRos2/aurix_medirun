@@ -91,7 +91,8 @@ private slots:
     // Pi의 arrival_return_manager가 방송하는 반출감지/복귀 진행상황 — 화면
     // 상태만 따라가고 여기서 Nav2 goal을 다시 보내지는 않는다(그건 Pi가
     // 로컬로 이미 처리함). armed/payload_removed/returning/return_failed.
-    void handlePiReturnStatus(const QString &phase, const QString &missionId, const QString &queueId);
+    void handlePiReturnStatus(const QString &phase, const QString &missionId, const QString &queueId,
+                              int waypointIndex, int posesTotal);
     void handleControlAuthorityChanged(bool isController);
     // 조종 권한이 없는 창이 리더 창의 MissionSnapshot 방송을 받아 자신의
     // m_snapshot을 그대로 덮어쓴다(읽기 전용 미러) — publishSnapshotIfController 참고.
@@ -180,6 +181,13 @@ private:
     MissionRosInterface *m_rosInterface {nullptr};
     RobotService *m_robotService {nullptr};
     OperationsOverviewService *m_overviewService {nullptr};
+    // beginArrivedWait()에서 arrival_notice와 함께 Pi에 보낸 것과 동일한
+    // trajectory+HOME 목록 — Pi가 나중에 "returning" 상태를 보고할 때 이걸
+    // 그대로 robot_session/nav_goal_log 기록에 재사용한다(NavGoalLogRecorder는
+    // 로컬 NavigationService 시그널만 보므로 Pi 주도 복귀는 여기서 직접 기록).
+    QVector<NavPose> m_pendingPiReturnPoses;
+    int m_piReturnSessionId {-1};
+    int m_piReturnLastMarkedIndex {-1};
     QVector<MissionQueueItem> m_queueItems;
     QVector<MissionHistoryEntry> m_historyEntries;
     MissionSnapshot m_snapshot;
