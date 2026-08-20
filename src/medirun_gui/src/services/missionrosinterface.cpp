@@ -55,6 +55,29 @@ std::string makeCommandJson(const QString &command,
     return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact)).toStdString();
 }
 
+std::string makeArrivalNoticeJson(bool armed,
+                                  const QString &missionId,
+                                  const QString &queueId,
+                                  double homeX,
+                                  double homeY,
+                                  double homeYaw,
+                                  const QString &frameId)
+{
+    QJsonObject object;
+    object.insert(QStringLiteral("armed"), armed);
+    object.insert(QStringLiteral("mission_id"), missionId);
+    object.insert(QStringLiteral("queue_id"), queueId);
+    if (armed) {
+        QJsonObject homePose;
+        homePose.insert(QStringLiteral("x"), homeX);
+        homePose.insert(QStringLiteral("y"), homeY);
+        homePose.insert(QStringLiteral("yaw"), homeYaw);
+        homePose.insert(QStringLiteral("frame_id"), frameId);
+        object.insert(QStringLiteral("home_pose"), homePose);
+    }
+    return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact)).toStdString();
+}
+
 } // namespace
 
 class MissionRosNode : public rclcpp::Node
@@ -120,6 +143,16 @@ public:
                 const QString reason = object.value(QStringLiteral("reason")).toString();
                 emit m_bridge->dockResultReceived(status == QStringLiteral("SUCCEEDED"), reason);
             });
+
+        m_arrivalNoticePub = create_publisher<std_msgs::msg::String>("/medirun/mission/arrival_notice", 10);
+        m_piReturnStatusSub = create_subscription<std_msgs::msg::String>(
+            "/medirun/mission/pi_return_status", 10,
+            [this](const std_msgs::msg::String &msg) {
+                const QJsonObject object = parseJsonObject(msg.data);
+                emit m_bridge->piReturnStatusReceived(object.value(QStringLiteral("phase")).toString(),
+                                                      object.value(QStringLiteral("mission_id")).toString(),
+                                                      object.value(QStringLiteral("queue_id")).toString());
+            });
     }
 
     void requestDocking()
@@ -175,6 +208,24 @@ public:
                                 QStringLiteral("[AUDIO] announcement published text=\"%1\"").arg(text));
     }
 
+    void publishArrivalNotice(bool armed,
+                              const QString &missionId,
+                              const QString &queueId,
+                              double homeX,
+                              double homeY,
+                              double homeYaw,
+                              const QString &frameId)
+    {
+        if (!m_arrivalNoticePub) {
+            ensureInterfaces();
+        }
+        std_msgs::msg::String msg;
+        msg.data = makeArrivalNoticeJson(armed, missionId, queueId, homeX, homeY, homeYaw, frameId);
+        m_arrivalNoticePub->publish(msg);
+        emit m_bridge->logEvent(QStringLiteral("INFO"),
+                                QStringLiteral("[ROS2] arrival_notice published armed=%1 mission_id=%2").arg(armed).arg(missionId));
+    }
+
     void retryCommunication()
     {
         ensureInterfaces();
@@ -199,6 +250,8 @@ private:
     rclcpp::Publisher<robot_audio_interfaces::msg::AudioCommand>::SharedPtr m_audioCommandPub;
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr m_dockRequestPub;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr m_dockResultSub;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr m_arrivalNoticePub;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr m_piReturnStatusSub;
 };
 
 struct MissionRosInterface::Impl
@@ -252,6 +305,17 @@ void MissionRosInterface::publishAudioAnnouncement(const QString &text)
 void MissionRosInterface::retryCommunication()
 {
     m_impl->node->retryCommunication();
+}
+
+void MissionRosInterface::publishArrivalNotice(bool armed,
+                                               const QString &missionId,
+                                               const QString &queueId,
+                                               double homeX,
+                                               double homeY,
+                                               double homeYaw,
+                                               const QString &frameId)
+{
+    m_impl->node->publishArrivalNotice(armed, missionId, queueId, homeX, homeY, homeYaw, frameId);
 }
 
 void MissionRosInterface::requestDocking()

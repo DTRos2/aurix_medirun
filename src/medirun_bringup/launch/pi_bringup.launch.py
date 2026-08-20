@@ -86,5 +86,14 @@ def generate_launch_description():
                 parameters=[{"front_stop_distance_cm": 10, "rear_stop_distance_cm": 10, "hold_duration_sec": 0.0}],
                 output="screen",
             ),
+            # PC(MissionController)가 도착 시 arrival_notice만 보내면, 반출감지
+            # ·타이머·복귀 goal 전송까지 이 노드가 Pi 로컬로 전담한다(2026-08-19,
+            # Wi-Fi 단절 중에도 복귀가 끊기지 않도록 하는 재설계).
+            Node(
+                package="medirun_mission",
+                executable="arrival_return_manager",
+                name="arrival_return_manager",
+                output="screen",
+            ),
         ]
     )

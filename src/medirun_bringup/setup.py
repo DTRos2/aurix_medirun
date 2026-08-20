@@ -16,6 +16,7 @@ setup(
                 "launch/bringup.launch.py",
                 "launch/navigation_safety.launch.py",
                 "launch/pi_bringup.launch.py",
+                "launch/pc_bringup.launch.py",
                 "launch/camera.launch.py",
                 "launch/callzone_bringup.launch.py",
             ],
