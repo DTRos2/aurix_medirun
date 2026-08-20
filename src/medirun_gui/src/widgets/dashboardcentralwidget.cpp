@@ -268,7 +268,7 @@ QString DashboardCentralWidget::titleForPage(PageId page) const
     case PageId::RobotManagement:
         return QStringLiteral("로봇 관리");
     case PageId::SystemSettings:
-        return QStringLiteral("시스템 설정");
+        return QStringLiteral("이벤트 관리");
     }
     return QString();
 }
