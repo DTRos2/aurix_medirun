@@ -7,6 +7,8 @@
 
 #include <QDateTime>
 #include <QDebug>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSettings>
 #include <QTimer>
 #include <QTime>
@@ -20,6 +22,55 @@
 #include <QtMath>
 
 namespace {
+
+// 조종 권한이 없는 창이 리더 창의 미션 진행 상황(호출 접수/출동 중/현장 도착
+// 등 스테퍼)을 실시간으로 그대로 따라 볼 수 있도록 MissionSnapshot을 JSON으로
+// 직렬화/역직렬화한다 — /medirun/gui/mission_snapshot 방송에 쓴다. 대기 큐
+// 목록·오늘 이력은 여기 포함하지 않는다(따로 요청 시 확장).
+QString serializeMissionSnapshot(const MissionSnapshot &snapshot)
+{
+    QJsonObject object;
+    object.insert(QStringLiteral("mission_id"), snapshot.missionId);
+    object.insert(QStringLiteral("queue_id"), snapshot.queueId);
+    object.insert(QStringLiteral("origin_name"), snapshot.originName);
+    object.insert(QStringLiteral("destination_name"), snapshot.destinationName);
+    object.insert(QStringLiteral("current_waypoint_name"), snapshot.currentWaypointName);
+    object.insert(QStringLiteral("next_waypoint_name"), snapshot.nextWaypointName);
+    object.insert(QStringLiteral("state"), missionStateText(snapshot.state));
+    object.insert(QStringLiteral("started_at"), snapshot.startedAt.toString(Qt::ISODateWithMs));
+    object.insert(QStringLiteral("elapsed_seconds"), static_cast<double>(snapshot.elapsedSeconds));
+    object.insert(QStringLiteral("waiting_count"), snapshot.waitingCount);
+    object.insert(QStringLiteral("returning_home"), snapshot.returningHome);
+    object.insert(QStringLiteral("arrived_before_end"), snapshot.arrivedBeforeEnd);
+    object.insert(QStringLiteral("failure_reason"), snapshot.failureReason);
+    object.insert(QStringLiteral("distance_remaining_meters"), snapshot.distanceRemainingMeters);
+    object.insert(QStringLiteral("progress_percent"), snapshot.progressPercent);
+    object.insert(QStringLiteral("payload_removed"), snapshot.payloadRemoved);
+    return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact));
+}
+
+MissionSnapshot deserializeMissionSnapshot(const QString &json)
+{
+    const QJsonObject object = QJsonDocument::fromJson(json.toUtf8()).object();
+    MissionSnapshot snapshot;
+    snapshot.missionId = object.value(QStringLiteral("mission_id")).toString();
+    snapshot.queueId = object.value(QStringLiteral("queue_id")).toString();
+    snapshot.originName = object.value(QStringLiteral("origin_name")).toString();
+    snapshot.destinationName = object.value(QStringLiteral("destination_name")).toString();
+    snapshot.currentWaypointName = object.value(QStringLiteral("current_waypoint_name")).toString();
+    snapshot.nextWaypointName = object.value(QStringLiteral("next_waypoint_name")).toString();
+    snapshot.state = missionStateFromText(object.value(QStringLiteral("state")).toString());
+    snapshot.startedAt = QDateTime::fromString(object.value(QStringLiteral("started_at")).toString(), Qt::ISODateWithMs);
+    snapshot.elapsedSeconds = static_cast<qint64>(object.value(QStringLiteral("elapsed_seconds")).toDouble());
+    snapshot.waitingCount = object.value(QStringLiteral("waiting_count")).toInt();
+    snapshot.returningHome = object.value(QStringLiteral("returning_home")).toBool();
+    snapshot.arrivedBeforeEnd = object.value(QStringLiteral("arrived_before_end")).toBool();
+    snapshot.failureReason = object.value(QStringLiteral("failure_reason")).toString();
+    snapshot.distanceRemainingMeters = object.value(QStringLiteral("distance_remaining_meters")).toDouble(-1.0);
+    snapshot.progressPercent = object.value(QStringLiteral("progress_percent")).toInt(-1);
+    snapshot.payloadRemoved = object.value(QStringLiteral("payload_removed")).toBool();
+    return snapshot;
+}
 
 QString historyId()
 {
@@ -61,11 +112,18 @@ MissionController::MissionController(const AppSession &session,
     m_storageService->setSessionContext(m_session);
     m_queueItems = m_storageService->loadQueue();
     m_historyEntries = m_storageService->loadTodayHistory();
+    reconcileOrphanedActiveMission();
     m_observedButtonIds = QSettings().value(QLatin1String(kObservedButtonIdsSettingsKey)).toStringList();
     m_elapsedTimer = new QTimer(this);
     m_elapsedTimer->setInterval(1000);
     connect(m_elapsedTimer, &QTimer::timeout, this, &MissionController::updateElapsed);
     m_elapsedTimer->start();
+
+    // 문서 02 §7.1 음성 안내 #4(SR-F-006) — NAVIGATING 동안만 setMissionState()가
+    // start()/stop()을 호출한다(생성자에서는 아직 대기 상태이므로 돌리지 않음).
+    m_navigationWarningTimer = new QTimer(this);
+    m_navigationWarningTimer->setInterval(5000);
+    connect(m_navigationWarningTimer, &QTimer::timeout, this, &MissionController::handleNavigationWarningTick);
 
     connect(m_waypointRepository, &WaypointRepository::repositoryChanged, this, &MissionController::handleWaypointRepositoryChanged);
 
@@ -88,6 +146,12 @@ MissionController::MissionController(const AppSession &session,
     connect(m_rosInterface, &MissionRosInterface::communicationRetryFinished, this, &MissionController::handleRosRetryFinished);
     connect(m_rosInterface, &MissionRosInterface::dockResultReceived, this, &MissionController::handleDockResult);
     connect(m_rosInterface, &MissionRosInterface::piReturnStatusReceived, this, &MissionController::handlePiReturnStatus);
+    connect(m_rosInterface, &MissionRosInterface::controlAuthorityChanged, this, &MissionController::handleControlAuthorityChanged);
+    connect(m_rosInterface, &MissionRosInterface::missionSnapshotReceived, this, &MissionController::handleMissionSnapshotReceived);
+    // 조종 권한이 있을 때만 실제로 발행한다(publishSnapshotIfController 내부에서
+    // 확인) — 읽기 전용 창에서 missionChanged()가 방송을 그대로 되돌려보내
+    // 서로를 계속 갱신시키는 루프를 막는다.
+    connect(this, &MissionController::missionChanged, this, &MissionController::publishSnapshotIfController);
 
     updateConnectionState();
     startNextQueueIfPossible();
@@ -171,6 +235,11 @@ bool MissionController::retryInProgress() const
     return m_retryInProgress;
 }
 
+bool MissionController::isController() const
+{
+    return m_isController;
+}
+
 QStringList MissionController::observedButtonIds() const
 {
     return m_observedButtonIds;
@@ -192,6 +261,10 @@ void MissionController::requestRetry()
 
 void MissionController::requestReturnHome()
 {
+    // 미션 취소/홈 복귀는 조종 권한(리더 선출)과 무관하게 어느 창에서든
+    // 요청할 수 있다 — cancelGoal()이 로컬 goal 핸들이 없어도 Nav2 액션
+    // 서버에 전체 취소를 요청하는 "orphan-safe" 경로를 타므로, 팀원이 다른
+    // 창에서 눌러도 안전하게 동작한다(nav2navigationservice.cpp 참고).
     if (beginReturnHomeFlow(QStringLiteral("운영자 홈 복귀 요청"))) {
         m_rosInterface->publishMissionCommand(QStringLiteral("return_home"), m_snapshot.missionId, m_snapshot.queueId, QString());
     }
@@ -301,6 +374,14 @@ void MissionController::handleDispatchRequested(const QString &buttonId,
                                                 const QString &missionId,
                                                 const QDateTime &requestedAt)
 {
+    // 같은 로봇에 medirun_gui 창이 여러 개 떠 있으면 /medirun/mission/dispatch_request
+    // 하나가 모든 창에 똑같이 배달된다 — 조종 권한이 없는(다른 창이 이미
+    // 조종 중인) 창은 여기서 아예 큐에 넣지 않는다. 그렇지 않으면 창마다 각자
+    // Nav2 목표를 보내 서로의 goal을 선점(preempt)시켜 호출 접수/출동/도착
+    // 상태가 창마다 따로 꼬이는 문제가 있었다.
+    if (!m_isController) {
+        return;
+    }
     enqueueCall(buttonId, requestSource, missionId, requestedAt);
 }
 
@@ -349,20 +430,7 @@ void MissionController::handleNavigationResult(const QString &resultCode, const 
             return;
         }
         if (m_pendingAction == PendingAction::ReturnHome) {
-            WaypointDef homeWaypoint;
-            WaypointPose homePose;
-            QString errorMessage;
-            if (!resolveHomeWaypoint(homeWaypoint, homePose, errorMessage)) {
-                finishMission(MissionState::Failed, errorMessage, QStringLiteral("RETURN_HOME_FAILED"), QStringLiteral("FAILED"));
-                return;
-            }
-            addHistory(QStringLiteral("RETURN_HOME_STARTED"), homeWaypoint.name, homeWaypoint.label, m_snapshot.missionId, m_snapshot.queueId,
-                       QStringLiteral("STARTED"), QStringLiteral("홈 복귀 시작"));
-            m_snapshot.destinationName = homeWaypoint.label;
-            m_snapshot.nextWaypointName = homeWaypoint.label;
-            m_snapshot.returningHome = true;
-            setMissionState(MissionState::ReturningHome);
-            m_navigationService->navigateToPose(homePose.positionX, homePose.positionY, homePose.yawRadians, homePose.frameId);
+            dispatchPendingReturnHome();
             return;
         }
 
@@ -381,6 +449,16 @@ void MissionController::handleNavigationResult(const QString &resultCode, const 
     }
 
     if (resultCode == QStringLiteral("SUCCEEDED")) {
+        // 홈 복귀 요청으로 cancelGoal()을 보내고 CANCELED를 기다리는 중(state
+        // == Cancelling)이었는데, 취소 확인보다 기존 목표의 SUCCEEDED가 먼저
+        // 도착하는 경쟁 상태가 있었다 — 이 경우 아래로 흘러가 beginArrivedWait()를
+        // 타면서 홈 복귀 요청 자체가 조용히 무시됐다("웨이포인트 도착 후 홈
+        // 복귀 버튼을 눌러도 반응 없음" 버그). CANCELED로 오든 SUCCEEDED로
+        // 오든 대기 중이던 홈 복귀 요청이 항상 이기도록 여기서도 처리한다.
+        if (m_snapshot.state != MissionState::ReturningHome && m_pendingAction == PendingAction::ReturnHome) {
+            dispatchPendingReturnHome();
+            return;
+        }
         if (m_snapshot.state == MissionState::ReturningHome) {
             if (m_pendingReason.contains(QStringLiteral("취소"))) {
                 finishMission(MissionState::Cancelled, m_pendingReason, QStringLiteral("RETURN_HOME_COMPLETED"), QStringLiteral("SUCCEEDED"));
@@ -456,6 +534,46 @@ void MissionController::handleRosRetryFinished(bool success, const QString &deta
     emit historyChanged();
 }
 
+void MissionController::handleControlAuthorityChanged(bool isController)
+{
+    if (m_isController == isController) {
+        return;
+    }
+    m_isController = isController;
+    addHistory(isController ? QStringLiteral("CONTROL_AUTHORITY_ACQUIRED") : QStringLiteral("CONTROL_AUTHORITY_LOST"),
+               QString(), QString(), QString(), QString(),
+               isController ? QStringLiteral("ACQUIRED") : QStringLiteral("LOST"),
+               isController ? QStringLiteral("이 창이 로봇 조종 권한을 가집니다.")
+                             : QStringLiteral("다른 창이 로봇을 조종 중입니다 — 읽기 전용."));
+    emit historyChanged();
+    emit controlAuthorityChanged(isController);
+    if (isController) {
+        // 권한을 새로 얻은 순간 대기 큐에 이미 쌓여 있던 Waiting 항목이 있으면
+        // 그제서야 처리를 시작한다(startNextQueueIfPossible()의 조종 권한
+        // 가드 참고).
+        startNextQueueIfPossible();
+    }
+}
+
+void MissionController::publishSnapshotIfController()
+{
+    if (!m_isController) {
+        return;
+    }
+    m_rosInterface->publishMissionSnapshot(serializeMissionSnapshot(m_snapshot));
+}
+
+void MissionController::handleMissionSnapshotReceived(const QString &json)
+{
+    // 조종 권한을 가진 창은 이미 스스로가 진실 소스라 방송을 받아도 무시한다
+    // (자기 자신 또는 예전 리더의 방송을 다시 반영해 상태가 튀는 걸 방지).
+    if (m_isController) {
+        return;
+    }
+    m_snapshot = deserializeMissionSnapshot(json);
+    emit missionChanged();
+}
+
 void MissionController::updateElapsed()
 {
     if (m_snapshot.startedAt.isValid() && m_snapshot.state != MissionState::Idle) {
@@ -521,6 +639,13 @@ void MissionController::enqueueCall(const QString &buttonId,
 
 void MissionController::startNextQueueIfPossible()
 {
+    // 조종 권한이 아직 없는(또는 다른 창이 갖고 있는) 창이 대기 큐를 멋대로
+    // 소비해 Nav2 목표를 보내면 안 된다 — 생성자에서 이 함수를 부를 때는
+    // 리더 선출(약 1.5초)이 아직 안 끝났을 수 있어 이 가드가 특히 중요하다.
+    // 권한을 새로 얻는 시점(handleControlAuthorityChanged)에서 다시 호출해준다.
+    if (!m_isController) {
+        return;
+    }
     if (m_snapshot.state != MissionState::Idle && m_snapshot.state != MissionState::Completed
         && m_snapshot.state != MissionState::Cancelled && m_snapshot.state != MissionState::Failed) {
         return;
@@ -538,6 +663,40 @@ void MissionController::startNextQueueIfPossible()
     }
 
     resetToIdleSnapshot();
+}
+
+void MissionController::reconcileOrphanedActiveMission()
+{
+    for (const MissionQueueItem &item : std::as_const(m_queueItems)) {
+        if (item.status != MissionQueueStatus::Active) {
+            continue;
+        }
+        m_snapshot.missionId = item.missionId;
+        m_snapshot.queueId = item.queueId;
+        m_snapshot.originName = QStringLiteral("이전 세션");
+        m_snapshot.destinationName = item.waypointName;
+        m_snapshot.currentWaypointName = item.waypointName;
+        m_snapshot.nextWaypointName = item.waypointName;
+        m_snapshot.startedAt = item.requestedAt.isValid() ? item.requestedAt : QDateTime::currentDateTime();
+        m_snapshot.elapsedSeconds = m_snapshot.startedAt.secsTo(QDateTime::currentDateTime());
+        m_snapshot.waitingCount = std::count_if(m_queueItems.cbegin(), m_queueItems.cend(), [](const MissionQueueItem &candidate) {
+            return candidate.status == MissionQueueStatus::Waiting;
+        });
+        m_snapshot.returningHome = false;
+        m_snapshot.arrivedBeforeEnd = false;
+        m_snapshot.payloadRemoved = false;
+        m_snapshot.failureReason.clear();
+        m_snapshot.distanceRemainingMeters = -1.0;
+        // setMissionState()는 Idle -> Navigating 전환을 감지해 missionChanged()를
+        // 알아서 emit한다.
+        setMissionState(MissionState::Navigating);
+        addHistory(QStringLiteral("MISSION_RECOVERED"), item.waypointId, item.waypointName, item.missionId, item.queueId,
+                   QStringLiteral("RECOVERED"),
+                   QStringLiteral("대시보드가 미션 진행 중 종료됐다가 다시 시작됨 — 정확한 진행 단계를 몰라 "
+                                  "\"출동 중\"으로 임시 표시합니다. 실제 로봇 상태를 확인 후 필요하면 미션을 취소해주세요."));
+        emit historyChanged();
+        return; // 정상 흐름에서 Active 항목은 한 번에 하나뿐이라 첫 건만 처리
+    }
 }
 
 void MissionController::startMissionForQueue(const QString &queueId, bool divertedFromActiveMission)
@@ -587,6 +746,11 @@ void MissionController::startMissionForQueue(const QString &queueId, bool divert
     log(QStringLiteral("NAV2"),
         QStringLiteral("goal send mission_id=%1 queue_id=%2 waypoint_id=%3").arg(item.missionId, item.queueId, item.waypointId));
     m_navigationService->navigateToPose(item.pose.positionX, item.pose.positionY, item.pose.yawRadians, item.pose.frameId);
+
+    // 문서 02 §7.1 음성 안내 #3(SR-F-005) "임무 시작" — 호출을 받아 실제로
+    // 주행을 시작하는 순간 1회 안내한다. beginArrivedWait()의 "AED가
+    // 도착했습니다"와 동일한 방식(Pi의 robot_audio_output이 처리).
+    m_rosInterface->publishAudioAnnouncement(QStringLiteral("응급 호출을 접수했습니다. 출동합니다"));
 }
 
 bool MissionController::beginReturnHomeFlow(const QString &reason)
@@ -665,6 +829,26 @@ bool MissionController::beginReturnHomeFlow(const QString &reason)
                QStringLiteral("REQUESTED"), reason);
     emit historyChanged();
     m_navigationService->cancelGoal();
+    return true;
+}
+
+bool MissionController::dispatchPendingReturnHome()
+{
+    m_pendingAction = PendingAction::None;
+    WaypointDef homeWaypoint;
+    WaypointPose homePose;
+    QString errorMessage;
+    if (!resolveHomeWaypoint(homeWaypoint, homePose, errorMessage)) {
+        finishMission(MissionState::Failed, errorMessage, QStringLiteral("RETURN_HOME_FAILED"), QStringLiteral("FAILED"));
+        return false;
+    }
+    addHistory(QStringLiteral("RETURN_HOME_STARTED"), homeWaypoint.name, homeWaypoint.label, m_snapshot.missionId, m_snapshot.queueId,
+               QStringLiteral("STARTED"), QStringLiteral("홈 복귀 시작"));
+    m_snapshot.destinationName = homeWaypoint.label;
+    m_snapshot.nextWaypointName = homeWaypoint.label;
+    m_snapshot.returningHome = true;
+    setMissionState(MissionState::ReturningHome);
+    m_navigationService->navigateToPose(homePose.positionX, homePose.positionY, homePose.yawRadians, homePose.frameId);
     return true;
 }
 
@@ -915,8 +1099,26 @@ void MissionController::setMissionState(MissionState state)
     }
     log(QStringLiteral("MISSION"),
         QStringLiteral("state: %1 -> %2").arg(missionStateText(m_snapshot.state), missionStateText(state)));
+    const MissionState previousState = m_snapshot.state;
     m_snapshot.state = state;
+    // 문서 02 §7.1 음성 안내 #4(SR-F-006) — NAVIGATING(출동 중) 진입/이탈에
+    // 맞춰 5초 반복 경고를 켜고 끈다. 첫 안내는 "임무 시작" 멘트와 겹치지
+    // 않도록 시작 직후가 아니라 5초 뒤 첫 tick부터 나간다.
+    if (state == MissionState::Navigating && previousState != MissionState::Navigating) {
+        m_navigationWarningTimer->start();
+    } else if (state != MissionState::Navigating && previousState == MissionState::Navigating) {
+        m_navigationWarningTimer->stop();
+    }
     emit missionChanged();
+}
+
+void MissionController::handleNavigationWarningTick()
+{
+    if (m_snapshot.state != MissionState::Navigating) {
+        m_navigationWarningTimer->stop();
+        return;
+    }
+    m_rosInterface->publishAudioAnnouncement(QStringLiteral("긴급상황 발생, 비켜주세요"));
 }
 
 void MissionController::saveQueue()

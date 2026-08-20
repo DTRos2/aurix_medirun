@@ -35,6 +35,10 @@ public:
     bool rosConnected() const;
     bool nav2Connected() const;
     bool retryInProgress() const;
+    // 여러 medirun_gui 창이 같은 로봇에 동시 접속했을 때, 실제로 로봇에 명령
+    // (dispatch/홈복귀/미션취소 등)을 내릴 수 있는 창인지. false면 다른 창이
+    // 이미 조종 중이라는 뜻 — 읽기 전용으로 표시하고 버튼을 막아야 한다.
+    bool isController() const;
     // MQTT 콜존 버튼이 이번 앱 세션 동안 실제로 보낸 raw button_id 목록(최근
     // 감지 순, 등록 성공/실패 여부와 무관 — 웨이포인트관리 페이지가 콜존
     // 등록 시 "감지된 콜존 ID" 드롭다운을 채우는 데 쓴다). 앱 재시작 시 초기화.
@@ -57,6 +61,8 @@ signals:
     void retryStateChanged();
     void nextQueueConfirmationRequested(const QString &queueId, const QString &waypointName);
     void observedButtonIdsChanged();
+    // isController()가 바뀔 때마다 — 다른 창과의 조종 권한 획득/양보.
+    void controlAuthorityChanged(bool isController);
 
 private slots:
     void handleDispatchRequested(const QString &buttonId,
@@ -73,10 +79,21 @@ private slots:
     void handleRosHeartbeat(const QString &source, const QDateTime &receivedAt);
     void handleRosRetryFinished(bool success, const QString &detail);
     void handleDockResult(bool success, const QString &detail);
+    // 문서 02 §7.1 음성 안내 #4(SR-F-006) "주행 중" 경고 — NAVIGATING(출동
+    // 중) 동안 5초 주기로 반복 재생한다. setMissionState()가 Navigating
+    // 진입/이탈에 맞춰 m_navigationWarningTimer를 시작/정지한다.
+    void handleNavigationWarningTick();
     // Pi의 arrival_return_manager가 방송하는 반출감지/복귀 진행상황 — 화면
     // 상태만 따라가고 여기서 Nav2 goal을 다시 보내지는 않는다(그건 Pi가
     // 로컬로 이미 처리함). armed/payload_removed/returning/return_failed.
     void handlePiReturnStatus(const QString &phase, const QString &missionId, const QString &queueId);
+    void handleControlAuthorityChanged(bool isController);
+    // 조종 권한이 없는 창이 리더 창의 MissionSnapshot 방송을 받아 자신의
+    // m_snapshot을 그대로 덮어쓴다(읽기 전용 미러) — publishSnapshotIfController 참고.
+    void handleMissionSnapshotReceived(const QString &json);
+    // missionChanged()가 발생할 때마다 걸리는 슬롯. 조종 권한이 있을 때만
+    // 실제로 /medirun/gui/mission_snapshot에 방송한다.
+    void publishSnapshotIfController();
     void updateElapsed();
 
 private:
@@ -91,8 +108,21 @@ private:
                      const QString &missionId,
                      const QDateTime &requestedAt);
     void startNextQueueIfPossible();
+    // 대시보드가 미션 진행 중에 종료됐다가 다시 뜨면, m_snapshot(진행 상태)은
+    // 메모리에만 있어 사라지지만 DB 큐에는 그 항목이 MissionQueueStatus::Active로
+    // 그대로 남아 있다 — startNextQueueIfPossible()은 Waiting만 보고 Active는
+    // 건드리지 않아서, 재시작 후엔 그 미션이 "진행 중인 미션이 없음"으로
+    // 보여 취소조차 못 하는 문제가 있었다. 생성자에서 한 번 호출해 그런
+    // Active 항목을 찾으면 m_snapshot에 최소한으로 복구해 취소는 가능하게
+    // 한다(정확한 진행 단계·Nav2 goal 자체는 이 세션이 모르므로 재현 못 함).
+    void reconcileOrphanedActiveMission();
     void startMissionForQueue(const QString &queueId, bool divertedFromActiveMission);
     bool beginReturnHomeFlow(const QString &reason);
+    // beginReturnHomeFlow가 cancelGoal()로 기존 목표를 취소하고 CANCELED를
+    // 기다리는 중일 때, 취소 확인보다 기존 목표의 SUCCEEDED가 먼저 도착하는
+    // 경쟁 상태가 있었다(handleNavigationResult 참고) — CANCELED/SUCCEEDED
+    // 어느 쪽으로 오든 대기 중이던 홈 복귀 요청을 동일하게 처리하려고 분리.
+    bool dispatchPendingReturnHome();
     // Nav2 goal SUCCEEDED(호출구역 도착) 직후 호출 — Arrived로 전환하고
     // Pi의 arrival_return_manager에 감시 시작(armed=true, 홈 좌표 포함)을
     // 알린다. 반출 감지·타이머·복귀 goal 전송은 그 뒤로 전부 Pi가 로컬로
@@ -142,7 +172,11 @@ private:
     bool m_rosConnected {false};
     bool m_retryInProgress {false};
     bool m_goalAccepted {false};
+    // 앱 시작 직후 다른 창이 이미 조종 중인지 탐색이 끝나기 전까지는(약
+    // 1.5초) 보수적으로 false로 시작한다 — isController() 참고.
+    bool m_isController {false};
     QTimer *m_elapsedTimer {nullptr};
+    QTimer *m_navigationWarningTimer {nullptr};
     double m_lastRobotX {0.0};
     double m_lastRobotY {0.0};
     bool m_robotPoseValid {false};
