@@ -193,17 +193,17 @@ QWidget *MissionOpsPage::buildAnomalyCard()
     buttonRow->setSpacing(6);
     m_retryButton = new QPushButton(QStringLiteral("재시도"));
     m_retryButton->setObjectName(QStringLiteral("primaryCtaButton"));
-    auto *homeButton = new QPushButton(QStringLiteral("홈 복귀"));
-    auto *cancelButton = new QPushButton(QStringLiteral("미션 취소"));
+    m_homeButton = new QPushButton(QStringLiteral("홈 복귀"));
+    m_cancelButton = new QPushButton(QStringLiteral("미션 취소"));
     auto *remoteButton = new QPushButton(QStringLiteral("원격 제어 →"));
-    for (QPushButton *button : {m_retryButton, homeButton, cancelButton, remoteButton}) {
+    for (QPushButton *button : {m_retryButton, m_homeButton, m_cancelButton, remoteButton}) {
         buttonRow->addWidget(button);
     }
     layout->addLayout(buttonRow);
 
     connect(m_retryButton, &QPushButton::clicked, this, &MissionOpsPage::retryRequested);
-    connect(homeButton, &QPushButton::clicked, this, &MissionOpsPage::returnHomeRequested);
-    connect(cancelButton, &QPushButton::clicked, this, &MissionOpsPage::missionCancelRequested);
+    connect(m_homeButton, &QPushButton::clicked, this, &MissionOpsPage::returnHomeRequested);
+    connect(m_cancelButton, &QPushButton::clicked, this, &MissionOpsPage::missionCancelRequested);
     connect(remoteButton, &QPushButton::clicked, this, &MissionOpsPage::remoteControlRequested);
     return panel;
 }

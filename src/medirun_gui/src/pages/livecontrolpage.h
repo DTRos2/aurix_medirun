@@ -123,6 +123,8 @@ private:
     QPushButton *m_recordButton {nullptr};
     QPushButton *m_saveRecordingButton {nullptr};
     QPushButton *m_snapshotButton {nullptr};
+    QPushButton *m_cancelButton {nullptr};
+    QPushButton *m_homeButton {nullptr};
     QImage m_lastCameraFrame;
 
     // 로봇 상태 패널

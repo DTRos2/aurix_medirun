@@ -42,6 +42,10 @@ public slots:
                               double homeY,
                               double homeYaw,
                               const QString &frameId);
+    // 조종 권한을 가진 창만 호출한다 — 다른(읽기 전용) 창들이 미션 진행
+    // 상황(호출 접수/출동 중/현장 도착 등 스테퍼)을 실시간으로 따라 볼 수
+    // 있도록 MissionSnapshot을 JSON으로 방송한다.
+    void publishMissionSnapshot(const QString &json);
 
 signals:
     void dispatchRequested(const QString &buttonId,
@@ -58,6 +62,12 @@ signals:
     // MissionController는 이걸 구독해서 화면 상태만 따라가고 명령은 안 내린다.
     void piReturnStatusReceived(const QString &phase, const QString &missionId, const QString &queueId);
     void logEvent(const QString &level, const QString &message);
+    // 같은 로봇에 medirun_gui 창이 여러 개 떠 있을 때, 이 프로세스가 실제로
+    // 로봇에 명령을 내릴 수 있는 "조종 권한"을 쥐고 있는지. /medirun/gui/control_heartbeat
+    // 를 통한 창 간 자체 조율(리더 선출) 결과다 — MissionRosNode 참고.
+    void controlAuthorityChanged(bool isController);
+    // 조종 권한을 가진 창이 publishMissionSnapshot()으로 방송한 내용 수신.
+    void missionSnapshotReceived(const QString &json);
 
 private:
     struct Impl;

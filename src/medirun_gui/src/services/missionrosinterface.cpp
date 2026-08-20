@@ -9,13 +9,22 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaType>
+#include <QUuid>
 
+#include <chrono>
 #include <mutex>
 #include <thread>
 
 namespace {
 
 constexpr qint64 kMinReasonableRequestedAtSec = 1577836800; // 2020-01-01 00:00:00 UTC
+
+// 여러 medirun_gui 창이 같은 로봇에 동시 접속했을 때 딱 하나만 실제로 명령을
+// 내리게 하는 창 간 자체 조율(리더 선출) 타이밍 — 시계 동기화에 기대지 않고
+// instance_id 문자열 비교만으로 동점을 가른다(MissionRosNode 참고).
+constexpr int kControlDiscoveryWindowMs = 1500;
+constexpr int kControlHeartbeatIntervalMs = 1000;
+constexpr int kControlLeaderTimeoutMs = 3500;
 
 QDateTime parseRequestedAt(const QJsonObject &object)
 {
@@ -80,12 +89,20 @@ std::string makeArrivalNoticeJson(bool armed,
 
 } // namespace
 
+enum class ControlRole
+{
+    Discovering,
+    Leader,
+    Follower
+};
+
 class MissionRosNode : public rclcpp::Node
 {
 public:
-    explicit MissionRosNode(MissionRosInterface *bridge)
+    MissionRosNode(MissionRosInterface *bridge, QString instanceId)
         : rclcpp::Node("medirun_gui_mission_bridge")
         , m_bridge(bridge)
+        , m_instanceId(std::move(instanceId))
     {
         ensureInterfaces();
     }
@@ -153,6 +170,32 @@ public:
                                                       object.value(QStringLiteral("mission_id")).toString(),
                                                       object.value(QStringLiteral("queue_id")).toString());
             });
+
+        m_missionSnapshotPub = create_publisher<std_msgs::msg::String>("/medirun/gui/mission_snapshot", 10);
+        m_missionSnapshotSub = create_subscription<std_msgs::msg::String>(
+            "/medirun/gui/mission_snapshot", 10,
+            [this](const std_msgs::msg::String &msg) {
+                emit m_bridge->missionSnapshotReceived(QString::fromStdString(msg.data));
+            });
+
+        m_controlHeartbeatPub = create_publisher<std_msgs::msg::String>("/medirun/gui/control_heartbeat", 10);
+        m_controlHeartbeatSub = create_subscription<std_msgs::msg::String>(
+            "/medirun/gui/control_heartbeat", 10,
+            [this](const std_msgs::msg::String &msg) { handleControlHeartbeat(msg); });
+        beginControlDiscovery();
+        m_controlTickTimer = create_wall_timer(
+            std::chrono::milliseconds(kControlHeartbeatIntervalMs),
+            [this]() { controlTick(); });
+    }
+
+    // 로봇 조종 권한을 쥔 채로 창이 정상 종료될 때 호출 — "release" 신호를
+    // 보내면 다른 창들이 kControlLeaderTimeoutMs까지 기다리지 않고 바로
+    // 재탐색해서 넘겨받는다.
+    void releaseControlIfLeader()
+    {
+        if (m_controlRole == ControlRole::Leader) {
+            publishControlHeartbeat(QStringLiteral("release"));
+        }
     }
 
     void requestDocking()
@@ -175,6 +218,16 @@ public:
         msg.data = false;
         m_dockRequestPub->publish(msg);
         emit m_bridge->logEvent(QStringLiteral("INFO"), QStringLiteral("[ROS2] dock_request(false) published — cancel"));
+    }
+
+    void publishMissionSnapshot(const QString &json)
+    {
+        if (!m_missionSnapshotPub) {
+            ensureInterfaces();
+        }
+        std_msgs::msg::String msg;
+        msg.data = json.toStdString();
+        m_missionSnapshotPub->publish(msg);
     }
 
     void publishMissionCommand(const QString &command,
@@ -242,7 +295,139 @@ public:
     }
 
 private:
+    // 조종 권한 리더 선출 — 자세한 알고리즘은 파일 상단 상수 설명 참고.
+    // 시작 시 탐색 창(kControlDiscoveryWindowMs) 동안 다른 창의 heartbeat가
+    // 보이면 그 창을 리더로 인정(Follower)하고, 안 보이면 스스로 리더가
+    // 된다(Leader). 두 창이 동시에 떠서 서로를 못 보고 둘 다 리더를 자처하는
+    // 드문 경우엔 instance_id가 사전순으로 더 작은 쪽이 이긴다 — 진 쪽은 다음
+    // heartbeat 수신 즉시 물러난다.
+    void handleControlHeartbeat(const std_msgs::msg::String &msg)
+    {
+        const QJsonObject object = parseJsonObject(msg.data);
+        const QString senderId = object.value(QStringLiteral("instance_id")).toString();
+        const QString action = object.value(QStringLiteral("action")).toString();
+        if (senderId.isEmpty() || senderId == m_instanceId) {
+            return;
+        }
+        const qint64 nowMs = steadyNowMs();
+
+        if (action == QStringLiteral("release")) {
+            if (m_controlRole == ControlRole::Follower && senderId == m_trackedLeaderId) {
+                emit m_bridge->logEvent(QStringLiteral("INFO"),
+                                        QStringLiteral("[CONTROL] 조종 중이던 창이 종료돼 재탐색합니다."));
+                beginControlDiscovery();
+            }
+            return;
+        }
+
+        if (m_controlRole == ControlRole::Discovering) {
+            if (m_trackedLeaderId.isEmpty() || senderId < m_trackedLeaderId) {
+                m_trackedLeaderId = senderId;
+            }
+            m_lastLeaderSeenMs = nowMs;
+            return;
+        }
+
+        if (m_controlRole == ControlRole::Leader) {
+            if (senderId < m_instanceId) {
+                becomeFollower(senderId, nowMs);
+                emit m_bridge->logEvent(QStringLiteral("INFO"), QStringLiteral("[CONTROL] 조종 권한을 다른 창에 양보했습니다."));
+            }
+            return;
+        }
+
+        // Follower
+        if (senderId == m_trackedLeaderId) {
+            m_lastLeaderSeenMs = nowMs;
+        } else if (senderId < m_trackedLeaderId) {
+            m_trackedLeaderId = senderId;
+            m_lastLeaderSeenMs = nowMs;
+        }
+    }
+
+    void beginControlDiscovery()
+    {
+        m_controlRole = ControlRole::Discovering;
+        m_trackedLeaderId.clear();
+        emit m_bridge->controlAuthorityChanged(false);
+        if (m_controlDiscoveryTimer) {
+            m_controlDiscoveryTimer->cancel();
+        }
+        m_controlDiscoveryTimer = create_wall_timer(
+            std::chrono::milliseconds(kControlDiscoveryWindowMs),
+            [this]() { finishControlDiscovery(); });
+    }
+
+    void finishControlDiscovery()
+    {
+        if (m_controlDiscoveryTimer) {
+            m_controlDiscoveryTimer->cancel();
+            m_controlDiscoveryTimer.reset();
+        }
+        if (m_controlRole != ControlRole::Discovering) {
+            return; // 탐색 중 이미 다른 경로로 역할이 정해짐
+        }
+        if (!m_trackedLeaderId.isEmpty()) {
+            becomeFollower(m_trackedLeaderId, steadyNowMs());
+        } else {
+            becomeLeader();
+        }
+    }
+
+    void becomeLeader()
+    {
+        m_controlRole = ControlRole::Leader;
+        m_trackedLeaderId.clear();
+        publishControlHeartbeat(QStringLiteral("heartbeat"));
+        emit m_bridge->controlAuthorityChanged(true);
+        emit m_bridge->logEvent(QStringLiteral("INFO"), QStringLiteral("[CONTROL] 이 창이 로봇 조종 권한을 획득했습니다."));
+    }
+
+    void becomeFollower(const QString &leaderId, qint64 nowMs)
+    {
+        m_controlRole = ControlRole::Follower;
+        m_trackedLeaderId = leaderId;
+        m_lastLeaderSeenMs = nowMs;
+        emit m_bridge->controlAuthorityChanged(false);
+        emit m_bridge->logEvent(QStringLiteral("INFO"), QStringLiteral("[CONTROL] 다른 창이 이미 로봇을 조종 중입니다 — 읽기 전용."));
+    }
+
+    void controlTick()
+    {
+        if (m_controlRole == ControlRole::Leader) {
+            publishControlHeartbeat(QStringLiteral("heartbeat"));
+            return;
+        }
+        if (m_controlRole == ControlRole::Follower
+            && steadyNowMs() - m_lastLeaderSeenMs > kControlLeaderTimeoutMs) {
+            emit m_bridge->logEvent(QStringLiteral("WARN"),
+                                    QStringLiteral("[CONTROL] 조종 권한을 가진 창의 응답이 끊겨 재탐색합니다."));
+            beginControlDiscovery();
+        }
+    }
+
+    void publishControlHeartbeat(const QString &action)
+    {
+        if (!m_controlHeartbeatPub) {
+            return;
+        }
+        QJsonObject object;
+        object.insert(QStringLiteral("instance_id"), m_instanceId);
+        object.insert(QStringLiteral("action"), action);
+        std_msgs::msg::String msg;
+        msg.data = QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact)).toStdString();
+        m_controlHeartbeatPub->publish(msg);
+    }
+
+    static qint64 steadyNowMs()
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    }
+
     MissionRosInterface *m_bridge;
+    QString m_instanceId;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr m_dispatchSub;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr m_missionStateSub;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr m_navigationStatusSub;
@@ -252,6 +437,15 @@ private:
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr m_dockResultSub;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr m_arrivalNoticePub;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr m_piReturnStatusSub;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr m_missionSnapshotPub;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr m_missionSnapshotSub;
+    ControlRole m_controlRole {ControlRole::Discovering};
+    QString m_trackedLeaderId;
+    qint64 m_lastLeaderSeenMs {0};
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr m_controlHeartbeatPub;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr m_controlHeartbeatSub;
+    rclcpp::TimerBase::SharedPtr m_controlDiscoveryTimer;
+    rclcpp::TimerBase::SharedPtr m_controlTickTimer;
 };
 
 struct MissionRosInterface::Impl
@@ -273,14 +467,16 @@ MissionRosInterface::MissionRosInterface(QObject *parent)
         }
     });
 
+    const QString instanceId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_impl = std::make_unique<Impl>();
-    m_impl->node = std::make_shared<MissionRosNode>(this);
+    m_impl->node = std::make_shared<MissionRosNode>(this, instanceId);
     m_impl->executor.add_node(m_impl->node);
     m_impl->spinThread = std::thread([this]() { m_impl->executor.spin(); });
 }
 
 MissionRosInterface::~MissionRosInterface()
 {
+    m_impl->node->releaseControlIfLeader();
     m_impl->executor.cancel();
     if (m_impl->spinThread.joinable()) {
         m_impl->spinThread.join();
@@ -326,4 +522,9 @@ void MissionRosInterface::requestDocking()
 void MissionRosInterface::cancelDocking()
 {
     m_impl->node->cancelDocking();
+}
+
+void MissionRosInterface::publishMissionSnapshot(const QString &json)
+{
+    m_impl->node->publishMissionSnapshot(json);
 }
