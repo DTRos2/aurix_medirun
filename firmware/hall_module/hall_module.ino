@@ -70,6 +70,14 @@ void printRawDebug(int value) {
 void setup() {
   Serial.begin(BAUD_RATE);
 
+  // 센서 3핀(AO)이 물리적으로 빠지면 A0가 플로팅돼 직전 값(507~511) 근처에 눌러앉아
+  // 컷오프(506) 부근을 오락가락하며 "끊김"이 "자석 감지"로 오판되는 문제가 있었다.
+  // 내부 풀업(~20~50kΩ)을 걸어두면 센서 연결 시엔 SS49E의 낮은 출력 임피던스가
+  // 지배해 정상값 그대로 나오고, 끊기면 풀업이 지배해 raw 값이 VCC 근처(약 1023)로
+  // 밀려 506 컷오프와 확실히 분리된다. 플래시 후 RAW: 값으로 무자석 기준선이
+  // 507~511에서 크게 안 벗어나는지 재확인할 것.
+  pinMode(HALL_PIN, INPUT_PULLUP);
+
   rawState = isMagnetPresent(readSmoothedValue());
   stableState = rawState;
   lastChangeAt = millis();

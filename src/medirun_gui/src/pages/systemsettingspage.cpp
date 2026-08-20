@@ -106,7 +106,7 @@ SystemSettingsPage::SystemSettingsPage(OperationsOverviewService &service, QWidg
     auto *headerLayout = new QVBoxLayout(headerPanel);
     headerLayout->setContentsMargins(20, 18, 20, 18);
     headerLayout->setSpacing(6);
-    headerLayout->addWidget(makeLabel(QStringLiteral("시스템 설정"), QStringLiteral("pageTitle")));
+    headerLayout->addWidget(makeLabel(QStringLiteral("이벤트 관리"), QStringLiteral("pageTitle")));
     headerLayout->addWidget(makeLabel(
         QStringLiteral("시스템 이벤트 로그(system_event)를 날짜·검색어로 조회합니다."), QStringLiteral("pageSubtitle")));
     layout->addWidget(headerPanel);

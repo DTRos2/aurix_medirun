@@ -41,6 +41,8 @@ private:
     QLabel *m_anomalyMetaLabel {nullptr};
     QLabel *m_anomalyDetailLabel {nullptr};
     QPushButton *m_retryButton {nullptr};
+    QPushButton *m_homeButton {nullptr};
+    QPushButton *m_cancelButton {nullptr};
     QVBoxLayout *m_queueListLayout {nullptr};
     QLabel *m_missionTitleLabel {nullptr};
     QLabel *m_missionStateLabel {nullptr};

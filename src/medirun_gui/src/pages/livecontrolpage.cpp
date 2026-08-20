@@ -474,18 +474,18 @@ QWidget *LiveControlPage::buildActionRow()
     m_saveRecordingButton = new QPushButton(QStringLiteral("영상 저장"));
     m_saveRecordingButton->setEnabled(false);
     m_snapshotButton = new QPushButton(QStringLiteral("스냅샷"));
-    auto *cancelButton = new QPushButton(QStringLiteral("미션 취소"));
-    auto *homeButton = new QPushButton(QStringLiteral("홈 복귀"));
+    m_cancelButton = new QPushButton(QStringLiteral("미션 취소"));
+    m_homeButton = new QPushButton(QStringLiteral("홈 복귀"));
 
-    for (QPushButton *button : {m_recordButton, m_saveRecordingButton, m_snapshotButton, cancelButton, homeButton}) {
+    for (QPushButton *button : {m_recordButton, m_saveRecordingButton, m_snapshotButton, m_cancelButton, m_homeButton}) {
         layout->addWidget(button);
     }
 
     connect(m_recordButton, &QPushButton::clicked, this, &LiveControlPage::handleRecordButtonClicked);
     connect(m_saveRecordingButton, &QPushButton::clicked, this, &LiveControlPage::handleSaveRecordingButtonClicked);
     connect(m_snapshotButton, &QPushButton::clicked, this, &LiveControlPage::handleSnapshotButtonClicked);
-    connect(cancelButton, &QPushButton::clicked, this, &LiveControlPage::missionCancelRequested);
-    connect(homeButton, &QPushButton::clicked, this, &LiveControlPage::returnHomeRequested);
+    connect(m_cancelButton, &QPushButton::clicked, this, &LiveControlPage::missionCancelRequested);
+    connect(m_homeButton, &QPushButton::clicked, this, &LiveControlPage::returnHomeRequested);
     return row;
 }
 
