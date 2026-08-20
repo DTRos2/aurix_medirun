@@ -24,6 +24,7 @@ setup(
             "emergency_dispatcher = medirun_mission.emergency_dispatcher:main",
             "waypoint_manager = medirun_mission.waypoint_manager:main",
             "mission_manager = medirun_mission.mission_manager:main",
+            "arrival_return_manager = medirun_mission.arrival_return_manager:main",
         ]
     },
 )
