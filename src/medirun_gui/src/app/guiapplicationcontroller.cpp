@@ -198,9 +198,6 @@ void GuiApplicationController::createMainWindow()
         m_sensorTelemetryProvider = new RosSensorTelemetryProvider(m_mainWindow);
     }
     m_mainWindow->setSensorTelemetryProvider(m_sensorTelemetryProvider);
-    // MissionController가 SensorTelemetryProvider보다 먼저 생성돼(150행) 생성자로
-    // 못 받아 late-binding — AED 반출(홀센서) 감지로 도착 후 자동 복귀를 트리거한다.
-    m_missionController->setSensorTelemetryProvider(m_sensorTelemetryProvider);
 
     m_drivingRecordService = new DrivingRecordService(
         m_session, m_navigationService.get(), m_telemetryProvider, m_cameraFeedProvider, m_waypointRepository.get(),

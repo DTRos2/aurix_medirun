@@ -12,7 +12,6 @@ class NavigationService;
 class WaypointRepository;
 class MissionStorageService;
 class MissionRosInterface;
-class SensorTelemetryProvider;
 
 class MissionController : public QObject
 {
@@ -25,11 +24,6 @@ public:
                                MissionStorageService *storageService,
                                MissionRosInterface *rosInterface,
                                QObject *parent = nullptr);
-
-    // MissionController가 SensorTelemetryProvider보다 먼저 생성돼(생성자 인자로
-    // 못 받음) late-binding으로 연결한다 — setRobotService 등과 동일한 패턴.
-    // AED 반출(홀센서) 감지로 도착 후 자동 복귀를 트리거하는 데 쓴다.
-    void setSensorTelemetryProvider(SensorTelemetryProvider *provider);
 
     MissionSnapshot missionSnapshot() const;
     QVector<MissionQueueItem> waitingQueue() const;
@@ -78,11 +72,11 @@ private slots:
     void handleAmclPoseUpdated(double x, double y, double yawRad);
     void handleRosHeartbeat(const QString &source, const QDateTime &receivedAt);
     void handleRosRetryFinished(bool success, const QString &detail);
-    void handlePayloadLoadedChanged(bool loaded);
-    void handlePayloadRemovedDelayElapsed();
-    void handleForcedReturnTimeout();
-    void handleReminderTick();
     void handleDockResult(bool success, const QString &detail);
+    // Pi의 arrival_return_manager가 방송하는 반출감지/복귀 진행상황 — 화면
+    // 상태만 따라가고 여기서 Nav2 goal을 다시 보내지는 않는다(그건 Pi가
+    // 로컬로 이미 처리함). armed/payload_removed/returning/return_failed.
+    void handlePiReturnStatus(const QString &phase, const QString &missionId, const QString &queueId);
     void updateElapsed();
 
 private:
@@ -99,8 +93,11 @@ private:
     void startNextQueueIfPossible();
     void startMissionForQueue(const QString &queueId, bool divertedFromActiveMission);
     bool beginReturnHomeFlow(const QString &reason);
+    // Nav2 goal SUCCEEDED(호출구역 도착) 직후 호출 — Arrived로 전환하고
+    // Pi의 arrival_return_manager에 감시 시작(armed=true, 홈 좌표 포함)을
+    // 알린다. 반출 감지·타이머·복귀 goal 전송은 그 뒤로 전부 Pi가 로컬로
+    // 처리한다(2026-08-19, Wi-Fi 끊김에도 이어가도록 이전).
     void beginArrivedWait();
-    void stopArrivalTimers();
     // Home 웨이포인트를 홈 복귀 목표로 돌려준다. 도착 후 항상 ArUco
     // 전면주차(Parking)로 이어간다.
     bool resolveHomeWaypoint(WaypointDef &homeWaypoint, WaypointPose &homePose, QString &errorMessage) const;
@@ -133,7 +130,6 @@ private:
     WaypointRepository *m_waypointRepository {nullptr};
     MissionStorageService *m_storageService {nullptr};
     MissionRosInterface *m_rosInterface {nullptr};
-    SensorTelemetryProvider *m_sensorTelemetryProvider {nullptr};
     QVector<MissionQueueItem> m_queueItems;
     QVector<MissionHistoryEntry> m_historyEntries;
     MissionSnapshot m_snapshot;
@@ -147,11 +143,6 @@ private:
     bool m_retryInProgress {false};
     bool m_goalAccepted {false};
     QTimer *m_elapsedTimer {nullptr};
-    // 도착(Arrived) 상태 동안만 쓰는 타이머 3개 — SR-F-010/TC-12 기준
-    // (AED 반출 감지 15초 후 복귀 / 미반출 시 60초마다 안내 / 180초 경과 시 강제 복귀).
-    QTimer *m_payloadRemovedDelayTimer {nullptr};
-    QTimer *m_forcedReturnTimer {nullptr};
-    QTimer *m_reminderTimer {nullptr};
     double m_lastRobotX {0.0};
     double m_lastRobotY {0.0};
     bool m_robotPoseValid {false};
