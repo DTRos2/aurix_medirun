@@ -51,7 +51,7 @@ QList<NavSection> sectionsForRole(UserRole role)
         sections.append({QStringLiteral("시스템"), {
             {PageId::UserManagement, QStringLiteral("사용자 관리")},
             {PageId::RobotManagement, QStringLiteral("로봇 관리")},
-            {PageId::SystemSettings, QStringLiteral("시스템 설정")},
+            {PageId::SystemSettings, QStringLiteral("이벤트 관리")},
         }});
     }
 
