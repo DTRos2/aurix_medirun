@@ -3,6 +3,8 @@
 #include "../ros/navigationservice.h"
 #include "missionrosinterface.h"
 #include "missionstorageservice.h"
+#include "operationsoverviewservice.h"
+#include "robotservice.h"
 #include "waypointrepository.h"
 
 #include <QDateTime>
@@ -101,6 +103,8 @@ MissionController::MissionController(const AppSession &session,
                                      WaypointRepository *waypointRepository,
                                      MissionStorageService *storageService,
                                      MissionRosInterface *rosInterface,
+                                     RobotService *robotService,
+                                     OperationsOverviewService *overviewService,
                                      QObject *parent)
     : QObject(parent)
     , m_session(session)
@@ -108,6 +112,8 @@ MissionController::MissionController(const AppSession &session,
     , m_waypointRepository(waypointRepository)
     , m_storageService(storageService)
     , m_rosInterface(rosInterface)
+    , m_robotService(robotService)
+    , m_overviewService(overviewService)
 {
     m_storageService->setSessionContext(m_session);
     m_queueItems = m_storageService->loadQueue();
@@ -745,7 +751,11 @@ void MissionController::startMissionForQueue(const QString &queueId, bool divert
     emit missionChanged();
     log(QStringLiteral("NAV2"),
         QStringLiteral("goal send mission_id=%1 queue_id=%2 waypoint_id=%3").arg(item.missionId, item.queueId, item.waypointId));
-    m_navigationService->navigateToPose(item.pose.positionX, item.pose.positionY, item.pose.yawRadians, item.pose.frameId);
+    QVector<NavPose> poses;
+    if (!trajectoryPosesForButton(item.waypointId, poses)) {
+        poses = {NavPose{item.pose.positionX, item.pose.positionY, item.pose.yawRadians}};
+    }
+    dispatchNavigation(poses, item.pose.frameId, item.waypointName);
 
     // 문서 02 §7.1 음성 안내 #3(SR-F-005) "임무 시작" — 호출을 받아 실제로
     // 주행을 시작하는 순간 1회 안내한다. beginArrivedWait()의 "AED가
@@ -785,6 +795,7 @@ bool MissionController::beginReturnHomeFlow(const QString &reason)
                    QStringLiteral("STARTED"), reason);
         emit historyChanged();
         emit missionChanged();
+        m_rosInterface->publishAudioAnnouncement(QStringLiteral("홈으로 복귀합니다"));
         m_navigationService->navigateToPose(homePose.positionX, homePose.positionY, homePose.yawRadians, homePose.frameId);
         return true;
     }
@@ -813,7 +824,8 @@ bool MissionController::beginReturnHomeFlow(const QString &reason)
         setMissionState(MissionState::ReturningHome);
         emit historyChanged();
         emit missionChanged();
-        m_navigationService->navigateToPose(homePose.positionX, homePose.positionY, homePose.yawRadians, homePose.frameId);
+        m_rosInterface->publishAudioAnnouncement(QStringLiteral("홈으로 복귀합니다"));
+        dispatchReturnHomeNavigation(homePose, homeWaypoint.label);
         return true;
     }
 
@@ -848,7 +860,8 @@ bool MissionController::dispatchPendingReturnHome()
     m_snapshot.nextWaypointName = homeWaypoint.label;
     m_snapshot.returningHome = true;
     setMissionState(MissionState::ReturningHome);
-    m_navigationService->navigateToPose(homePose.positionX, homePose.positionY, homePose.yawRadians, homePose.frameId);
+    m_rosInterface->publishAudioAnnouncement(QStringLiteral("홈으로 복귀합니다"));
+    dispatchReturnHomeNavigation(homePose, homeWaypoint.label);
     return true;
 }
 
@@ -881,8 +894,21 @@ void MissionController::beginArrivedWait()
         return;
     }
 
+    // 이 미션을 유발한 버튼의 trajectory도 이 시점(Wi-Fi가 아직 살아있을 때)에
+    // 통째로 같이 실어 보낸다 — Pi가 나중에 복귀할 때 DB를 다시 조회할 필요 없이
+    // 로컬에 이미 가진 이 경로+HOME으로 Wi-Fi 단절 중에도 주행을 완주할 수 있다.
+    QVector<NavPose> trajectoryPoses;
+    if (const MissionQueueItem *item = activeQueueItem()) {
+        trajectoryPosesForButton(item->waypointId, trajectoryPoses);
+    }
     m_rosInterface->publishArrivalNotice(true, m_snapshot.missionId, m_snapshot.queueId, homePose.positionX,
-                                         homePose.positionY, homePose.yawRadians, homePose.frameId);
+                                         homePose.positionY, homePose.yawRadians, homePose.frameId, trajectoryPoses);
+
+    // Pi가 실제로 타게 될 전체 경로(trajectory+HOME)를 캐싱해둔다 — "returning"
+    // 상태를 받았을 때 DB에 다시 조회하지 않고 그대로 robot_session/nav_goal_log
+    // 기록에 쓴다(handlePiReturnStatus 참고).
+    m_pendingPiReturnPoses = trajectoryPoses;
+    m_pendingPiReturnPoses.append(NavPose{homePose.positionX, homePose.positionY, homePose.yawRadians});
 }
 
 void MissionController::handleDockResult(bool success, const QString &detail)
@@ -897,6 +923,7 @@ void MissionController::handleDockResult(bool success, const QString &detail)
         return;
     }
     if (success) {
+        m_rosInterface->publishAudioAnnouncement(QStringLiteral("도킹 완료했습니다"));
         finishMission(MissionState::Completed, m_pendingReason, QStringLiteral("PARKING_COMPLETED"), QStringLiteral("SUCCEEDED"));
         return;
     }
@@ -908,12 +935,19 @@ void MissionController::handleDockResult(bool success, const QString &detail)
     finishMission(MissionState::Failed, reason, QStringLiteral("PARKING_FAILED"), QStringLiteral("FAILED"));
 }
 
-void MissionController::handlePiReturnStatus(const QString &phase, const QString &missionId, const QString &queueId)
+void MissionController::handlePiReturnStatus(const QString &phase, const QString &missionId, const QString &queueId,
+                                             int waypointIndex, int posesTotal, bool replayed)
 {
+    Q_UNUSED(posesTotal)
     // Pi가 지금 진행 중인 우리 미션 얘기를 하는 게 맞는지 확인 — 다른(예:
     // 이미 끝난) 미션의 지연 도착 메시지에 반응하지 않게.
     if (missionId != m_snapshot.missionId || queueId != m_snapshot.queueId) {
         return;
+    }
+    if (replayed) {
+        // Wi-Fi 단절 중 Pi 로컬에 버퍼링돼 있다가 재연결 후 뒤늦게 온 이벤트 —
+        // 처리 로직은 아래와 동일(상태 가드로 재실행에 안전), 로그만 표시.
+        log(QStringLiteral("MISSION"), QStringLiteral("Pi 재전송 이벤트 수신 phase=%1").arg(phase));
     }
 
     if (phase == QStringLiteral("payload_removed")) {
@@ -937,6 +971,41 @@ void MissionController::handlePiReturnStatus(const QString &phase, const QString
             setMissionState(MissionState::ReturningHome);
             emit historyChanged();
             emit missionChanged();
+
+            // Pi가 실제로 주행을 시작한 시점 — NavGoalLogRecorder는 로컬
+            // NavigationService 시그널만 보므로 이 Pi 주도 복귀는 여기서 직접
+            // robot_session/nav_goal_log를 연다. beginArrivedWait()가 arrival_notice와
+            // 함께 캐싱해둔 경로(m_pendingPiReturnPoses)를 그대로 쓴다.
+            if (m_robotService && m_overviewService && !m_pendingPiReturnPoses.isEmpty()) {
+                const QVector<RobotRecord> robots = m_robotService->listRobots(false);
+                if (robots.size() == 1) {
+                    QVector<NavGoalPoint> goals;
+                    goals.reserve(m_pendingPiReturnPoses.size());
+                    for (const NavPose &pose : m_pendingPiReturnPoses) {
+                        goals.append(NavGoalPoint{pose.x, pose.y, pose.yaw});
+                    }
+                    const NavGoalPoint startPose{m_lastRobotX, m_lastRobotY, 0.0};
+                    QString dbErrorMessage;
+                    if (!m_overviewService->startRobotSession(robots.first().id, QStringLiteral("auto"),
+                                                              QStringLiteral("Pi 로컬 복귀"), goals, m_robotPoseValid,
+                                                              startPose, m_piReturnSessionId, dbErrorMessage)) {
+                        log(QStringLiteral("MISSION"), QStringLiteral("Pi 복귀 세션 기록 실패: %1").arg(dbErrorMessage));
+                        m_piReturnSessionId = -1;
+                    }
+                    m_piReturnLastMarkedIndex = -1;
+                }
+            }
+        }
+
+        // 매번(첫 진입 포함) 넘어온 진행률로, 이번에 새로 지나친 지점까지
+        // 'arrived'로 마감한다. 첫 "returning"은 아직 goal도 안 나간 시점이라
+        // waypointIndex가 -1(진행률 없음)로 온다 — 그때는 아무것도 안 함.
+        if (m_piReturnSessionId >= 0 && waypointIndex > m_piReturnLastMarkedIndex) {
+            QString dbErrorMessage;
+            for (int i = m_piReturnLastMarkedIndex + 1; i < waypointIndex; ++i) {
+                m_overviewService->markGoalReached(m_piReturnSessionId, i, dbErrorMessage);
+            }
+            m_piReturnLastMarkedIndex = waypointIndex - 1;
         }
         return;
     }
@@ -949,6 +1018,62 @@ void MissionController::handlePiReturnStatus(const QString &phase, const QString
         return;
     }
     // "armed"는 화면에 딱히 반영할 게 없어 로그만 남고 지나간다.
+}
+
+bool MissionController::trajectoryPosesForButton(const QString &buttonCode, QVector<NavPose> &poses) const
+{
+    if (!m_robotService || !m_overviewService || buttonCode.isEmpty()) {
+        return false;
+    }
+    // trajectory는 waypoint_set(robot_id, type='trajectory')에 저장돼 로봇마다
+    // 갈리므로, 운영현황 자동기록과 동일하게 로봇이 정확히 1대 등록돼 있을 때만
+    // 조회한다(waypointmanagementpage.cpp::handleSaveTrajectory와 동일 패턴).
+    const QVector<RobotRecord> robots = m_robotService->listRobots(false);
+    if (robots.size() != 1) {
+        return false;
+    }
+
+    QString trajectoryName;
+    QVector<NavGoalPoint> dbPoses;
+    QString errorMessage;
+    if (!m_overviewService->loadTrajectoryPosesForButton(robots.first().id, buttonCode, trajectoryName, dbPoses, errorMessage)) {
+        log(QStringLiteral("MISSION"), QStringLiteral("경로 조회 실패(버튼=%1): %2").arg(buttonCode, errorMessage));
+        return false;
+    }
+    if (dbPoses.isEmpty()) {
+        return false;
+    }
+
+    poses.clear();
+    poses.reserve(dbPoses.size());
+    for (const NavGoalPoint &point : dbPoses) {
+        poses.append(NavPose{point.x, point.y, point.yaw});
+    }
+    log(QStringLiteral("MISSION"),
+        QStringLiteral("버튼 %1 → 경로 '%2'(%3점) 사용").arg(buttonCode, trajectoryName).arg(poses.size()));
+    return true;
+}
+
+void MissionController::dispatchNavigation(const QVector<NavPose> &poses, const QString &frameId, const QString &label)
+{
+    if (poses.isEmpty()) {
+        return;
+    }
+    if (poses.size() == 1) {
+        m_navigationService->navigateToPose(poses.first().x, poses.first().y, poses.first().yaw, frameId, label);
+    } else {
+        m_navigationService->navigateThroughPoses(poses, frameId, label);
+    }
+}
+
+void MissionController::dispatchReturnHomeNavigation(const WaypointPose &homePose, const QString &label)
+{
+    QVector<NavPose> poses;
+    if (const MissionQueueItem *item = activeQueueItem()) {
+        trajectoryPosesForButton(item->waypointId, poses);
+    }
+    poses.append(NavPose{homePose.positionX, homePose.positionY, homePose.yawRadians});
+    dispatchNavigation(poses, homePose.frameId, label);
 }
 
 bool MissionController::resolveHomeWaypoint(WaypointDef &homeWaypoint, WaypointPose &homePose, QString &errorMessage) const
@@ -1002,6 +1127,16 @@ void MissionController::finishMission(MissionState finalState,
     // 없도록 해제 신호를 같이 보낸다(이미 해제돼 있으면 Pi가 그냥 무시함).
     if (!m_snapshot.missionId.isEmpty()) {
         m_rosInterface->publishArrivalNotice(false, m_snapshot.missionId, m_snapshot.queueId, 0.0, 0.0, 0.0, QString());
+    }
+    // Pi 주도 복귀(handlePiReturnStatus)로 DB 세션을 열어뒀으면, 이 미션이
+    // 어떤 이유로 끝나든 그 세션도 같이 마감한다 — NavGoalLogRecorder가 이
+    // 세션의 존재를 모르므로 여기서 직접 닫아야 한다.
+    if (m_overviewService && m_piReturnSessionId >= 0) {
+        QString dbErrorMessage;
+        m_overviewService->finishRobotSession(m_piReturnSessionId, finalState == MissionState::Completed,
+                                              finalState == MissionState::Cancelled, dbErrorMessage);
+        m_piReturnSessionId = -1;
+        m_piReturnLastMarkedIndex = -1;
     }
     setMissionState(finalState);
     m_pendingAction = PendingAction::None;
@@ -1118,7 +1253,7 @@ void MissionController::handleNavigationWarningTick()
         m_navigationWarningTimer->stop();
         return;
     }
-    m_rosInterface->publishAudioAnnouncement(QStringLiteral("긴급상황 발생, 비켜주세요"));
+    m_rosInterface->publishAudioAnnouncement(QStringLiteral("비켜주세요. 긴급상황입니다."));
 }
 
 void MissionController::saveQueue()

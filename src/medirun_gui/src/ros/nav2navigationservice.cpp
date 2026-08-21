@@ -9,6 +9,7 @@
 #include <lifecycle_msgs/msg/state.hpp>
 #include <lifecycle_msgs/srv/get_state.hpp>
 #include <nav2_msgs/action/follow_waypoints.hpp>
+#include <nav2_msgs/action/navigate_through_poses.hpp>
 #include <nav2_msgs/action/navigate_to_pose.hpp>
 #include <nav2_msgs/msg/speed_limit.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -109,8 +110,10 @@ class TurtlebotNavNode : public rclcpp::Node
 public:
     using NavigateToPose = nav2_msgs::action::NavigateToPose;
     using FollowWaypoints = nav2_msgs::action::FollowWaypoints;
+    using NavigateThroughPoses = nav2_msgs::action::NavigateThroughPoses;
     using NavClient = rclcpp_action::Client<NavigateToPose>;
     using FollowClient = rclcpp_action::Client<FollowWaypoints>;
+    using ThroughPosesClient = rclcpp_action::Client<NavigateThroughPoses>;
 
     explicit TurtlebotNavNode(Nav2NavigationService *bridge)
         : rclcpp::Node("medirun_gui_nav_bridge")
@@ -126,6 +129,7 @@ public:
     {
         m_navClient = rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
         m_followClient = rclcpp_action::create_client<FollowWaypoints>(this, "follow_waypoints");
+        m_throughPosesClient = rclcpp_action::create_client<NavigateThroughPoses>(this, "navigate_through_poses");
         m_initialPosePub = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("initialpose", 10);
         m_speedLimitPub = create_publisher<nav2_msgs::msg::SpeedLimit>("speed_limit", 10);
         m_cmdVelPub = create_publisher<geometry_msgs::msg::Twist>("cmd_vel", rclcpp::QoS(10));
@@ -257,7 +261,7 @@ public:
         // Nav2가 새 goal을 받아들이며 기존 1건을 preempt해서 "먼저 누른 호출이
         // 사라지고 나중 호출이 바로 실행된다"처럼 보인다. m_navigationInProgress는
         // 이 2단계 전체가 끝날 때만 false가 되는 atomic 플래그라 그 틈을 덮는다.
-        if (m_navGoalHandle || m_followGoalHandle || m_navigationInProgress) {
+        if (m_navGoalHandle || m_followGoalHandle || m_throughPosesGoalHandle || m_navigationInProgress) {
             m_bridge->navigationGoalRejected(QStringLiteral("이미 진행 중인 goal이 있습니다."));
             return;
         }
@@ -350,7 +354,7 @@ public:
     void followWaypoints(const QVector<NavPose> &poses, const QString &frameId, const QString &label)
     {
         // navigateToPose()와 동일한 이유로 m_navigationInProgress도 같이 본다.
-        if (m_navGoalHandle || m_followGoalHandle || m_navigationInProgress) {
+        if (m_navGoalHandle || m_followGoalHandle || m_throughPosesGoalHandle || m_navigationInProgress) {
             m_bridge->navigationGoalRejected(QStringLiteral("이미 진행 중인 goal이 있습니다."));
             return;
         }
@@ -439,6 +443,89 @@ public:
         m_followClient->async_send_goal(goal, options);
     }
 
+    // trajectory(+HOME) 등 여러 점을 중간 정지 없이 하나의 부드러운 경로로 잇는다.
+    // followWaypoints()와 달리 접근(approach) 지점을 안 끼워넣는다 — 도킹 정렬은
+    // 이 액션이 끝난 뒤(홈 도착) 별도의 ArUco 전면주차 단계에서 처리되고, 여기서는
+    // 그냥 주어진 점들을 순서 그대로 통과하면 된다.
+    void navigateThroughPoses(const QVector<NavPose> &poses, const QString &frameId, const QString &label)
+    {
+        if (m_navGoalHandle || m_followGoalHandle || m_throughPosesGoalHandle || m_navigationInProgress) {
+            m_bridge->navigationGoalRejected(QStringLiteral("이미 진행 중인 goal이 있습니다."));
+            return;
+        }
+        if (poses.isEmpty()) {
+            m_bridge->navigationGoalRejected(QStringLiteral("경로에 웨이포인트가 없습니다."));
+            return;
+        }
+        if (!m_throughPosesClient->wait_for_action_server(std::chrono::seconds(1))) {
+            m_bridge->logEvent(QStringLiteral("ERROR"), QStringLiteral("navigate_through_poses 액션 서버를 찾을 수 없습니다."));
+            m_bridge->navigationGoalRejected(QStringLiteral("navigate_through_poses 액션 서버 미발견"));
+            return;
+        }
+
+        const rclcpp::Time stamp = now();
+        const std::string frameStd = frameId.toStdString();
+        NavigateThroughPoses::Goal goal;
+        goal.poses.reserve(static_cast<size_t>(poses.size()));
+        for (const NavPose &pose : poses) {
+            goal.poses.push_back(makePoseStamped(pose.x, pose.y, pose.yaw, frameStd, stamp));
+        }
+        m_throughPosesTotal = static_cast<int>(poses.size());
+
+        m_bridge->logEvent(QStringLiteral("INFO"), QStringLiteral("경로 주행 요청: %1개 지점 연속 주행").arg(m_throughPosesTotal));
+        m_bridge->waypointProgress(0, m_throughPosesTotal);
+        m_bridge->statusChanged(QStringLiteral("경로 주행 중 (0/%1)").arg(m_throughPosesTotal));
+        m_navigationInProgress = true;
+        m_bridge->navSessionStarted(poses, label);
+
+        ThroughPosesClient::SendGoalOptions options;
+        options.feedback_callback = [this](ThroughPosesClient::GoalHandle::SharedPtr,
+                                           const std::shared_ptr<const NavigateThroughPoses::Feedback> feedback) {
+            const int remaining = static_cast<int>(feedback->number_of_poses_remaining);
+            const int passed = std::max(0, m_throughPosesTotal - remaining);
+            m_bridge->waypointProgress(passed, m_throughPosesTotal);
+        };
+        options.goal_response_callback = [this](ThroughPosesClient::GoalHandle::SharedPtr handle) {
+            if (!handle) {
+                m_cancelRequestedBeforeHandle = false;
+                m_bridge->logEvent(QStringLiteral("ERROR"), QStringLiteral("경로 주행 요청이 거부되었습니다."));
+                m_bridge->statusChanged(QStringLiteral("대기 중"));
+                m_navigationInProgress = false;
+                m_bridge->navSessionFinished(false, false);
+                m_bridge->navigationGoalRejected(QStringLiteral("navigate_through_poses goal rejected"));
+                return;
+            }
+            m_throughPosesGoalHandle = handle;
+            if (m_cancelRequestedBeforeHandle) {
+                m_cancelRequestedBeforeHandle = false;
+                m_throughPosesClient->async_cancel_goal(handle);
+                return;
+            }
+            m_bridge->navigationGoalAccepted();
+        };
+        options.result_callback = [this](const ThroughPosesClient::GoalHandle::WrappedResult &result) {
+            m_throughPosesGoalHandle.reset();
+            const bool succeeded = result.code == rclcpp_action::ResultCode::SUCCEEDED;
+            if (succeeded) {
+                m_bridge->logEvent(QStringLiteral("INFO"), QStringLiteral("경로 주행 완료"));
+                m_bridge->statusChanged(QStringLiteral("대기 중 (마지막 결과: 성공)"));
+                m_bridge->navigationResult(QStringLiteral("SUCCEEDED"), QStringLiteral("성공"));
+            } else {
+                const QString text = resultCodeText(result.code);
+                m_bridge->logEvent(QStringLiteral("WARN"), QStringLiteral("경로 주행 결과: %1").arg(text));
+                m_bridge->statusChanged(QStringLiteral("대기 중 (마지막 결과: %1)").arg(text));
+                const QString resultCode = (result.code == rclcpp_action::ResultCode::CANCELED)
+                                               ? QStringLiteral("CANCELED")
+                                               : QStringLiteral("FAILED");
+                m_bridge->navigationResult(resultCode, text);
+            }
+            m_navigationInProgress = false;
+            m_bridge->navSessionFinished(succeeded, result.code == rclcpp_action::ResultCode::CANCELED);
+        };
+
+        m_throughPosesClient->async_send_goal(goal, options);
+    }
+
     void cancelGoal()
     {
         if (m_navGoalHandle) {
@@ -449,6 +536,12 @@ public:
         }
         if (m_followGoalHandle) {
             m_followClient->async_cancel_goal(m_followGoalHandle);
+            m_bridge->logEvent(QStringLiteral("WARN"), QStringLiteral("주행 취소를 요청했습니다."));
+            m_bridge->statusChanged(QStringLiteral("취소 요청됨..."));
+            return;
+        }
+        if (m_throughPosesGoalHandle) {
+            m_throughPosesClient->async_cancel_goal(m_throughPosesGoalHandle);
             m_bridge->logEvent(QStringLiteral("WARN"), QStringLiteral("주행 취소를 요청했습니다."));
             m_bridge->statusChanged(QStringLiteral("취소 요청됨..."));
             return;
@@ -472,6 +565,7 @@ public:
         // 상황도 확실히 멈추게 한다(추적 중인 게 진짜 없으면 Nav2가 그냥 무시).
         m_navClient->async_cancel_all_goals();
         m_followClient->async_cancel_all_goals();
+        m_throughPosesClient->async_cancel_all_goals();
         m_bridge->logEvent(QStringLiteral("WARN"),
                            QStringLiteral("이 세션이 추적 중인 주행은 없어, 혹시 남아있을 이전 목표를 전체 취소 요청했습니다."));
         m_bridge->statusChanged(QStringLiteral("취소 요청됨..."));
@@ -633,6 +727,7 @@ private:
     Nav2NavigationService *m_bridge;
     NavClient::SharedPtr m_navClient;
     FollowClient::SharedPtr m_followClient;
+    ThroughPosesClient::SharedPtr m_throughPosesClient;
     rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr m_initialPosePub;
     rclcpp::Publisher<nav2_msgs::msg::SpeedLimit>::SharedPtr m_speedLimitPub;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr m_cmdVelPub;
@@ -653,6 +748,8 @@ private:
     std::shared_ptr<tf2_ros::TransformListener> m_tfListener;
     NavClient::GoalHandle::SharedPtr m_navGoalHandle;
     FollowClient::GoalHandle::SharedPtr m_followGoalHandle;
+    ThroughPosesClient::GoalHandle::SharedPtr m_throughPosesGoalHandle;
+    int m_throughPosesTotal {0};
 
     // approach->최종 목표 전환 구간처럼 goal 핸들이 아직 없는 순간에 cancelGoal()이
     // 호출되면(예: 대기 호출 "전환" 버튼) 취소할 대상이 없어 요청이 그냥 씹혔다.
@@ -733,6 +830,11 @@ void Nav2NavigationService::navigateToPose(double x, double y, double yawRad, co
 void Nav2NavigationService::followWaypoints(const QVector<NavPose> &poses, const QString &frameId, const QString &label)
 {
     m_impl->node->followWaypoints(poses, frameId, label);
+}
+
+void Nav2NavigationService::navigateThroughPoses(const QVector<NavPose> &poses, const QString &frameId, const QString &label)
+{
+    m_impl->node->navigateThroughPoses(poses, frameId, label);
 }
 
 void Nav2NavigationService::cancelGoal()

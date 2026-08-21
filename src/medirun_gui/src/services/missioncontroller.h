@@ -3,6 +3,7 @@
 
 #include "../app/appsession.h"
 #include "../models/missiontypes.h"
+#include "../ros/navigationservice.h"
 
 #include <QObject>
 #include <QStringList>
@@ -12,6 +13,8 @@ class NavigationService;
 class WaypointRepository;
 class MissionStorageService;
 class MissionRosInterface;
+class RobotService;
+class OperationsOverviewService;
 
 class MissionController : public QObject
 {
@@ -23,6 +26,8 @@ public:
                                WaypointRepository *waypointRepository,
                                MissionStorageService *storageService,
                                MissionRosInterface *rosInterface,
+                               RobotService *robotService,
+                               OperationsOverviewService *overviewService,
                                QObject *parent = nullptr);
 
     MissionSnapshot missionSnapshot() const;
@@ -86,7 +91,8 @@ private slots:
     // Pi의 arrival_return_manager가 방송하는 반출감지/복귀 진행상황 — 화면
     // 상태만 따라가고 여기서 Nav2 goal을 다시 보내지는 않는다(그건 Pi가
     // 로컬로 이미 처리함). armed/payload_removed/returning/return_failed.
-    void handlePiReturnStatus(const QString &phase, const QString &missionId, const QString &queueId);
+    void handlePiReturnStatus(const QString &phase, const QString &missionId, const QString &queueId,
+                              int waypointIndex, int posesTotal, bool replayed);
     void handleControlAuthorityChanged(bool isController);
     // 조종 권한이 없는 창이 리더 창의 MissionSnapshot 방송을 받아 자신의
     // m_snapshot을 그대로 덮어쓴다(읽기 전용 미러) — publishSnapshotIfController 참고.
@@ -131,6 +137,19 @@ private:
     // Home 웨이포인트를 홈 복귀 목표로 돌려준다. 도착 후 항상 ArUco
     // 전면주차(Parking)로 이어간다.
     bool resolveHomeWaypoint(WaypointDef &homeWaypoint, WaypointPose &homePose, QString &errorMessage) const;
+    // buttonCode에 연결된 trajectory가 DB에 있으면 그 순서 그대로 poses를 채워
+    // true를 돌려준다(단, 로봇이 정확히 1대 등록돼 있어야 함 — 그 외엔 폴백).
+    // 없거나 조회 실패하면 poses를 안 건드리고 false — 호출자는 이때 기존 단일
+    // pose로 주행해야 한다.
+    bool trajectoryPosesForButton(const QString &buttonCode, QVector<NavPose> &poses) const;
+    // poses.size()==1이면 navigateToPose, 그 이상이면 navigateThroughPoses로
+    // 자동 분기하는 출동/복귀 주행 공통 진입점.
+    void dispatchNavigation(const QVector<NavPose> &poses, const QString &frameId, const QString &label);
+    // 복귀 시 이 미션을 유발한 버튼의 trajectory(저장된 순서 그대로) 뒤에
+    // HOME을 이어붙여 한 번에 navigateThroughPoses로 보낸다. activeQueueItem()로
+    // 트리거 버튼을 못 찾거나 연결된 trajectory가 없으면 HOME 단일 지점으로
+    // 폴백한다(기존 동작과 동일).
+    void dispatchReturnHomeNavigation(const WaypointPose &homePose, const QString &label);
     void finishMission(MissionState finalState, const QString &reason, const QString &historyType, const QString &historyResult,
                        bool requiresQueueConfirmation = false);
     void resetToIdleSnapshot();
@@ -160,6 +179,15 @@ private:
     WaypointRepository *m_waypointRepository {nullptr};
     MissionStorageService *m_storageService {nullptr};
     MissionRosInterface *m_rosInterface {nullptr};
+    RobotService *m_robotService {nullptr};
+    OperationsOverviewService *m_overviewService {nullptr};
+    // beginArrivedWait()에서 arrival_notice와 함께 Pi에 보낸 것과 동일한
+    // trajectory+HOME 목록 — Pi가 나중에 "returning" 상태를 보고할 때 이걸
+    // 그대로 robot_session/nav_goal_log 기록에 재사용한다(NavGoalLogRecorder는
+    // 로컬 NavigationService 시그널만 보므로 Pi 주도 복귀는 여기서 직접 기록).
+    QVector<NavPose> m_pendingPiReturnPoses;
+    int m_piReturnSessionId {-1};
+    int m_piReturnLastMarkedIndex {-1};
     QVector<MissionQueueItem> m_queueItems;
     QVector<MissionHistoryEntry> m_historyEntries;
     MissionSnapshot m_snapshot;

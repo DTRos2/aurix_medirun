@@ -1,8 +1,11 @@
 #ifndef MISSIONROSINTERFACE_H
 #define MISSIONROSINTERFACE_H
 
+#include "../ros/navigationservice.h"
+
 #include <QObject>
 #include <QDateTime>
+#include <QVector>
 
 #include <memory>
 
@@ -35,13 +38,18 @@ public slots:
     // 취소/복귀시켜서 Pi가 나중에 또 복귀 goal을 쏘면 안 될 때 쓴다. 이 신호
     // 이후로는 반출 감지·15초/60초/180초 타이머·복귀 goal 전송까지 전부
     // Pi가 로컬로 처리해서 Wi-Fi가 끊겨도 이어간다(2026-08-19).
+    // trajectoryPoses: 이 미션을 유발한 버튼에 연결된 경로(저장된 순서 그대로,
+    // 비어있을 수 있음) — Pi가 복귀 시 이 경로를 먼저 타고 HOME으로 가도록
+    // Wi-Fi가 아직 살아있는 이 시점에 통째로 넘겨준다(미션 시작 시 필요한
+    // 웨이포인트를 Pi에 전부 전달해 이후 Wi-Fi가 끊겨도 주행 가능하게 하기 위함).
     void publishArrivalNotice(bool armed,
                               const QString &missionId,
                               const QString &queueId,
                               double homeX,
                               double homeY,
                               double homeYaw,
-                              const QString &frameId);
+                              const QString &frameId,
+                              const QVector<NavPose> &trajectoryPoses = {});
     // 조종 권한을 가진 창만 호출한다 — 다른(읽기 전용) 창들이 미션 진행
     // 상황(호출 접수/출동 중/현장 도착 등 스테퍼)을 실시간으로 따라 볼 수
     // 있도록 MissionSnapshot을 JSON으로 방송한다.
@@ -60,7 +68,14 @@ signals:
     // Pi의 arrival_return_manager가 /medirun/mission/pi_return_status로 방송하는
     // 진행상황 — "armed"/"payload_removed"/"returning"/"return_failed".
     // MissionController는 이걸 구독해서 화면 상태만 따라가고 명령은 안 내린다.
-    void piReturnStatusReceived(const QString &phase, const QString &missionId, const QString &queueId);
+    // waypointIndex/posesTotal: Pi가 navigate_through_poses로 trajectory+HOME을
+    // 타는 중 몇 번째 지점을 지났는지(0-based 통과 개수) — 없으면 둘 다 -1.
+    // replayed: PC가 오프라인이던 동안 Pi 로컬에 버퍼링돼 있다가 재연결 후
+    // 뒤늦게 재전송된 이벤트면 true(arrival_return_manager.py의
+    // _replay_pending_events 참고) — 처리 로직은 실시간과 동일(상태 가드
+    // 덕분에 재실행해도 안전), 로그 표시용으로만 쓴다.
+    void piReturnStatusReceived(const QString &phase, const QString &missionId, const QString &queueId,
+                                int waypointIndex, int posesTotal, bool replayed);
     void logEvent(const QString &level, const QString &message);
     // 같은 로봇에 medirun_gui 창이 여러 개 떠 있을 때, 이 프로세스가 실제로
     // 로봇에 명령을 내릴 수 있는 "조종 권한"을 쥐고 있는지. /medirun/gui/control_heartbeat
