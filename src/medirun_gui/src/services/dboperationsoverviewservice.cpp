@@ -1123,6 +1123,100 @@ bool DbOperationsOverviewService::findTrajectoriesReferencing(
     return true;
 }
 
+bool DbOperationsOverviewService::loadTrajectoryPosesForButton(
+    int robotId, const QString &buttonCode, QString &trajectoryName, QVector<NavGoalPoint> &poses, QString &errorMessage)
+{
+    poses.clear();
+    trajectoryName.clear();
+    if (!openDbConnection(errorMessage)) {
+        return false;
+    }
+
+    QSqlQuery buttonQuery;
+    buttonQuery.prepare(QStringLiteral(
+        "SELECT id FROM call_button WHERE code = :code AND deregistered_at IS NULL"));
+    buttonQuery.bindValue(QStringLiteral(":code"), buttonCode);
+    if (!buttonQuery.exec()) {
+        errorMessage = QStringLiteral("콜버튼 조회 실패: %1").arg(buttonQuery.lastError().text());
+        return false;
+    }
+    if (!buttonQuery.next()) {
+        // 등록 안 됐거나 해제된 버튼 코드 — 에러 아님, 호출자가 폴백한다.
+        errorMessage.clear();
+        return true;
+    }
+    const int callButtonId = buttonQuery.value(0).toInt();
+
+    QStringList trajectoryNames;
+    if (!findTrajectoriesReferencing(robotId, QStringLiteral("call_button"), callButtonId, trajectoryNames, errorMessage)) {
+        return false;
+    }
+    if (trajectoryNames.isEmpty()) {
+        // 이 버튼에 연결된 trajectory가 없다 — 에러 아님, 호출자가 기존 단일 pose
+        // 주행으로 폴백한다.
+        errorMessage.clear();
+        return true;
+    }
+    if (trajectoryNames.size() > 1) {
+        qWarning() << "call_button code" << buttonCode << "가 여러 trajectory에 연결되어 있어 첫 번째만 사용:"
+                   << trajectoryNames;
+    }
+    trajectoryName = trajectoryNames.first();
+
+    QSqlQuery query;
+    query.prepare(QStringLiteral(
+        "SELECT waypoints FROM waypoint_set WHERE robot_id = :robotId AND type = 'trajectory' "
+        "AND name = :name AND deregistered_at IS NULL"));
+    query.bindValue(QStringLiteral(":robotId"), robotId);
+    query.bindValue(QStringLiteral(":name"), trajectoryName);
+    if (!query.exec() || !query.next()) {
+        errorMessage = QStringLiteral("경로 조회 실패: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    // loadActiveTrajectoryEntries와 동일한 스텝 형식({"table":"call_button"|"waypoint","id":N})을
+    // 디코딩하되, code 문자열이 아니라 x/y/yaw를 직접 resolve한다.
+    const QJsonArray steps = QJsonDocument::fromJson(query.value(0).toString().toUtf8()).array();
+    for (const QJsonValue &value : steps) {
+        const QJsonObject step = value.toObject();
+        const QString table = step.value(QStringLiteral("table")).toString();
+        const int stepId = step.value(QStringLiteral("id")).toInt();
+
+        NavGoalPoint point;
+        bool resolved = false;
+        if (table == QStringLiteral("call_button")) {
+            QSqlQuery lookup;
+            lookup.prepare(QStringLiteral(
+                "SELECT pos_x, pos_y, yaw FROM call_button WHERE id = :id AND pos_x IS NOT NULL AND pos_y IS NOT NULL"));
+            lookup.bindValue(QStringLiteral(":id"), stepId);
+            if (lookup.exec() && lookup.next()) {
+                point.x = lookup.value(0).toDouble();
+                point.y = lookup.value(1).toDouble();
+                point.yaw = lookup.value(2).toDouble();
+                resolved = true;
+            }
+        } else if (table == QStringLiteral("waypoint")) {
+            QSqlQuery lookup;
+            lookup.prepare(QStringLiteral("SELECT waypoints FROM waypoint_set WHERE id = :id"));
+            lookup.bindValue(QStringLiteral(":id"), stepId);
+            if (lookup.exec() && lookup.next()) {
+                const QJsonObject pose = QJsonDocument::fromJson(lookup.value(0).toString().toUtf8()).object();
+                point.x = pose.value(QStringLiteral("x")).toDouble();
+                point.y = pose.value(QStringLiteral("y")).toDouble();
+                point.yaw = pose.value(QStringLiteral("yaw")).toDouble();
+                resolved = true;
+            }
+        }
+        // 참조 대상이 이후 삭제/등록해제됐으면 조용히 건너뛴다(loadActiveTrajectoryEntries와 동일 패턴).
+        if (resolved) {
+            poses.append(point);
+        }
+    }
+
+    errorMessage.clear();
+    return true;
+}
+
 bool DbOperationsOverviewService::startDrivingSession(int robotId, int &drivingSessionId, int &robotSessionId, QString &errorMessage)
 {
     drivingSessionId = -1;

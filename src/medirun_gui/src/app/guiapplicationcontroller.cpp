@@ -153,6 +153,8 @@ void GuiApplicationController::createMainWindow()
         m_waypointRepository.get(),
         m_missionStorageService.get(),
         m_missionRosInterface.get(),
+        m_robotService.get(),
+        m_operationsOverviewService.get(),
         nullptr);
     if (mockModeEnabled()) {
         m_telemetryProvider = new MockTelemetryProvider(m_mainWindow);

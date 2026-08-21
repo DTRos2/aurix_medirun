@@ -25,6 +25,7 @@ public:
 public slots:
     void navigateToPose(double x, double y, double yawRad, const QString &frameId, const QString &label = QString()) override;
     void followWaypoints(const QVector<NavPose> &poses, const QString &frameId, const QString &label = QString()) override;
+    void navigateThroughPoses(const QVector<NavPose> &poses, const QString &frameId, const QString &label = QString()) override;
     void cancelGoal() override;
     void retryConnections() override;
     void publishInitialPose(double x, double y, double yawRad, const QString &frameId) override;
