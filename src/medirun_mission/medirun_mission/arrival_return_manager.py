@@ -62,6 +62,10 @@ class ArrivalReturnManager(Node):
         # 직전 tick에서 본 pi_return_status 구독자 수 — 0에서 양수로 바뀌는
         # 순간(PC 재연결)을 잡아내는 용도.
         self._last_subscriber_count = 0
+        # ultrasonic_safety_stop이 방송하는 정지 상태의 직전 값 — False->True로
+        # 바뀌는 순간(정지 시작)에만 1회 안내한다(계속 정지해 있는 동안 반복
+        # 재생하지 않음).
+        self._obstacle_stop_active = False
 
         self._audio_pub = self.create_publisher(AudioCommand, "/audio/command", 10)
         self._dock_pub = self.create_publisher(Bool, "/medirun/vision/dock_request", 10)
@@ -71,6 +75,7 @@ class ArrivalReturnManager(Node):
 
         self.create_subscription(String, "/medirun/mission/arrival_notice", self._handle_arrival_notice, 10)
         self.create_subscription(Bool, "/arduino/payload_loaded", self._handle_payload, 10)
+        self.create_subscription(Bool, "/medirun/safety/obstacle_stop", self._handle_obstacle_stop, 10)
 
         self.create_timer(0.5, self._tick)
 
@@ -146,6 +151,16 @@ class ArrivalReturnManager(Node):
             )
 
         self._payload_loaded_last = msg.data
+
+    # ---- 초음파 안전정지(ultrasonic_safety_stop) ----
+    def _handle_obstacle_stop(self, msg: Bool) -> None:
+        active = bool(msg.data)
+        # 복귀 goal이 실제로 나가있는 동안(self._goal_handle) 정지가 막
+        # 시작된 순간에만 1회 안내한다. 출동 구간은 PC의 반복 경고가 이미
+        # 담당하므로 여기서는 복귀 중에만 반응한다.
+        if active and not self._obstacle_stop_active and self._goal_handle is not None:
+            self._play_audio("비켜주세요")
+        self._obstacle_stop_active = active
 
     # ---- 타이머 ----
     def _tick(self) -> None:

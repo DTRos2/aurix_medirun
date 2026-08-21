@@ -2,6 +2,7 @@
 
 #include <geometry_msgs/msg/twist.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/string.hpp>
 
@@ -22,6 +23,9 @@ public:
     declare_parameter("hold_duration_sec", 0.0);
 
     cmd_pub_ = create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
+    // 정지 시작/해제 순간에만 방송(레벨이 아니라 엣지) — arrival_return_manager가
+    // 이걸로 복귀 중 "비켜주세요" 음성을 딱 1회 트리거한다.
+    obstacle_stop_pub_ = create_publisher<std_msgs::msg::Bool>("medirun/safety/obstacle_stop", 10);
 
     front_sub_ = create_subscription<std_msgs::msg::Int32>(
         "arduino/front_distance_cm", 10,
@@ -89,6 +93,7 @@ private:
                            policy_.distanceCm(SensorSide::kFront),
                            policy_.distanceCm(SensorSide::kRear));
     }
+    updateStopState(decision.shouldStop());
 
     cmd_pub_->publish(command);
   }
@@ -100,11 +105,22 @@ private:
     }
 
     cmd_pub_->publish(geometry_msgs::msg::Twist{});
+    updateStopState(true);
     RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "%s 초음파 감지 즉시 정지 명령 발행 (전방 %dcm, 후방 %dcm)",
         reasonLabel(*reason), policy_.distanceCm(SensorSide::kFront),
         policy_.distanceCm(SensorSide::kRear));
+  }
+
+  void updateStopState(bool active) {
+    if (active == stop_active_) {
+      return;
+    }
+    stop_active_ = active;
+    std_msgs::msg::Bool msg;
+    msg.data = active;
+    obstacle_stop_pub_->publish(msg);
   }
 
   static const char *reasonLabel(StopReason reason) noexcept {
@@ -122,7 +138,9 @@ private:
   }
 
   UltrasonicSafetyPolicy policy_;
+  bool stop_active_{false};
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr obstacle_stop_pub_;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr front_sub_;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr rear_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr nav_cmd_sub_;
