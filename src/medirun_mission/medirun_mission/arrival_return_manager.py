@@ -177,7 +177,7 @@ class ArrivalReturnManager(Node):
         self._forced_deadline = None
         self._removed_deadline = None
         self._next_reminder_at = None
-        self._play_audio("복귀합니다")
+        self._play_audio("홈으로 복귀합니다")
         self._publish_status("returning")
         self._send_nav_goal()
 
@@ -252,6 +252,7 @@ class ArrivalReturnManager(Node):
         wrapped = future.result()
         self._goal_handle = None
         if wrapped.status == GoalStatus.STATUS_SUCCEEDED:
+            self._play_audio("복귀했습니다")
             # 도킹 요청도 여기서 로컬로 바로 보낸다 — docking_manager도 Pi에서
             # 도니 이 역시 Wi-Fi 무관. 도킹 성공/실패 결과(/medirun/vision/
             # dock_result)는 docking_manager가 직접 방송하고, PC의

@@ -795,6 +795,7 @@ bool MissionController::beginReturnHomeFlow(const QString &reason)
                    QStringLiteral("STARTED"), reason);
         emit historyChanged();
         emit missionChanged();
+        m_rosInterface->publishAudioAnnouncement(QStringLiteral("홈으로 복귀합니다"));
         m_navigationService->navigateToPose(homePose.positionX, homePose.positionY, homePose.yawRadians, homePose.frameId);
         return true;
     }
@@ -823,6 +824,7 @@ bool MissionController::beginReturnHomeFlow(const QString &reason)
         setMissionState(MissionState::ReturningHome);
         emit historyChanged();
         emit missionChanged();
+        m_rosInterface->publishAudioAnnouncement(QStringLiteral("홈으로 복귀합니다"));
         dispatchReturnHomeNavigation(homePose, homeWaypoint.label);
         return true;
     }
@@ -858,6 +860,7 @@ bool MissionController::dispatchPendingReturnHome()
     m_snapshot.nextWaypointName = homeWaypoint.label;
     m_snapshot.returningHome = true;
     setMissionState(MissionState::ReturningHome);
+    m_rosInterface->publishAudioAnnouncement(QStringLiteral("홈으로 복귀합니다"));
     dispatchReturnHomeNavigation(homePose, homeWaypoint.label);
     return true;
 }
@@ -920,6 +923,7 @@ void MissionController::handleDockResult(bool success, const QString &detail)
         return;
     }
     if (success) {
+        m_rosInterface->publishAudioAnnouncement(QStringLiteral("도킹 완료했습니다"));
         finishMission(MissionState::Completed, m_pendingReason, QStringLiteral("PARKING_COMPLETED"), QStringLiteral("SUCCEEDED"));
         return;
     }
@@ -1249,7 +1253,7 @@ void MissionController::handleNavigationWarningTick()
         m_navigationWarningTimer->stop();
         return;
     }
-    m_rosInterface->publishAudioAnnouncement(QStringLiteral("긴급상황 발생, 비켜주세요"));
+    m_rosInterface->publishAudioAnnouncement(QStringLiteral("비켜주세요. 긴급상황입니다."));
 }
 
 void MissionController::saveQueue()
