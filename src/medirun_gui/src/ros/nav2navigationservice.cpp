@@ -444,9 +444,12 @@ public:
     }
 
     // trajectory(+HOME) 등 여러 점을 중간 정지 없이 하나의 부드러운 경로로 잇는다.
-    // followWaypoints()와 달리 접근(approach) 지점을 안 끼워넣는다 — 도킹 정렬은
-    // 이 액션이 끝난 뒤(홈 도착) 별도의 ArUco 전면주차 단계에서 처리되고, 여기서는
-    // 그냥 주어진 점들을 순서 그대로 통과하면 된다.
+    // followWaypoints()와 마찬가지로 각 실제 지점 앞에 (가능하면) approach pose를
+    // 끼워넣는다 — 안 그러면 코너에서 방향을 크게 꺾어야 하는 지점(예: BTN_01
+    // 진입로 ㄱ자 코너)에서 트레일러가 그 방향 전환을 못 따라가 제자리 회전만
+    // 하다 멈추는 문제가 있었다(2026-08-24). approach pose도 그냥 지나가는 경유점
+    // 중 하나로 들어갈 뿐이라 NavigateThroughPoses의 "중간 정지 없음" 특성은
+    // 그대로 유지된다.
     void navigateThroughPoses(const QVector<NavPose> &poses, const QString &frameId, const QString &label)
     {
         if (m_navGoalHandle || m_followGoalHandle || m_throughPosesGoalHandle || m_navigationInProgress) {
@@ -466,24 +469,38 @@ public:
         const rclcpp::Time stamp = now();
         const std::string frameStd = frameId.toStdString();
         NavigateThroughPoses::Goal goal;
-        goal.poses.reserve(static_cast<size_t>(poses.size()));
+        goal.poses.reserve(static_cast<size_t>(poses.size()) * 2);
+        m_throughRealPoseIndices.clear();
         for (const NavPose &pose : poses) {
+            const QString labelForLog = QStringLiteral("경유지점 %1").arg(m_throughRealPoseIndices.size() + 1);
+            const auto approachPose = findApproachPose(pose.x, pose.y, pose.yaw, frameStd, stamp, labelForLog);
+            if (approachPose.has_value()) {
+                goal.poses.push_back(*approachPose);
+            }
+            m_throughRealPoseIndices.push_back(goal.poses.size());
             goal.poses.push_back(makePoseStamped(pose.x, pose.y, pose.yaw, frameStd, stamp));
         }
         m_throughPosesTotal = static_cast<int>(poses.size());
+        const int sentTotal = static_cast<int>(goal.poses.size());
 
-        m_bridge->logEvent(QStringLiteral("INFO"), QStringLiteral("경로 주행 요청: %1개 지점 연속 주행").arg(m_throughPosesTotal));
+        m_bridge->logEvent(QStringLiteral("INFO"),
+                           QStringLiteral("경로 주행 요청: %1개 지점 연속 주행 (접근 지점 포함 총 %2개 지점 경유)")
+                               .arg(m_throughPosesTotal)
+                               .arg(sentTotal));
         m_bridge->waypointProgress(0, m_throughPosesTotal);
         m_bridge->statusChanged(QStringLiteral("경로 주행 중 (0/%1)").arg(m_throughPosesTotal));
         m_navigationInProgress = true;
         m_bridge->navSessionStarted(poses, label);
 
         ThroughPosesClient::SendGoalOptions options;
-        options.feedback_callback = [this](ThroughPosesClient::GoalHandle::SharedPtr,
+        options.feedback_callback = [this, sentTotal](ThroughPosesClient::GoalHandle::SharedPtr,
                                            const std::shared_ptr<const NavigateThroughPoses::Feedback> feedback) {
             const int remaining = static_cast<int>(feedback->number_of_poses_remaining);
-            const int passed = std::max(0, m_throughPosesTotal - remaining);
-            m_bridge->waypointProgress(passed, m_throughPosesTotal);
+            const int passedCount = std::max(0, sentTotal - remaining);
+            const int realCompleted = static_cast<int>(std::count_if(
+                m_throughRealPoseIndices.begin(), m_throughRealPoseIndices.end(),
+                [passedCount](size_t idx) { return static_cast<int>(idx) < passedCount; }));
+            m_bridge->waypointProgress(realCompleted, m_throughPosesTotal);
         };
         options.goal_response_callback = [this](ThroughPosesClient::GoalHandle::SharedPtr handle) {
             if (!handle) {
@@ -750,6 +767,10 @@ private:
     FollowClient::GoalHandle::SharedPtr m_followGoalHandle;
     ThroughPosesClient::GoalHandle::SharedPtr m_throughPosesGoalHandle;
     int m_throughPosesTotal {0};
+    // followWaypoints()의 m_followRealPoseIndices와 동일한 목적 — goal.poses
+    // 안에서 "실제 지점"이 위치한 인덱스들(approach pose 제외). feedback의
+    // number_of_poses_remaining을 실제 지점 개수 기준 진행률로 환산하는 데 쓴다.
+    std::vector<size_t> m_throughRealPoseIndices;
 
     // approach->최종 목표 전환 구간처럼 goal 핸들이 아직 없는 순간에 cancelGoal()이
     // 호출되면(예: 대기 호출 "전환" 버튼) 취소할 대상이 없어 요청이 그냥 씹혔다.

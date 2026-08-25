@@ -40,16 +40,16 @@ public:
     bool rosConnected() const;
     bool nav2Connected() const;
     bool retryInProgress() const;
-    // 여러 medirun_gui 창이 같은 로봇에 동시 접속했을 때, 실제로 로봇에 명령
-    // (dispatch/홈복귀/미션취소 등)을 내릴 수 있는 창인지. false면 다른 창이
-    // 이미 조종 중이라는 뜻 — 읽기 전용으로 표시하고 버튼을 막아야 한다.
-    bool isController() const;
     // MQTT 콜존 버튼이 이번 앱 세션 동안 실제로 보낸 raw button_id 목록(최근
     // 감지 순, 등록 성공/실패 여부와 무관 — 웨이포인트관리 페이지가 콜존
     // 등록 시 "감지된 콜존 ID" 드롭다운을 채우는 데 쓴다). 앱 재시작 시 초기화.
     QStringList observedButtonIds() const;
 
 public slots:
+    // 웨이포인트 관리 페이지의 수동 "주행 시작"(테스트 주행)은 미션
+    // 큐/startMissionForQueue()를 안 거쳐서 원래 TTS 안내가 안 나갔다 —
+    // 그 버튼에서 호출한다.
+    void announceTestDrive(const QString &waypointLabel);
     void requestRetry();
     void requestReturnHome();
     void requestMissionCancel();
@@ -66,8 +66,6 @@ signals:
     void retryStateChanged();
     void nextQueueConfirmationRequested(const QString &queueId, const QString &waypointName);
     void observedButtonIdsChanged();
-    // isController()가 바뀔 때마다 — 다른 창과의 조종 권한 획득/양보.
-    void controlAuthorityChanged(bool isController);
 
 private slots:
     void handleDispatchRequested(const QString &buttonId,
@@ -84,22 +82,11 @@ private slots:
     void handleRosHeartbeat(const QString &source, const QDateTime &receivedAt);
     void handleRosRetryFinished(bool success, const QString &detail);
     void handleDockResult(bool success, const QString &detail);
-    // 문서 02 §7.1 음성 안내 #4(SR-F-006) "주행 중" 경고 — NAVIGATING(출동
-    // 중) 동안 5초 주기로 반복 재생한다. setMissionState()가 Navigating
-    // 진입/이탈에 맞춰 m_navigationWarningTimer를 시작/정지한다.
-    void handleNavigationWarningTick();
     // Pi의 arrival_return_manager가 방송하는 반출감지/복귀 진행상황 — 화면
     // 상태만 따라가고 여기서 Nav2 goal을 다시 보내지는 않는다(그건 Pi가
     // 로컬로 이미 처리함). armed/payload_removed/returning/return_failed.
     void handlePiReturnStatus(const QString &phase, const QString &missionId, const QString &queueId,
                               int waypointIndex, int posesTotal, bool replayed);
-    void handleControlAuthorityChanged(bool isController);
-    // 조종 권한이 없는 창이 리더 창의 MissionSnapshot 방송을 받아 자신의
-    // m_snapshot을 그대로 덮어쓴다(읽기 전용 미러) — publishSnapshotIfController 참고.
-    void handleMissionSnapshotReceived(const QString &json);
-    // missionChanged()가 발생할 때마다 걸리는 슬롯. 조종 권한이 있을 때만
-    // 실제로 /medirun/gui/mission_snapshot에 방송한다.
-    void publishSnapshotIfController();
     void updateElapsed();
 
 private:
@@ -200,11 +187,10 @@ private:
     bool m_rosConnected {false};
     bool m_retryInProgress {false};
     bool m_goalAccepted {false};
-    // 앱 시작 직후 다른 창이 이미 조종 중인지 탐색이 끝나기 전까지는(약
-    // 1.5초) 보수적으로 false로 시작한다 — isController() 참고.
-    bool m_isController {false};
     QTimer *m_elapsedTimer {nullptr};
-    QTimer *m_navigationWarningTimer {nullptr};
+    // 복귀·도킹 완료(Completed) 후 완료 체크마크를 30초간 보여주고 나서야
+    // startNextQueueIfPossible()을 부르는 지연 타이머(finishMission() 참고).
+    QTimer *m_completionResetTimer {nullptr};
     double m_lastRobotX {0.0};
     double m_lastRobotY {0.0};
     bool m_robotPoseValid {false};
