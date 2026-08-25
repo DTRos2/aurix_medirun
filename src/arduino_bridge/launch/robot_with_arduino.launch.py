@@ -23,6 +23,8 @@ def generate_launch_description():
     opencr_port = LaunchConfiguration("opencr_port")
     baud = LaunchConfiguration("baud")
     camera_format = LaunchConfiguration("camera_format")
+    camera_width = LaunchConfiguration("camera_width")
+    camera_height = LaunchConfiguration("camera_height")
     audio_sink = LaunchConfiguration("audio_sink")
     start_cartographer = LaunchConfiguration("start_cartographer")
     use_sim_time = LaunchConfiguration("use_sim_time")
@@ -78,6 +80,21 @@ def generate_launch_description():
             default_value="BGR888",
             description="turtlebot3_bringup camera.launch.py에 전달할 픽셀 포맷",
         ),
+        # 2026-08-10에 640x480 -> 1280x720으로 화질을 올렸던 결정(구 v4l2_camera_node
+        # 경로, medirun_bringup/launch/camera.launch.py)이 2026-08-19 Pi 런치 통합
+        # (pi_bringup.launch.py -> 이 파일 -> turtlebot3_bringup/camera.launch.py,
+        # camera_ros 경로로 교체됨) 이후 반영되지 않고 640x480 기본값으로 되돌아가
+        # 있었다. 여기서 다시 명시적으로 넘겨 그 결정을 유지한다.
+        DeclareLaunchArgument(
+            "camera_width",
+            default_value="1280",
+            description="turtlebot3_bringup camera.launch.py에 전달할 카메라 발행 폭",
+        ),
+        DeclareLaunchArgument(
+            "camera_height",
+            default_value="720",
+            description="turtlebot3_bringup camera.launch.py에 전달할 카메라 발행 높이",
+        ),
         DeclareLaunchArgument(
             "audio_sink",
             default_value=(
@@ -112,7 +129,11 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(
                 os.path.join(turtlebot3_bringup, "launch", "camera.launch.py")
             ),
-            launch_arguments={"format": camera_format}.items(),
+            launch_arguments={
+                "format": camera_format,
+                "width": camera_width,
+                "height": camera_height,
+            }.items(),
         ),
 
         Node(

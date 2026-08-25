@@ -32,6 +32,51 @@ cp config/device.yaml.example config/device.yaml
 
 ## 폴더 구조
 
+
+
+### Raspberry Pi 4
+
+```
+~/arduino_bridge_ws/                          ← ② include 대상
+├── src/arduino_bridge/
+│   ├── launch/
+│   │   └── robot_with_arduino.launch.py      
+│   ├── src/
+│   │   ├── serial_bridge.cpp                 → serial_bridge
+│   │   ├── led_status_node.cpp               → led_status_node
+│   │   ├── estop_node.cpp                    → estop_node
+│   │   ├── ultrasonic_safety_policy.cpp      → ultrasonic_node
+│   │   └── ultrasonic_safety_stop.cpp        → ultrasonic_node
+│   ├── CMakeLists.txt
+│   └── package.xml
+├── firmware/estop_firmware/estop_firmware.ino   (Pi는 한 겹 더)
+└── install/arduino_bridge/share/arduino_bridge/launch/
+    └── robot_with_arduino.launch.py          ← 실제 실행되는 사본(심볼릭이어야 함)
+
+~/turtlebot3_ws/                              ← ② include 대상
+└── install/turtlebot3_bringup/share/turtlebot3_bringup/launch/
+    ├── robot.launch.py                       ← usb_port:=opencr_port
+    └── camera.launch.py                      ← format:=camera_format ★ 이번에 추가
+└── install/coin_d4_driver/share/coin_d4_driver/params/
+    └── single_lidar_node.yaml                (robot.launch.py가 참조)
+└── src/turtlebot3/turtlebot3_bringup/config/
+    └── tb3_burger_picam2_640x480.yaml        (camera_info_url 기본값)
+
+~/medirun_ws/                                ← ① 실행 진입점
+└── src/
+    ├── medirun_bringup/                     ←  aurix_main_project_01/src/medirun_bringup
+    │   ├── launch/
+    │   └──   └── pi_bringup.launch.py       ← 실행
+    └── medirun_mission/                     ←  aurix_main_project_01/src/medirun_mission
+
+~/turtlebot3_ws/install/turtlebot3_navigation2/share/turtlebot3_navigation2/param/humble/burger.yaml
+← aurix_main_project_01/src/turtlebot3/turtlebot3_navigation2/param/humble/burger.yaml
+```
+
+
+
+
+### Ubuntu
 ```
 .
 ├── src/                    # ROS 2 패키지 (빌드 대상만 둔다)

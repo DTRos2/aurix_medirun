@@ -148,21 +148,4 @@ inline QString missionStateText(MissionState state)
     return QStringLiteral("UNKNOWN");
 }
 
-// missionStateText()의 역변환 — 조종 권한이 없는 창이 리더 창의
-// MissionSnapshot 방송(/medirun/gui/mission_snapshot)을 읽어들일 때 쓴다.
-inline MissionState missionStateFromText(const QString &text)
-{
-    if (text == QStringLiteral("STARTING")) return MissionState::Starting;
-    if (text == QStringLiteral("NAVIGATING")) return MissionState::Navigating;
-    if (text == QStringLiteral("ARRIVED")) return MissionState::Arrived;
-    if (text == QStringLiteral("CANCELLING")) return MissionState::Cancelling;
-    if (text == QStringLiteral("DIVERTING")) return MissionState::Diverting;
-    if (text == QStringLiteral("RETURNING_HOME")) return MissionState::ReturningHome;
-    if (text == QStringLiteral("PARKING")) return MissionState::Parking;
-    if (text == QStringLiteral("COMPLETED")) return MissionState::Completed;
-    if (text == QStringLiteral("CANCELLED")) return MissionState::Cancelled;
-    if (text == QStringLiteral("FAILED")) return MissionState::Failed;
-    return MissionState::Idle;
-}
-
 #endif // MISSIONTYPES_H

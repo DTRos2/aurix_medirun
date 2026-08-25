@@ -1,0 +1,10 @@
+frame_id: map
+waypoints:
+  W-03:
+    x: -1.1899999999999999
+    y: 1.1000000000000001
+    yaw: -1.5707963267948966
+    kind: waypoint
+    label: btn_02
+trajectories:
+  {}

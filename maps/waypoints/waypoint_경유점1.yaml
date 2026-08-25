@@ -1,0 +1,10 @@
+frame_id: map
+waypoints:
+  W-01:
+    x: 1.75
+    y: -0.84999999999999998
+    yaw: 3.0892327760299634
+    kind: waypoint
+    label: 경유점1
+trajectories:
+  {}

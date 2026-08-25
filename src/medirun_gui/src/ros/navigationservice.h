@@ -38,9 +38,9 @@ public slots:
     // user_action_log.payload)에만 쓰인다. 몰라도(빈 문자열) 동작에는 지장 없음.
     virtual void navigateToPose(double x, double y, double yawRad, const QString &frameId, const QString &label = QString()) = 0;
     virtual void followWaypoints(const QVector<NavPose> &poses, const QString &frameId, const QString &label = QString()) = 0;
-    // followWaypoints와 달리 접근(도킹 정렬용) 지점을 안 끼워넣고, 주어진 점들을
-    // 중간 정지 없이 하나의 부드러운 경로로 잇는다(Nav2 navigate_through_poses).
-    // trajectory(+HOME) 연속 주행용.
+    // followWaypoints와 마찬가지로 각 실제 지점 앞에 접근(approach) 지점을
+    // 끼워넣지만, 중간에 정지하지 않고 하나의 부드러운 경로로 잇는다(Nav2
+    // navigate_through_poses). trajectory(+HOME) 연속 주행용.
     virtual void navigateThroughPoses(const QVector<NavPose> &poses, const QString &frameId, const QString &label = QString()) = 0;
     virtual void cancelGoal() = 0;
     virtual void retryConnections() = 0;
