@@ -37,11 +37,11 @@ cp config/device.yaml.example config/device.yaml
 ├── src/                    # ROS 2 패키지 (빌드 대상만 둔다)
 │   ├── medirun_bringup/        # 전체 시스템 기동 launch (Nav2 + 대시보드)
 │   ├── medirun_navigation/     # Nav2·AMCL, 이동 정밀도 시험
-│   ├── medirun_mission/        # 미션 상태 관리 (구현 예정)
-│   ├── medirun_sensor/         # 버튼·초음파·홀센서·LED 브리지 (구현 예정)
-│   ├── medirun_vision/         # 카메라·ArUco 도킹 (구현 예정)
-│   ├── medirun_gui/            # Qt(C++) 대시보드 (구현 중)
-│   ├── medirun_db/             # PostgreSQL 연동 (구현 예정)
+│   ├── medirun_mission/        # 미션 상태 관리, 도착·반출·복귀(arrival_return_manager)
+│   ├── medirun_sensor/         # 버튼·초음파·홀센서·LED 브리지, MQTT 버튼(mqtt_bridge)
+│   ├── medirun_vision/         # 카메라·ArUco 도킹
+│   ├── medirun_gui/            # Qt(C++) 대시보드
+│   ├── medirun_db/             # PostgreSQL 연동, 로그 보관(log_retention)
 │   ├── medirun_msgs/           # 커스텀 메시지·서비스·액션
 │   ├── arduino_bridge/         # 로봇(Pi) 실행 코드 팀 공유용 — 아래 "아두이노 브리지" 참고
 │   ├── turtlebot3/             # ROBOTIS 공식 패키지 벤더링(humble) — bringup·cartographer·navigation2 등
