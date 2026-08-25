@@ -1708,6 +1708,9 @@ void WaypointManagementPage::handleNavigateToSelectedWaypoint()
     m_waypointMap->setNavigationTargetId(m_selectedWaypointId);
     m_routeMap->setNavigationTargetId(m_selectedWaypointId);
     m_navigationService->navigateToPose(wp.x, wp.y, wp.yaw, m_frameId, label);
+    if (m_missionController != nullptr) {
+        m_missionController->announceTestDrive(label);
+    }
 }
 
 void WaypointManagementPage::handleNavigateSelectedRoute()
@@ -1752,6 +1755,9 @@ void WaypointManagementPage::handleNavigateSelectedRoute()
     m_routeMap->setNavigationTargetId(orderedIds.first());
 
     m_navigationService->followWaypoints(poses, m_frameId, m_selectedSavedRoute);
+    if (m_missionController != nullptr) {
+        m_missionController->announceTestDrive(m_selectedSavedRoute);
+    }
 }
 
 void WaypointManagementPage::handleCancelNavigation()

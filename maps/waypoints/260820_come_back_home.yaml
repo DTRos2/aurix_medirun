@@ -1,0 +1,8 @@
+frame_id: map
+waypoints:
+  {}
+trajectories:
+  come back home:
+    - BTN_01
+    - W-01
+    - W-02
