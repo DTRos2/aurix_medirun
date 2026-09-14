@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>medirun_bringup</name>
+  <version>0.0.1</version>
+  <description>Bringup package for the MediRun project.</description>
+  <maintainer email="team@example.com">aurix</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>turtlebot3_navigation2</exec_depend>
+  <exec_depend>medirun_gui</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>v4l2_camera</exec_depend>
+  <exec_depend>compressed_image_transport</exec_depend>
+  <exec_depend>medirun_sensor</exec_depend>
+  <exec_depend>medirun_mission</exec_depend>
+  <exec_depend>medirun_navigation</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
