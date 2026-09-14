@@ -1,0 +1,201 @@
+# Nav2(turtlebot3_navigation2 기반)와 medirun_gui 대시보드를 한 번에 띄우는
+# 전체 시스템 기동 launch 파일.
+#
+# 사용 예:
+#   ros2 launch medirun_bringup bringup.launch.py
+#   ros2 launch medirun_bringup bringup.launch.py map:=/path/other.yaml
+#   ros2 launch medirun_bringup bringup.launch.py use_rviz:=true
+#
+# 전제:
+#   - 로봇 본체 드라이버(turtlebot3_bringup robot.launch.py 등, 라이다·모터)는
+#     이 launch가 아니라 로봇(Pi) 쪽에서 별도로 이미 떠 있어야 한다.
+#   - TURTLEBOT3_MODEL 환경변수가 실행 전 export 되어 있어야 한다 (예: burger).
+import os
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import (
+    DeclareLaunchArgument,
+    EmitEvent,
+    GroupAction,
+    IncludeLaunchDescription,
+    RegisterEventHandler,
+    TimerAction,
+)
+from launch.conditions import IfCondition
+from launch.event_handlers import OnProcessExit
+from launch.events import Shutdown
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+
+TURTLEBOT3_MODEL = os.environ.get("TURTLEBOT3_MODEL", "burger")
+ROS_DISTRO = os.environ.get("ROS_DISTRO", "humble")
+CYCLONEDDS_CONFIG = os.path.join(
+    get_package_share_directory("turtlebot3_bringup"), "config", "cyclonedds_udp.xml"
+)
+
+# 이 파일은 --symlink-install로 설치되므로 install/ 아래의 심볼릭 링크를 통해
+# 실행된다. abspath는 심볼릭 링크를 따라가지 않아 install 경로로 잘못
+# 계산되므로, realpath로 실제 소스 트리 경로(src/medirun_bringup/launch/...)를
+# 구해야 한다. 계정 경로를 하드코딩하지 않기 위해 여기서부터 워크스페이스
+# 루트를 상대 경로로 찾는다 (CONVENTIONS.md 3.2절: 장비별 절대 경로 하드코딩 금지).
+THIS_DIR = os.path.dirname(os.path.realpath(__file__))
+WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(THIS_DIR)))
+DEFAULT_MAP = os.path.join(WORKSPACE_ROOT, "maps", "last_class_map_modi.yaml")
+
+
+def generate_launch_description():
+    map_yaml = LaunchConfiguration("map")
+    use_sim_time = LaunchConfiguration("use_sim_time")
+    use_rviz = LaunchConfiguration("use_rviz")
+    use_gui = LaunchConfiguration("use_gui")
+    use_parking = LaunchConfiguration("use_parking")
+
+    param_file_name = TURTLEBOT3_MODEL + ".yaml"
+    if ROS_DISTRO == "humble":
+        param_dir = os.path.join(
+            get_package_share_directory("turtlebot3_navigation2"), "param", ROS_DISTRO, param_file_name
+        )
+    else:
+        param_dir = os.path.join(
+            get_package_share_directory("turtlebot3_navigation2"), "param", param_file_name
+        )
+
+    nav2_launch_file_dir = os.path.join(get_package_share_directory("nav2_bringup"), "launch")
+    medirun_launch_file_dir = os.path.join(get_package_share_directory("medirun_bringup"), "launch")
+    medirun_vision_launch_file_dir = os.path.join(get_package_share_directory("medirun_vision"), "launch")
+    rviz_config_dir = os.path.join(
+        get_package_share_directory("turtlebot3_navigation2"), "rviz", "tb3_navigation2.rviz"
+    )
+
+    # name= 파라미터를 일부러 안 준다: launch_ros가 이걸 프로세스 전체에
+    # `--ros-args -r __node:=medirun_gui` 전역 리매핑으로 주입하는데, 이 앱은
+    # 내부적으로 rclcpp::Node를 여러 개(medirun_gui_nav_bridge,
+    # medirun_gui_mission_bridge, medirun_gui_battery_monitor 등) 만들고
+    # 각각 이미 고유 이름을 하드코딩해뒀다. 이 전역 리매핑이 그 이름들 중
+    # 일부를 "medirun_gui"로 덮어써서, ros2 node list에 같은 이름의 노드가
+    # 여러 개 잡히고(WARNING) 서비스/액션 호출이 어느 노드로 갈지 불확정해져
+    # Nav2 연결 상태가 계속 "재연결중"으로 보이는 원인이 됐다(2026-08-19 확인,
+    # demo_nodes_cpp talker로 재현: __node 리매핑이 하드코딩된 이름도 덮어씀).
+    gui_node = Node(
+        package="medirun_gui",
+        executable="medirun_gui_app",
+        output="screen",
+        condition=IfCondition(use_gui),
+        additional_env={
+            "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
+            "CYCLONEDDS_URI": "file://" + CYCLONEDDS_CONFIG,
+        },
+    )
+
+    return LaunchDescription(
+        [
+            DeclareLaunchArgument("map", default_value=DEFAULT_MAP, description="불러올 occupancy map YAML 경로"),
+            DeclareLaunchArgument("use_sim_time", default_value="false", description="Gazebo 시뮬레이션이면 true"),
+            DeclareLaunchArgument(
+                "use_rviz",
+                default_value="false",
+                description="RViz도 같이 띄울지 여부 (대시보드에 초기 위치 설정 기능이 있어 기본 false)",
+            ),
+            DeclareLaunchArgument(
+                "use_gui", default_value="true", description="medirun_gui 대시보드를 자동으로 같이 띄울지 여부"
+            ),
+            DeclareLaunchArgument(
+                "use_parking",
+                default_value="true",
+                description="ArUco 기반 홈 전면주차 노드(aruco_detector_node/docking_manager)를 같이 띄울지 여부",
+            ),
+            # Nav2를 composition 모드로 실행하되, navigation 부분은 MediRun 전용
+            # navigation_safety.launch.py를 사용한다. 일반 주행(velocity_smoother)뿐 아니라
+            # behavior_server의 BackUp/Spin 출력도 모두 초음파 안전 게이트 앞의 raw 토픽으로
+            # 보낸다. 이 배선이 없으면 후진/회전 복구 동작이 /cmd_vel로 직접 나가 안전 노드를
+            # 우회할 수 있다.
+            GroupAction(
+                actions=[
+                    Node(
+                        package="rclcpp_components",
+                        executable="component_container_isolated",
+                        name="nav2_container",
+                        parameters=[{"autostart": True}],
+                        arguments=["--ros-args", "--log-level", "info"],
+                        remappings=[("/tf", "tf"), ("/tf_static", "tf_static")],
+                        output="screen",
+                    ),
+                    IncludeLaunchDescription(
+                        PythonLaunchDescriptionSource([nav2_launch_file_dir, "/localization_launch.py"]),
+                        launch_arguments={
+                            "map": map_yaml,
+                            "use_sim_time": use_sim_time,
+                            "params_file": param_dir,
+                            "autostart": "true",
+                            "use_composition": "True",
+                            "container_name": "nav2_container",
+                        }.items(),
+                    ),
+                    IncludeLaunchDescription(
+                        PythonLaunchDescriptionSource([medirun_launch_file_dir, "/navigation_safety.launch.py"]),
+                        launch_arguments={
+                            "use_sim_time": use_sim_time,
+                            "params_file": param_dir,
+                            "autostart": "true",
+                            "use_composition": "True",
+                            "container_name": "nav2_container",
+                        }.items(),
+                    ),
+                ]
+            ),
+            # 초음파 전방/후방 15cm 이내 접근 시 Nav2 자율주행을 정지시킨다. 위의 전용
+            # navigation launch가 모은 모든 Nav2 cmd_vel이 이 노드를 거쳐 최종 /cmd_vel로 나간다
+            # (src/arduino_bridge/src/ultrasonic_safety_stop.cpp). 원격조종(teleop)은
+            # 현재 GUI가 /cmd_vel에 직접 발행해 이 게이트를 거치지 않는다 — 이번 요청
+            # 범위는 Nav2 자율주행 중 정지이므로 teleop 경로는 그대로 두었다.
+            Node(
+                package="arduino_bridge",
+                executable="ultrasonic_safety_stop",
+                name="ultrasonic_safety_stop",
+                # front/rear_stop_distance_cm은 10cm(2026-08-19) — ArUco 전면주차
+                # target_distance(medirun_vision/config/parking.yaml, 15cm)보다
+                # 가까워야 안전정지가 마지막 접근/정렬 중 후진을 막지 않는다.
+                parameters=[{"front_stop_distance_cm": 10, "rear_stop_distance_cm": 10, "hold_duration_sec": 0.0}],
+                output="screen",
+            ),
+            # HOME_PRE_DOCK 도착 이후 ArUco 마커를 찾아 전면주차를 수행하는 노드들.
+            # ultrasonic_safety_stop이 최종 /cmd_vel 게이트이므로 이 뒤에 떠 있어야
+            # medirun/parking/cmd_vel_raw가 안전 정책을 거쳐 나간다.
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource([medirun_vision_launch_file_dir, "/parking.launch.py"]),
+                condition=IfCondition(use_parking),
+            ),
+            Node(
+                package="rviz2",
+                executable="rviz2",
+                name="rviz2",
+                arguments=["-d", rviz_config_dir],
+                parameters=[{"use_sim_time": use_sim_time}],
+                output="screen",
+                condition=IfCondition(use_rviz),
+            ),
+            # Nav2가 완전히 뜨기 전에 대시보드가 먼저 열려도 동작에는 문제 없다
+            # (액션 서버가 아직 없으면 버튼 클릭 시 이벤트 로그에 에러가 남고,
+            #  Nav2가 뜬 뒤 다시 누르면 정상 동작한다). 화면이 바로 나오도록
+            # 약간의 지연만 둔다.
+            TimerAction(
+                period=2.0,
+                actions=[gui_node],
+            ),
+            # 대시보드 창을 닫으면(창 X 또는 "대시보드 종료" 버튼) medirun_gui
+            # 프로세스만 끝나고 Nav2 스택(component_container_isolated 등)은
+            # ros2 launch가 기본적으로 계속 살려둔다. "대시보드를 닫으면 전체
+            # 시스템도 같이 내려간다"는 기대에 맞춰, GUI 프로세스 종료를 감지해
+            # launch 전체에 정상 종료(SIGINT와 동일한 경로)를 걸어준다.
+            # use_gui:=false로 GUI 자체를 안 띄운 경우엔 이 이벤트가 그냥
+            # 발생하지 않는다(무해).
+            RegisterEventHandler(
+                OnProcessExit(
+                    target_action=gui_node,
+                    on_exit=[EmitEvent(event=Shutdown(reason="medirun_gui 대시보드가 종료되었습니다."))],
+                )
+            ),
+        ]
+    )
